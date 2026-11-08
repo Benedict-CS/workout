@@ -22,9 +22,18 @@ import {
   Pencil,
   Edit3,
   Calendar,
+  MapPin,
+  Copy,
+  FileText,
+  Calculator,
+  Trophy,
+  Repeat,
+  Check,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
-import { getLastExerciseSets } from "@/lib/db/crud";
+import { getLastExerciseSets, getPreviousSessionTemplate, getExerciseMaxPR } from "@/lib/db/crud";
+import { calculate1RM, calculateBarbellPlates } from "@/lib/calc";
+import { formatSessionToMarkdown } from "@/lib/markdown-generator";
 import type { Exercise, SetItem, WorkoutSession, WeightType, MuscleGroup, SetType } from "@/lib/types";
 
 function matchesTargetMuscle(ex: Exercise, target: string): boolean {
@@ -79,6 +88,27 @@ function matchesTargetMuscle(ex: Exercise, target: string): boolean {
   return ex.muscle_group.includes(target) || target.includes(ex.muscle_group);
 }
 
+const FEELING_TAGS = [
+  "力竭",
+  "完全力竭",
+  "強迫次數",
+  "遞減組",
+  "熱身",
+  "神經激發",
+  "感受度佳",
+  "補1",
+  "補2",
+  "姿勢良好",
+];
+
+const LOCATION_PRESETS = [
+  "交大健身房",
+  "三劍客",
+  "學校健身房",
+  "健身工廠",
+  "成吉思汗",
+];
+
 export default function WorkoutDetailPage({
   params,
 }: {
@@ -92,12 +122,14 @@ export default function WorkoutDetailPage({
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [sets, setSets] = useState<SetItem[]>([]);
   const [ghostMap, setGhostMap] = useState<Record<string, SetItem[]>>({});
+  const [maxPrMap, setMaxPrMap] = useState<Record<string, { maxWeight: number; max1RM: number }>>({});
 
   // 整場訓練編輯 Modal
   const [showEditSessionModal, setShowEditSessionModal] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [editDate, setEditDate] = useState("");
   const [editTargetMuscle, setEditTargetMuscle] = useState("");
+  const [editLocation, setEditLocation] = useState("");
 
   // 單組編輯狀態
   const [editingSet, setEditingSet] = useState<SetItem | null>(null);
@@ -110,8 +142,27 @@ export default function WorkoutDetailPage({
   const [selectedExId, setSelectedExId] = useState<string>("");
   const [inputWeight, setInputWeight] = useState<string>("");
   const [inputReps, setInputReps] = useState<string>("");
-  const [inputType, setInputType] = useState<string>("normal");
+  const [inputType, setInputType] = useState<SetType>("normal");
   const [inputNotes, setInputNotes] = useState<string>("");
+
+  // Markdown 檢視與複製 Modal
+  const [showMarkdownModal, setShowMarkdownModal] = useState(false);
+  const [copyToast, setCopyToast] = useState(false);
+
+  // 槓鈴片計算器 Modal
+  const [showPlateCalcModal, setShowPlateCalcModal] = useState(false);
+  const [plateCalcWeight, setPlateCalcWeight] = useState<number>(60);
+  const [barWeight, setBarWeight] = useState<number>(20);
+
+  // 複製上一次菜單功能
+  const [showCloneConfirm, setShowCloneConfirm] = useState(false);
+  const [prevTemplateInfo, setPrevTemplateInfo] = useState<{
+    date: string;
+    title: string;
+    setCount: number;
+    exCount: number;
+    sets: SetItem[];
+  } | null>(null);
 
   // 自訂新動作模式
   const [showAddCustom, setShowAddCustom] = useState<boolean>(false);
@@ -125,7 +176,7 @@ export default function WorkoutDetailPage({
   const [defaultRestDuration, setDefaultRestDuration] = useState<number>(90);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 提示音效
+  // 提示音效與震動
   function playAlarm() {
     try {
       const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -192,6 +243,7 @@ export default function WorkoutDetailPage({
     }
   }
 
+  // 載入當前 session 與數據
   useEffect(() => {
     async function load() {
       try {
@@ -204,6 +256,7 @@ export default function WorkoutDetailPage({
         setEditTitle(sess.display_title);
         setEditDate(sess.date);
         setEditTargetMuscle(sess.target_muscle);
+        setEditLocation(sess.location || "");
 
         const allEx = await db.exercises.toArray();
         setExercises(allEx);
@@ -214,6 +267,26 @@ export default function WorkoutDetailPage({
           .filter((s) => !s.deleted_at)
           .sortBy("set_order");
         setSets(currentSets);
+
+        // 載入動作最高 PR
+        const prRecord: Record<string, { maxWeight: number; max1RM: number }> = {};
+        for (const ex of allEx) {
+          const pr = await getExerciseMaxPR(ex.id);
+          prRecord[ex.id] = { maxWeight: pr.maxWeight, max1RM: pr.max1RM };
+        }
+        setMaxPrMap(prRecord);
+
+        // 檢查是否有同部位上一次菜單
+        const prevMatch = await getPreviousSessionTemplate(sess.target_muscle);
+        if (prevMatch && prevMatch.session.id !== id && prevMatch.sets.length > 0) {
+          setPrevTemplateInfo({
+            date: prevMatch.session.date,
+            title: prevMatch.session.display_title,
+            setCount: prevMatch.sets.length,
+            exCount: prevMatch.exerciseIds.length,
+            sets: prevMatch.sets,
+          });
+        }
 
         const distinctExIds = Array.from(new Set(currentSets.map((s) => s.exercise_id)));
         const ghostRecord: Record<string, SetItem[]> = {};
@@ -282,7 +355,7 @@ export default function WorkoutDetailPage({
     setShowAddCustom(false);
   }
 
-  // 儲存整場訓練編輯 (修改標題、日期、部位)
+  // 儲存整場訓練編輯 (修改標題、日期、部位、場地)
   async function handleSaveEditSession() {
     if (!session || !editTitle.trim() || !editDate) return;
     const parts = editDate.split("-");
@@ -294,6 +367,7 @@ export default function WorkoutDetailPage({
       date: editDate,
       month_key: monthKey,
       target_muscle: editTargetMuscle,
+      location: editLocation.trim() || undefined,
       updated_at: new Date().toISOString(),
       sync_status: "pending",
     };
@@ -303,7 +377,7 @@ export default function WorkoutDetailPage({
     setShowEditSessionModal(false);
   }
 
-  // 刪除整場訓練 (包括其下所有組數)
+  // 刪除整場訓練
   async function handleDeleteEntireSession() {
     if (!confirm(`確定要刪除這場訓練【${session?.display_title}】嗎？\n所有已記錄的組數都會被永久清除。`)) {
       return;
@@ -332,12 +406,17 @@ export default function WorkoutDetailPage({
     const wNum = parseFloat(editSetWeight) || 0;
     const rNum = parseInt(editSetReps, 10) || 0;
 
+    let generatedRaw = `${wNum}Kg x${rNum}`;
+    if (editSetType === "warmup") generatedRaw += " 熱身";
+    if (editSetType === "primer") generatedRaw += " 神經激發";
+    if (editSetNotes.trim()) generatedRaw += ` ${editSetNotes.trim()}`;
+
     const updated: SetItem = {
       ...editingSet,
       weight_kg: wNum,
       reps: rNum,
       set_type: editSetType,
-      raw_text: `${wNum}Kg x${rNum} ${editSetNotes}`.trim(),
+      raw_text: generatedRaw,
       feedback: editSetNotes || undefined,
       notes: editSetNotes || undefined,
       updated_at: new Date().toISOString(),
@@ -349,7 +428,7 @@ export default function WorkoutDetailPage({
     setEditingSet(null);
   }
 
-  // 新增組數
+  // 快速新增單組
   async function handleAddSet() {
     if (!selectedExId || !inputReps) return;
 
@@ -357,16 +436,36 @@ export default function WorkoutDetailPage({
     const weightNum = parseFloat(inputWeight) || 0;
     const repsNum = parseInt(inputReps, 10) || 0;
 
+    const exSets = sets.filter((s) => s.exercise_id === selectedExId);
+    const formalIndex = exSets.filter((s) => s.set_type === "normal").length + 1;
+
+    let raw = "";
+    if (inputType === "warmup") {
+      raw = `${weightNum}Kg x${repsNum} 熱身`;
+    } else if (inputType === "primer") {
+      raw = `${weightNum}Kg x${repsNum} 神經激發`;
+    } else {
+      raw = `set ${formalIndex}: ${weightNum}Kg x${repsNum}`;
+    }
+
+    if (inputNotes.trim()) {
+      raw += ` ${inputNotes.trim()}`;
+    }
+
+    const isFailure = inputNotes.includes("力竭") || inputType === "cooldown";
+
     const newSet: SetItem = {
-      id: `set-${id}-${Date.now()}`,
+      id: `set-${Date.now()}-${newOrder}`,
       session_id: id,
       exercise_id: selectedExId,
       set_order: newOrder,
-      set_type: inputType as any,
+      set_type: inputType,
       weight_kg: weightNum,
       reps: repsNum,
-      raw_text: `${weightNum}Kg x${repsNum} ${inputNotes}`.trim(),
+      raw_text: raw,
+      is_failure: isFailure,
       feedback: inputNotes || undefined,
+      notes: inputNotes || undefined,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       sync_status: "pending",
@@ -375,7 +474,7 @@ export default function WorkoutDetailPage({
     await db.sets.add(newSet);
     setSets((prev) => [...prev, newSet]);
 
-    // 更新幽靈參照
+    // 更新 ghost 對照
     if (!ghostMap[selectedExId]) {
       const res = await getLastExerciseSets(selectedExId, id);
       if (res) {
@@ -390,11 +489,120 @@ export default function WorkoutDetailPage({
     setInputNotes("");
   }
 
-  // 刪除組數 (附帶二次確認)
+  // 一鍵重複上一組 (Duplicate Last Set)
+  async function handleRepeatLastSet() {
+    if (!selectedExId) return;
+    const exSets = sets.filter((s) => s.exercise_id === selectedExId);
+    if (exSets.length === 0) return;
+    const last = exSets[exSets.length - 1];
+
+    setInputWeight(last.weight_kg.toString());
+    setInputReps(last.reps.toString());
+    setInputType(last.set_type);
+    setInputNotes(last.notes || "");
+
+    const newOrder = sets.length + 1;
+    const formalIndex = exSets.filter((s) => s.set_type === "normal").length + 1;
+    let raw = `set ${formalIndex}: ${last.weight_kg}Kg x${last.reps}`;
+    if (last.set_type === "warmup") raw = `${last.weight_kg}Kg x${last.reps} 熱身`;
+
+    const newSet: SetItem = {
+      id: `set-${Date.now()}-${newOrder}`,
+      session_id: id,
+      exercise_id: selectedExId,
+      set_order: newOrder,
+      set_type: last.set_type,
+      weight_kg: last.weight_kg,
+      reps: last.reps,
+      raw_text: raw,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    };
+
+    await db.sets.add(newSet);
+    setSets((prev) => [...prev, newSet]);
+
+    if (autoTimerEnabled) {
+      startRestTimer(defaultRestDuration);
+    }
+  }
+
+  // 刪除組數
   async function handleDeleteSet(setId: string) {
     if (!confirm("確定要刪除此組紀錄嗎？")) return;
     await db.sets.delete(setId);
     setSets((prev) => prev.filter((s) => s.id !== setId));
+  }
+
+  // 複製上一次同部位菜單組數
+  async function handleApplyPrevMenu() {
+    if (!prevTemplateInfo || prevTemplateInfo.sets.length === 0) return;
+    if (!confirm(`確定要將【${prevTemplateInfo.date}】的菜單動作與組數匯入當前訓練嗎？`)) return;
+
+    const baseOrder = sets.length;
+    const newSets: SetItem[] = prevTemplateInfo.sets.map((s, idx) => ({
+      id: `set-${Date.now()}-${baseOrder + idx + 1}`,
+      session_id: id,
+      exercise_id: s.exercise_id,
+      set_order: baseOrder + idx + 1,
+      set_type: s.set_type,
+      weight_kg: s.weight_kg,
+      reps: s.reps,
+      raw_text: s.raw_text,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    }));
+
+    await db.sets.bulkAdd(newSets);
+    setSets((prev) => [...prev, ...newSets]);
+    setShowCloneConfirm(false);
+    alert(`成功匯入 ${newSets.length} 組訓練動作！`);
+  }
+
+  // 一鍵複製 Markdown
+  function handleCopyMarkdown() {
+    if (!session) return;
+    const md = formatSessionToMarkdown(session, sets, exercises);
+    navigator.clipboard.writeText(md);
+    setCopyToast(true);
+    setTimeout(() => setCopyToast(false), 2500);
+  }
+
+  // 體感 Tag 單擊切換 / 加入
+  function handleToggleFeelingTag(tag: string) {
+    if (tag === "熱身") {
+      setInputType("warmup");
+      return;
+    }
+    if (tag === "神經激發") {
+      setInputType("primer");
+      return;
+    }
+    if (tag === "遞減組") {
+      setInputType("drop");
+      return;
+    }
+    if (inputNotes.includes(tag)) {
+      setInputNotes((prev) => prev.replace(tag, "").trim());
+    } else {
+      setInputNotes((prev) => (prev ? `${prev} ${tag}` : tag));
+    }
+  }
+
+  // 微調重量
+  function adjustWeight(delta: number) {
+    const cur = parseFloat(inputWeight) || 0;
+    const next = Math.max(0, cur + delta);
+    setInputWeight(next.toString());
+  }
+
+  // 微調次數
+  function adjustReps(delta: number) {
+    const cur = parseInt(inputReps, 10) || 0;
+    const next = Math.max(1, cur + delta);
+    setInputReps(next.toString());
   }
 
   if (loading || !session) {
@@ -423,9 +631,15 @@ export default function WorkoutDetailPage({
     matchesTargetMuscle(e, session.target_muscle)
   );
 
+  const current1RM = calculate1RM(parseFloat(inputWeight) || 0, parseInt(inputReps, 10) || 0);
+  const exercisePR = selectedExId ? maxPrMap[selectedExId] : null;
+  const isNewPR = exercisePR && current1RM > 0 && current1RM > exercisePR.max1RM;
+
+  const currentPlateCalc = calculateBarbellPlates(plateCalcWeight, barWeight);
+
   return (
-    <div className="space-y-5 pb-12">
-      {/* 頂部標題與管理功能 (返回 / 編輯場次 / 刪除場次) */}
+    <div className="space-y-4 pb-20">
+      {/* 頂部操作列：返回、標題、場地、Markdown匯出、編輯、刪除 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <Link
@@ -435,9 +649,8 @@ export default function WorkoutDetailPage({
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <h1 className="text-base font-black text-white">{session.display_title}</h1>
-              {/* 編輯場次按鈕 */}
               <button
                 onClick={() => setShowEditSessionModal(true)}
                 className="text-gray-400 hover:text-emerald-400 p-1 transition-colors"
@@ -446,43 +659,87 @@ export default function WorkoutDetailPage({
                 <Pencil className="w-3.5 h-3.5" />
               </button>
             </div>
-            <p className="text-xs text-gray-400">{session.date}</p>
+            <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
+              <span>{session.date}</span>
+              <span>•</span>
+              <span className="flex items-center gap-1 text-emerald-400 font-medium">
+                <MapPin className="w-3 h-3" />
+                {session.location || "交大健身房"}
+              </span>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* 刪除整場訓練按鈕 */}
+        <div className="flex items-center gap-1.5">
+          {/* 一鍵複製 Markdown 按鈕 */}
           <button
-            onClick={handleDeleteEntireSession}
-            className="p-2 bg-[#181b26] hover:bg-red-950/40 text-gray-400 hover:text-red-400 border border-[#262b3d] hover:border-red-500/40 rounded-xl transition-all"
-            title="刪除整場訓練"
+            onClick={handleCopyMarkdown}
+            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] text-emerald-400 hover:text-emerald-300 rounded-xl active:scale-95 transition-all flex items-center gap-1 text-xs font-bold"
+            title="一鍵複製 Markdown 格式"
           >
-            <Trash2 className="w-4 h-4" />
+            <Copy className="w-4 h-4" />
+            <span className="hidden sm:inline">複製 Markdown</span>
           </button>
 
-          {/* 休息倒數開關 */}
+          {/* 檢視 Markdown 原始碼 */}
           <button
-            onClick={() => (timerSeconds === null ? startRestTimer(90) : setTimerSeconds(null))}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
-              timerSeconds !== null
-                ? "bg-amber-500/20 border-amber-500 text-amber-300"
-                : "bg-[#181b26] border-[#262b3d] text-gray-400 hover:text-white"
-            }`}
+            onClick={() => setShowMarkdownModal(true)}
+            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] text-gray-300 hover:text-white rounded-xl active:scale-95 transition-all"
+            title="檢視 Markdown 語法"
           >
-            <Timer className="w-4 h-4" />
-            <span>{timerSeconds !== null ? `${timerSeconds}s` : "休息計時"}</span>
+            <FileText className="w-4 h-4" />
+          </button>
+
+          {/* 刪除整場訓練 */}
+          <button
+            onClick={handleDeleteEntireSession}
+            className="p-2 bg-[#12141c] hover:bg-red-950/40 border border-[#262b3d] hover:border-red-500/40 text-gray-400 hover:text-red-400 rounded-xl active:scale-95 transition-all"
+            title="刪除整場訓練紀錄"
+          >
+            <Trash2 className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* 編輯整場訓練 Modal */}
+      {/* 複製成功提示 Toast */}
+      {copyToast && (
+        <div className="bg-emerald-500 text-black px-4 py-2 rounded-xl text-xs font-black shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-150">
+          <Check className="w-4 h-4 stroke-[3]" />
+          <span>已成功複製 Markdown 格式到剪貼簿！可直接貼進筆記中。</span>
+        </div>
+      )}
+
+      {/* 複製上一次菜單快捷橫幅 (若當前未有組數或使用者想要沿用) */}
+      {prevTemplateInfo && sets.length === 0 && (
+        <div className="bg-gradient-to-r from-[#181b26] to-[#12141c] border border-emerald-500/40 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-2.5">
+            <Copy className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+            <div>
+              <h4 className="text-xs font-bold text-gray-100">
+                發現上回【{session.target_muscle}】訓練菜單
+              </h4>
+              <p className="text-[11px] text-gray-400">
+                {prevTemplateInfo.date}（{prevTemplateInfo.setCount} 組 / {prevTemplateInfo.exCount} 動作）
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleApplyPrevMenu}
+            className="bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black px-3 py-1.5 rounded-xl shadow transition-all active:scale-95 flex-shrink-0"
+          >
+            沿用菜單
+          </button>
+        </div>
+      )}
+
+      {/* 整場訓練編輯 Modal */}
       {showEditSessionModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#12141c] border border-emerald-500/40 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
+          <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-[#262b3d] pb-2.5">
               <h3 className="font-bold text-white text-sm flex items-center gap-2">
                 <Pencil className="w-4 h-4 text-emerald-400" />
-                <span>修改訓練場次資訊</span>
+                <span>編輯訓練場次資訊</span>
               </h3>
               <button
                 onClick={() => setShowEditSessionModal(false)}
@@ -494,7 +751,7 @@ export default function WorkoutDetailPage({
 
             <div className="space-y-3">
               <div>
-                <label className="text-[11px] text-gray-400 block mb-1">場次標題</label>
+                <label className="text-[11px] text-gray-400 block mb-1">訓練標題</label>
                 <input
                   type="text"
                   value={editTitle}
@@ -510,6 +767,33 @@ export default function WorkoutDetailPage({
                   value={editDate}
                   onChange={(e) => setEditDate(e.target.value)}
                   className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 focus:border-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] text-gray-400 block mb-1">訓練場地</label>
+                <div className="flex flex-wrap gap-1 mb-1.5">
+                  {LOCATION_PRESETS.map((loc) => (
+                    <button
+                      key={loc}
+                      type="button"
+                      onClick={() => setEditLocation(loc)}
+                      className={`text-[10px] px-2 py-1 rounded-lg border font-medium ${
+                        editLocation === loc
+                          ? "bg-emerald-500/20 border-emerald-500 text-emerald-300"
+                          : "bg-[#181b26] border-[#262b3d] text-gray-400"
+                      }`}
+                    >
+                      {loc}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  placeholder="自訂場地..."
+                  value={editLocation}
+                  onChange={(e) => setEditLocation(e.target.value)}
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2 focus:border-emerald-500 outline-none"
                 />
               </div>
 
@@ -550,7 +834,7 @@ export default function WorkoutDetailPage({
         </div>
       )}
 
-      {/* 修改單組組數 Modal (Edit Set Modal) */}
+      {/* 修改單組組數 Modal */}
       {editingSet && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#12141c] border border-amber-500/40 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
@@ -645,19 +929,160 @@ export default function WorkoutDetailPage({
         </div>
       )}
 
+      {/* Markdown 原始碼檢視 Modal */}
+      {showMarkdownModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl max-w-lg w-full p-5 space-y-3 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#262b3d] pb-2.5">
+              <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                <FileText className="w-4 h-4 text-emerald-400" />
+                <span>Markdown 格式日誌 (與原筆記 100% 格式相符)</span>
+              </h3>
+              <button
+                onClick={() => setShowMarkdownModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <textarea
+              readOnly
+              rows={12}
+              value={formatSessionToMarkdown(session, sets, exercises)}
+              className="w-full bg-[#090a0f] border border-[#262b3d] text-emerald-400 text-xs font-mono p-3 rounded-xl outline-none select-all"
+            />
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowMarkdownModal(false)}
+                className="flex-1 bg-[#181b26] text-gray-300 py-2 rounded-xl text-xs font-bold"
+              >
+                關閉
+              </button>
+              <button
+                onClick={handleCopyMarkdown}
+                className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>一鍵複製全文</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 槓鈴片換算器 Modal (Plate Calculator) */}
+      {showPlateCalcModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12141c] border border-blue-500/40 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#262b3d] pb-2.5">
+              <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                <Calculator className="w-4 h-4 text-blue-400" />
+                <span>奧林匹克槓鈴片配置換算</span>
+              </h3>
+              <button
+                onClick={() => setShowPlateCalcModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 重量設定 */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-gray-400 block mb-1">目標總重量 (Kg)</label>
+                <input
+                  type="number"
+                  step="2.5"
+                  value={plateCalcWeight}
+                  onChange={(e) => setPlateCalcWeight(parseFloat(e.target.value) || 0)}
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-base font-black rounded-xl p-2.5 focus:border-blue-500 outline-none text-center"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-400 block mb-1">空槓重量 (Kg)</label>
+                <select
+                  value={barWeight}
+                  onChange={(e) => setBarWeight(parseFloat(e.target.value))}
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-sm font-bold rounded-xl p-2.5 outline-none"
+                >
+                  <option value={20}>標準奧槓 (20 Kg)</option>
+                  <option value={15}>女子槓 / 短槓 (15 Kg)</option>
+                  <option value={10}>輕槓 (10 Kg)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* 快速重量按鈕 */}
+            <div className="flex flex-wrap gap-1.5 justify-center">
+              {[40, 50, 60, 70, 80, 85, 90, 100, 110, 120].map((w) => (
+                <button
+                  key={w}
+                  onClick={() => setPlateCalcWeight(w)}
+                  className={`text-xs px-2.5 py-1 rounded-lg border font-bold ${
+                    plateCalcWeight === w
+                      ? "bg-blue-600 text-white border-blue-400"
+                      : "bg-[#181b26] border-[#262b3d] text-gray-300"
+                  }`}
+                >
+                  {w}k
+                </button>
+              ))}
+            </div>
+
+            {/* 單邊槓片配置結果視覺化 */}
+            <div className="bg-[#090a0f] border border-[#262b3d] rounded-xl p-4 text-center space-y-2">
+              <span className="text-[11px] text-gray-400 block">
+                單邊需掛片重量：
+                <span className="text-white font-black text-sm ml-1">
+                  {currentPlateCalc.sideWeight} Kg
+                </span>
+              </span>
+
+              {currentPlateCalc.plates.length === 0 ? (
+                <div className="text-xs text-gray-500 py-2">僅需空槓，無需掛片</div>
+              ) : (
+                <div className="flex items-center justify-center gap-1.5 flex-wrap pt-2">
+                  {currentPlateCalc.plates.map((p, idx) => (
+                    <div
+                      key={idx}
+                      className={`${p.color} ${p.textColor} px-2.5 py-1.5 rounded-lg text-xs font-black shadow flex items-center gap-1`}
+                    >
+                      <span>{p.weight}Kg</span>
+                      <span className="text-[10px] opacity-80">×{p.count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setInputWeight(plateCalcWeight.toString());
+                  setShowPlateCalcModal(false);
+                }}
+                className="flex-1 bg-blue-500 hover:bg-blue-400 text-black py-2.5 rounded-xl text-xs font-black shadow transition-all"
+              >
+                填入記組重量 ({plateCalcWeight} Kg)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 浮動組間休息倒數 Bar */}
       {timerSeconds !== null && (
         <div className="bg-gradient-to-r from-amber-950/80 via-[#181b26] to-[#12141c] border border-amber-500/40 rounded-2xl p-3 shadow-2xl flex items-center justify-between text-xs animate-in fade-in duration-200">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center font-black text-amber-400 text-sm">
-              {timerSeconds}
-            </div>
+          <div className="flex items-center gap-2">
+            <Timer className="w-5 h-5 text-amber-400 animate-pulse" />
             <div>
-              <span className="font-bold text-gray-200 block text-xs">
-                {timerSeconds === 0 ? "🔔 休息結束！該上槓了" : "組間休息倒數中"}
-              </span>
-              <span className="text-[10px] text-gray-400">
-                {timerActive ? "進行中" : "已暫停"}
+              <span className="text-gray-400 block text-[10px]">組間休息倒數</span>
+              <span className="text-base font-black text-amber-300 font-mono">
+                {Math.floor(timerSeconds / 60)}:
+                {(timerSeconds % 60).toString().padStart(2, "0")}
               </span>
             </div>
           </div>
@@ -665,15 +1090,15 @@ export default function WorkoutDetailPage({
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => adjustTimer(-15)}
-              className="bg-[#090a0f] hover:bg-[#202533] text-gray-300 px-2 py-1 rounded-lg border border-[#262b3d] text-[11px]"
+              className="px-2 py-1 bg-[#12141c] text-gray-300 rounded-lg border border-[#262b3d] text-[11px]"
             >
               -15s
             </button>
             <button
-              onClick={() => adjustTimer(+30)}
-              className="bg-[#090a0f] hover:bg-[#202533] text-gray-300 px-2 py-1 rounded-lg border border-[#262b3d] text-[11px]"
+              onClick={() => adjustTimer(15)}
+              className="px-2 py-1 bg-[#12141c] text-gray-300 rounded-lg border border-[#262b3d] text-[11px]"
             >
-              +30s
+              +15s
             </button>
             <button
               onClick={() => setTimerActive(!timerActive)}
@@ -696,18 +1121,27 @@ export default function WorkoutDetailPage({
         {setsByExercise.map(({ exercise, sets: exSets }, idx) => {
           const exId = exercise?.id || "";
           const ghostSets = ghostMap[exId];
+          const bestPr = maxPrMap[exId];
 
           return (
             <div
               key={exId || idx}
               className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3"
             >
-              {/* 動作標題 */}
+              {/* 動作標題與 PR 徽章 */}
               <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
                 <div>
-                  <h3 className="font-bold text-emerald-400 text-sm">
-                    {exercise?.name || "未命名動作"}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-emerald-400 text-sm">
+                      {exercise?.name || "未命名動作"}
+                    </h3>
+                    {bestPr && bestPr.max1RM > 0 && (
+                      <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                        <Trophy className="w-2.5 h-2.5" />
+                        PR: {bestPr.maxWeight}Kg (1RM ~{bestPr.max1RM}k)
+                      </span>
+                    )}
+                  </div>
                   {exercise?.default_notes && (
                     <span className="text-[11px] text-gray-400 block">
                       {exercise.default_notes}
@@ -764,9 +1198,9 @@ export default function WorkoutDetailPage({
                           激發
                         </span>
                       )}
-                      {s.set_type === "rest_pause" && (
+                      {s.set_type === "drop" && (
                         <span className="bg-amber-500/20 text-amber-300 text-[10px] px-1.5 py-0.5 rounded">
-                          休補
+                          遞減
                         </span>
                       )}
                       {s.is_failure && (
@@ -808,42 +1242,39 @@ export default function WorkoutDetailPage({
             <Plus className="w-4 h-4" />
             <span>快速記錄下一組</span>
           </h4>
-          <div className="flex items-center gap-1.5 text-[11px] text-gray-400">
-            <input
-              type="checkbox"
-              id="autoTimer"
-              checked={autoTimerEnabled}
-              onChange={(e) => setAutoTimerEnabled(e.target.checked)}
-              className="accent-emerald-500 rounded"
-            />
-            <label htmlFor="autoTimer" className="cursor-pointer">儲存自動啟動計時</label>
-          </div>
-        </div>
 
-        {/* 動作選擇器：只顯示今日核心固定動作，並支援即時新增自訂動作 */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-gray-300 flex items-center gap-1.5">
-              <Dumbbell className="w-3.5 h-3.5 text-emerald-400" />
-              <span>今日部位動作 ({session.target_muscle})</span>
-            </span>
+          <div className="flex items-center gap-2">
+            {/* 重複上一組按鈕 */}
+            <button
+              type="button"
+              onClick={handleRepeatLastSet}
+              className="text-xs bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-emerald-400 font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 active:scale-95 transition-all"
+              title="一鍵重複上一組重量次數"
+            >
+              <Repeat className="w-3 h-3" />
+              <span>重複上一組</span>
+            </button>
 
-            {/* ＋ 自訂動作開關 */}
+            {/* 自訂新動作開關 */}
             <button
               type="button"
               onClick={() => setShowAddCustom(!showAddCustom)}
-              className="text-[11px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20 transition-all"
+              className="text-xs text-gray-400 hover:text-white flex items-center gap-1"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>自訂新動作</span>
+              <span>＋ 自訂新動作</span>
             </button>
           </div>
+        </div>
 
-          {/* 展開新增自訂動作欄位 */}
+        {/* 動作選擇 */}
+        <div className="space-y-2">
           {showAddCustom && (
-            <div className="bg-[#090a0f] p-3 rounded-xl border border-emerald-500/40 space-y-2.5 animate-in fade-in duration-200">
-              <div className="flex items-center justify-between text-xs font-bold text-emerald-300">
-                <span>新增自訂動作至【{session.target_muscle}】</span>
+            <div className="bg-[#090a0f] border border-emerald-500/40 rounded-xl p-3 space-y-2.5 animate-in fade-in duration-150">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>新增客製動作 (自動歸入常用選單)</span>
+                </span>
                 <button
                   type="button"
                   onClick={() => setShowAddCustom(false)}
@@ -856,7 +1287,7 @@ export default function WorkoutDetailPage({
               <div className="grid grid-cols-3 gap-2">
                 <input
                   type="text"
-                  placeholder="輸入動作名稱 (如: 雙槓臂屈伸)..."
+                  placeholder="動作名稱 (如: 雙槓臂屈伸)..."
                   value={newExName}
                   onChange={(e) => setNewExName(e.target.value)}
                   className="col-span-2 bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-emerald-500"
@@ -904,71 +1335,134 @@ export default function WorkoutDetailPage({
           </div>
         </div>
 
-        {/* 重量與次數輸入 (智慧預填) */}
-        <div className="grid grid-cols-2 gap-2 pt-1">
-          <div>
-            <label className="text-[10px] text-gray-400 block mb-1">重量 (Kg)</label>
-            <input
-              type="number"
-              step="0.5"
-              placeholder="e.g. 50"
-              value={inputWeight}
-              onChange={(e) => setInputWeight(e.target.value)}
-              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-sm font-bold rounded-xl p-2.5 focus:border-emerald-500 outline-none"
-            />
+        {/* 重量與次數輸入 (附微調按鈕與槓片換算器) */}
+        <div className="space-y-1.5 pt-1">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] text-gray-400">重量 (Kg)</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlateCalcWeight(parseFloat(inputWeight) || 60);
+                    setShowPlateCalcModal(true);
+                  }}
+                  className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-0.5"
+                  title="槓片換算器"
+                >
+                  <Calculator className="w-2.5 h-2.5" />
+                  <span>槓鈴片換算</span>
+                </button>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => adjustWeight(-2.5)}
+                  className="px-2 py-2.5 bg-[#181b26] text-gray-300 rounded-xl border border-[#262b3d] text-xs font-bold active:scale-95"
+                >
+                  -2.5
+                </button>
+                <input
+                  type="number"
+                  step="0.5"
+                  placeholder="50"
+                  value={inputWeight}
+                  onChange={(e) => setInputWeight(e.target.value)}
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-base font-black rounded-xl p-2.5 text-center focus:border-emerald-500 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => adjustWeight(2.5)}
+                  className="px-2 py-2.5 bg-[#181b26] text-gray-300 rounded-xl border border-[#262b3d] text-xs font-bold active:scale-95"
+                >
+                  +2.5
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] text-gray-400">次數 (Reps)</label>
+                {current1RM > 0 && (
+                  <span className="text-[10px] text-emerald-400 font-bold">
+                    1RM ~{current1RM}k
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => adjustReps(-1)}
+                  className="px-2 py-2.5 bg-[#181b26] text-gray-300 rounded-xl border border-[#262b3d] text-xs font-bold active:scale-95"
+                >
+                  -1
+                </button>
+                <input
+                  type="number"
+                  placeholder="8"
+                  value={inputReps}
+                  onChange={(e) => setInputReps(e.target.value)}
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-base font-black rounded-xl p-2.5 text-center focus:border-emerald-500 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => adjustReps(1)}
+                  className="px-2 py-2.5 bg-[#181b26] text-gray-300 rounded-xl border border-[#262b3d] text-xs font-bold active:scale-95"
+                >
+                  +1
+                </button>
+              </div>
+            </div>
           </div>
-          <div>
-            <label className="text-[10px] text-gray-400 block mb-1">次數 (Reps)</label>
-            <input
-              type="number"
-              placeholder="e.g. 8"
-              value={inputReps}
-              onChange={(e) => setInputReps(e.target.value)}
-              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-sm font-bold rounded-xl p-2.5 focus:border-emerald-500 outline-none"
-            />
+
+          {/* 新 PR 提醒提示 */}
+          {isNewPR && (
+            <div className="bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[11px] font-bold px-2.5 py-1 rounded-xl flex items-center gap-1.5 animate-bounce">
+              <Trophy className="w-3.5 h-3.5 text-amber-400" />
+              <span>突破歷史紀錄！這組將創下此動作全新 PR！</span>
+            </div>
+          )}
+        </div>
+
+        {/* 體感標籤快速點選 (快速追加備註) */}
+        <div className="space-y-1">
+          <label className="text-[10px] text-gray-400 block">快捷體感標記 (點擊自動套入)：</label>
+          <div className="flex flex-wrap gap-1">
+            {FEELING_TAGS.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => handleToggleFeelingTag(tag)}
+                className={`text-[11px] px-2 py-0.5 rounded-lg border transition-all ${
+                  inputNotes.includes(tag) || (tag === "熱身" && inputType === "warmup")
+                    ? "bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold"
+                    : "bg-[#181b26] border-[#262b3d] text-gray-400 hover:text-gray-200"
+                }`}
+              >
+                {tag}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* 組別類型 */}
-        <div className="grid grid-cols-4 gap-1.5">
-          {[
-            { id: "normal", label: "正式組" },
-            { id: "warmup", label: "熱身組" },
-            { id: "primer", label: "激發組" },
-            { id: "rest_pause", label: "休補組" },
-          ].map((type) => (
-            <button
-              key={type.id}
-              type="button"
-              onClick={() => setInputType(type.id)}
-              className={`text-xs py-1.5 rounded-lg border font-medium transition-all ${
-                inputType === type.id
-                  ? "bg-emerald-500/20 border-emerald-500 text-emerald-300"
-                  : "bg-[#181b26] border-[#262b3d] text-gray-400"
-              }`}
-            >
-              {type.label}
-            </button>
-          ))}
-        </div>
-
-        {/* 體感註記 */}
+        {/* 備註自由輸入 */}
         <input
           type="text"
-          placeholder="體感備註 (如: 感受度佳、推進 1 下、補2)..."
+          placeholder="自訂體感備註 (例如: 補2下、力竭、感受度佳)..."
           value={inputNotes}
           onChange={(e) => setInputNotes(e.target.value)}
-          className="w-full bg-[#181b26] border border-[#262b3d] text-gray-200 text-xs rounded-xl p-2.5 focus:border-emerald-500 outline-none"
+          className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-emerald-500"
         />
 
-        {/* 提交按鈕 */}
+        {/* 記錄組數按鈕 */}
         <button
+          type="button"
           onClick={handleAddSet}
           disabled={!inputReps}
-          className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-black py-2.5 rounded-xl transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-1.5"
+          className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-black py-3 rounded-xl shadow-lg transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2"
         >
-          <CheckCircle2 className="w-4 h-4" />
-          <span>儲存此組</span>
+          <Plus className="w-4 h-4 stroke-[3]" />
+          <span>記錄此組完成</span>
         </button>
       </div>
     </div>

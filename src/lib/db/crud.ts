@@ -74,6 +74,79 @@ export async function getLastExerciseSets(
 }
 
 /**
+ * 取得指定部位「最近一次」訓練菜單結構 (動作清單與組數)，以供快速複製或套用
+ */
+export async function getPreviousSessionTemplate(
+  targetMuscle: string
+): Promise<{ session: WorkoutSession; exerciseIds: string[]; sets: SetItem[] } | null> {
+  const sessions = await db.sessions
+    .filter((s) => !s.deleted_at && s.target_muscle.includes(targetMuscle))
+    .reverse()
+    .sortBy("date");
+
+  if (sessions.length === 0) return null;
+
+  const prevSession = sessions[0];
+  const sets = await db.sets
+    .where("session_id")
+    .equals(prevSession.id)
+    .filter((s) => !s.deleted_at)
+    .sortBy("set_order");
+
+  const exerciseIds: string[] = [];
+  for (const s of sets) {
+    if (!exerciseIds.includes(s.exercise_id)) {
+      exerciseIds.push(s.exercise_id);
+    }
+  }
+
+  return {
+    session: prevSession,
+    exerciseIds,
+    sets,
+  };
+}
+
+/**
+ * 取得動作全歷史最高記錄 (Max Weight & Estimated 1RM)
+ */
+export async function getExerciseMaxPR(exerciseId: string): Promise<{
+  maxWeight: number;
+  maxWeightReps: number;
+  max1RM: number;
+  bestSet: SetItem | null;
+}> {
+  const sets = await db.sets
+    .where("exercise_id")
+    .equals(exerciseId)
+    .filter((s) => !s.deleted_at && s.weight_kg > 0)
+    .toArray();
+
+  if (sets.length === 0) {
+    return { maxWeight: 0, maxWeightReps: 0, max1RM: 0, bestSet: null };
+  }
+
+  let maxWeight = 0;
+  let maxWeightReps = 0;
+  let max1RM = 0;
+  let bestSet: SetItem | null = null;
+
+  for (const s of sets) {
+    if (s.weight_kg > maxWeight) {
+      maxWeight = s.weight_kg;
+      maxWeightReps = s.reps;
+    }
+    const current1RM = estimate1RM(s.weight_kg, s.reps);
+    if (current1RM > max1RM) {
+      max1RM = current1RM;
+      bestSet = s;
+    }
+  }
+
+  return { maxWeight, maxWeightReps, max1RM, bestSet };
+}
+
+/**
  * 計算推估 1RM (Epley 公式)
  */
 export function estimate1RM(weight: number, reps: number): number {

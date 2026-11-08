@@ -58,9 +58,10 @@ export interface WorkoutSession {
   id: string;
   date: string;               // ISO 格式 YYYY-MM-DD
   month_key: string;          // e.g. "2026-06", "2026-11"
-  display_title: string;      // e.g. "11/5 (背部) - 第 4 次"
+  display_title: string;      // e.g. "11/5 (背部) - 交大健身房 - 第 4 次"
   target_muscle: string;      // e.g. "胸部", "背部", "胸部 + 三頭", "腿部", "游泳"
   monthly_index: number;      // 當月第幾次
+  location?: string;          // 訓練場地 e.g. "交大健身房", "三劍客", "學校健身房"
   notes?: string;
   user_id?: string;
   created_at: string;

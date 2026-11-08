@@ -1,7 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Link from "next/link";
-import { Dumbbell, History, Activity, Settings, PlusCircle } from "lucide-react";
+import {
+  Dumbbell,
+  History,
+  Activity,
+  Settings,
+  PlusCircle,
+  TrendingUp,
+} from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Workout - 力量訓練日誌",
@@ -38,44 +45,76 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
-      <body className="antialiased">
+      <body className="antialiased bg-[#090a0f] text-gray-100 min-h-screen">
         {/* 頂部導航列 */}
         <header className="sticky top-0 z-40 bg-[#090a0f]/80 backdrop-blur-md border-b border-[#262b3d]/60 px-4 py-3 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 font-black tracking-wider text-xl text-emerald-400">
+          <Link
+            href="/"
+            className="flex items-center gap-2 font-black tracking-wider text-xl text-emerald-400 active:scale-95 transition-transform"
+          >
             <Dumbbell className="w-6 h-6" />
             <span>WORKOUT</span>
           </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Link
+              href="/exercises"
+              className="text-xs bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] text-gray-300 font-bold px-2.5 py-1.5 rounded-xl transition-all"
+            >
+              動作庫
+            </Link>
             <Link
               href="/workout/new"
-              className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-bold px-3 py-1.5 rounded-full shadow-md transition-all active:scale-95"
+              className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black px-3 py-1.5 rounded-full shadow-md transition-all active:scale-95"
             >
-              <PlusCircle className="w-4 h-4" />
+              <PlusCircle className="w-4 h-4 stroke-[2.5]" />
               <span>記訓練</span>
             </Link>
           </div>
         </header>
 
-        {/* 主要內容區 */}
-        <main className="max-w-xl mx-auto px-4 py-4">{children}</main>
+        {/* 主要內容區 (含底部預留高度防遮擋) */}
+        <main className="max-w-xl mx-auto px-4 py-4 pb-24">{children}</main>
 
-        {/* 底部導航 Bar (手機操作優先) */}
-        <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#12141c]/90 backdrop-blur-lg border-t border-[#262b3d] px-6 py-2.5 flex items-center justify-around text-xs font-medium text-gray-400">
-          <Link href="/" className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors">
-            <Activity className="w-5 h-5" />
-            <span>首頁總覽</span>
+        {/* 底部 5 鍵導航 Bar (手機單手操作優化) */}
+        <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#12141c]/95 backdrop-blur-lg border-t border-[#262b3d] px-3 py-2 flex items-center justify-around text-[11px] font-medium text-gray-400">
+          <Link
+            href="/"
+            className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors p-1"
+          >
+            <Activity className="w-4 h-4" />
+            <span>總覽</span>
           </Link>
-          <Link href="/history" className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors">
-            <History className="w-5 h-5" />
-            <span>歷史日誌</span>
+
+          <Link
+            href="/history"
+            className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors p-1"
+          >
+            <History className="w-4 h-4" />
+            <span>日誌</span>
           </Link>
-          <Link href="/exercises" className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors">
-            <Dumbbell className="w-5 h-5" />
-            <span>動作庫</span>
+
+          {/* 中央突出開新訓練鈕 */}
+          <Link
+            href="/workout/new"
+            className="flex flex-col items-center -mt-4 bg-emerald-500 hover:bg-emerald-400 text-black p-2.5 rounded-full shadow-xl active:scale-90 transition-all font-black"
+          >
+            <PlusCircle className="w-6 h-6 stroke-[2.5]" />
           </Link>
-          <Link href="/settings" className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors">
-            <Settings className="w-5 h-5" />
-            <span>設定同步</span>
+
+          <Link
+            href="/analytics"
+            className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors p-1"
+          >
+            <TrendingUp className="w-4 h-4" />
+            <span>分析</span>
+          </Link>
+
+          <Link
+            href="/settings"
+            className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors p-1"
+          >
+            <Settings className="w-4 h-4" />
+            <span>設定</span>
           </Link>
         </nav>
 

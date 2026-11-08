@@ -10,10 +10,14 @@ import {
   Calendar,
   Sparkles,
   Zap,
+  MapPin,
+  Copy,
+  Check,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
-import type { BigThreeRecord, WorkoutSession, SetItem } from "@/lib/types";
+import { formatSessionToMarkdown } from "@/lib/markdown-generator";
+import type { BigThreeRecord, WorkoutSession, SetItem, Exercise } from "@/lib/types";
 
 export default function HomePage() {
   const [loading, setLoading] = useState(true);
@@ -21,6 +25,8 @@ export default function HomePage() {
   const [recentSessions, setRecentSessions] = useState<WorkoutSession[]>([]);
   const [monthStats, setMonthStats] = useState<Record<string, number>>({});
   const [sessionSetsMap, setSessionSetsMap] = useState<Record<string, SetItem[]>>({});
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [copyToast, setCopyToast] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -30,6 +36,9 @@ export default function HomePage() {
         // 讀取三項
         const b3 = await db.big_three.toArray();
         if (b3.length > 0) setBigThree(b3[0]);
+
+        const allEx = await db.exercises.toArray();
+        setExercises(allEx);
 
         // 讀取最近訓練
         const sessions = await db.sessions
@@ -82,6 +91,16 @@ export default function HomePage() {
     loadData();
   }, []);
 
+  function handleCopyMarkdown(e: React.MouseEvent, session: WorkoutSession) {
+    e.preventDefault();
+    e.stopPropagation();
+    const sets = sessionSetsMap[session.id] || [];
+    const md = formatSessionToMarkdown(session, sets, exercises);
+    navigator.clipboard.writeText(md);
+    setCopyToast(`已複製【${session.display_title}】Markdown！`);
+    setTimeout(() => setCopyToast(null), 2500);
+  }
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-gray-400 gap-3">
@@ -93,6 +112,14 @@ export default function HomePage() {
 
   return (
     <div className="space-y-5 pb-6">
+      {/* 複製提示 Toast */}
+      {copyToast && (
+        <div className="bg-emerald-500 text-black px-4 py-2 rounded-xl text-xs font-black shadow-2xl flex items-center gap-2 animate-in fade-in duration-150">
+          <Check className="w-4 h-4 stroke-[3]" />
+          <span>{copyToast}</span>
+        </div>
+      )}
+
       {/* 頂部三項數據卡片 */}
       <section className="bg-gradient-to-br from-[#181b26] to-[#12141c] border border-[#262b3d] rounded-2xl p-4 shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 -mr-6 -mt-6 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl pointer-events-none"></div>
@@ -104,9 +131,13 @@ export default function HomePage() {
               基本三項總和紀錄
             </h2>
           </div>
-          <span className="text-xs bg-amber-500/20 text-amber-300 font-semibold px-2 py-0.5 rounded-full border border-amber-500/30">
-            PR Benchmark
-          </span>
+          <Link
+            href="/analytics"
+            className="text-xs bg-amber-500/20 text-amber-300 font-semibold px-2 py-0.5 rounded-full border border-amber-500/30 flex items-center gap-0.5 hover:bg-amber-500/30 transition-colors"
+          >
+            <span>PR 走勢</span>
+            <ChevronRight className="w-3 h-3" />
+          </Link>
         </div>
 
         <div className="grid grid-cols-4 gap-2 text-center">
@@ -172,7 +203,7 @@ export default function HomePage() {
         className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-3.5 px-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
       >
         <Zap className="w-5 h-5 fill-black" />
-        <span>開始記錄新訓練</span>
+        <span>開始記錄新訓練 (選場地 / 複製菜單)</span>
       </Link>
 
       {/* 最近訓練日誌流 */}
@@ -182,7 +213,10 @@ export default function HomePage() {
             <Calendar className="w-4 h-4 text-emerald-400" />
             <h2 className="text-sm font-bold text-gray-200">最近訓練紀錄</h2>
           </div>
-          <Link href="/history" className="text-xs text-emerald-400 flex items-center gap-0.5 hover:underline">
+          <Link
+            href="/history"
+            className="text-xs text-emerald-400 flex items-center gap-0.5 hover:underline"
+          >
             查看全部
             <ChevronRight className="w-3.5 h-3.5" />
           </Link>
@@ -194,34 +228,56 @@ export default function HomePage() {
             const exerciseCount = new Set(sets.map((s) => s.exercise_id)).size;
 
             return (
-              <Link
+              <div
                 key={session.id}
-                href={`/workout/${session.id}`}
-                className="block bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-emerald-500/40 rounded-2xl p-4 transition-all"
+                className="bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-emerald-500/40 rounded-2xl p-4 transition-all"
               >
                 <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-gray-100 text-sm">
-                      {session.display_title}
+                  <Link
+                    href={`/workout/${session.id}`}
+                    className="font-bold text-gray-100 text-sm hover:text-emerald-400 transition-colors flex items-center gap-2"
+                  >
+                    <span>{session.display_title}</span>
+                  </Link>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={(e) => handleCopyMarkdown(e, session)}
+                      className="p-1.5 bg-[#181b26] hover:bg-emerald-950/40 text-gray-400 hover:text-emerald-400 rounded-lg border border-[#262b3d] transition-all text-xs"
+                      title="一鍵複製 Markdown"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-[11px] bg-[#181b26] text-gray-400 px-2 py-0.5 rounded-md border border-[#262b3d]">
+                      {session.date}
                     </span>
                   </div>
-                  <span className="text-[11px] bg-[#181b26] text-gray-400 px-2 py-0.5 rounded-md border border-[#262b3d]">
-                    {session.date}
-                  </span>
                 </div>
 
-                <div className="flex items-center gap-3 text-xs text-gray-400 mb-2">
+                <div className="flex items-center gap-2 text-xs text-gray-400 mb-2 flex-wrap">
+                  <span className="text-emerald-400 font-medium">{session.target_muscle}</span>
+                  <span>•</span>
                   <span>{exerciseCount} 個動作</span>
                   <span>•</span>
                   <span>{sets.length} 組</span>
+                  {session.location && (
+                    <>
+                      <span>•</span>
+                      <span className="text-blue-400 flex items-center gap-0.5">
+                        <MapPin className="w-3 h-3" />
+                        {session.location}
+                      </span>
+                    </>
+                  )}
                 </div>
 
-                {/* 預覽第一至二組重點 */}
-                <div className="space-y-1">
+                {/* 預覽第一至三組重點 */}
+                <Link href={`/workout/${session.id}`} className="block space-y-1">
                   {sets.slice(0, 3).map((s, idx) => (
                     <div
                       key={s.id || idx}
-                      className="text-xs text-gray-300 bg-[#090a0f]/60 px-2.5 py-1 rounded-lg flex items-center justify-between"
+                      className="text-xs text-gray-300 bg-[#090a0f]/60 px-2.5 py-1 rounded-lg flex items-center justify-between hover:bg-[#090a0f]"
                     >
                       <span className="truncate pr-2">
                         {s.raw_text || `${s.weight_kg}Kg x ${s.reps}`}
@@ -236,8 +292,8 @@ export default function HomePage() {
                       還有 +{sets.length - 3} 組...
                     </div>
                   )}
-                </div>
-              </Link>
+                </Link>
+              </div>
             );
           })}
         </div>
