@@ -17,10 +17,62 @@ import {
   RotateCcw,
   X,
   Volume2,
+  Dumbbell,
+  Filter,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { getLastExerciseSets } from "@/lib/db/crud";
 import type { Exercise, SetItem, WorkoutSession } from "@/lib/types";
+
+function matchesTargetMuscle(ex: Exercise, target: string): boolean {
+  if (!target) return true;
+  if (target.includes("胸")) {
+    if (
+      ex.muscle_group === "胸部" ||
+      ex.name.includes("胸") ||
+      ex.name.includes("臥推") ||
+      ex.name.includes("夾胸")
+    )
+      return true;
+    if (target.includes("三頭") && (ex.name.includes("三頭") || ex.muscle_group === "手臂"))
+      return true;
+  }
+  if (target.includes("背")) {
+    if (
+      ex.muscle_group === "背部" ||
+      ex.name.includes("背") ||
+      ex.name.includes("划船") ||
+      ex.name.includes("下拉") ||
+      ex.name.includes("引體向上") ||
+      ex.name.includes("硬舉")
+    )
+      return true;
+    if (target.includes("二頭") && (ex.name.includes("二頭") || ex.muscle_group === "手臂"))
+      return true;
+  }
+  if (target.includes("腿")) {
+    if (
+      ex.muscle_group === "腿部" ||
+      ex.name.includes("腿") ||
+      ex.name.includes("蹲") ||
+      ex.name.includes("推蹬")
+    )
+      return true;
+  }
+  if (target.includes("肩")) {
+    if (
+      ex.muscle_group === "肩部" ||
+      ex.name.includes("肩") ||
+      ex.name.includes("推舉") ||
+      ex.name.includes("側平舉")
+    )
+      return true;
+  }
+  if (target.includes("游泳")) {
+    if (ex.muscle_group === "游泳" || ex.name.includes("游泳")) return true;
+  }
+  return ex.muscle_group.includes(target) || target.includes(ex.muscle_group);
+}
 
 export default function WorkoutDetailPage({
   params,
@@ -35,6 +87,9 @@ export default function WorkoutDetailPage({
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [sets, setSets] = useState<SetItem[]>([]);
   const [ghostMap, setGhostMap] = useState<Record<string, SetItem[]>>({});
+
+  // 動作過濾模式：預設 'target' (只顯示今日部位動作)，亦可切換 'all'
+  const [filterMode, setFilterMode] = useState<"target" | "all">("target");
 
   // 快速加組表單狀態
   const [selectedExId, setSelectedExId] = useState<string>("");
@@ -112,7 +167,7 @@ export default function WorkoutDetailPage({
       setInputWeight(last.weight_kg.toString());
       setInputReps(last.reps.toString());
     } else if (ghostMap[exId] && ghostMap[exId].length > 0) {
-      // 若今日尚未記錄，從歷史幽靈對照抓第一組做組參考
+      // 若今日尚未記錄，從歷史幽靈對照抓做組參考
       const firstNormal = ghostMap[exId].find((s) => s.set_type === "normal") || ghostMap[exId][0];
       setInputWeight(firstNormal.weight_kg.toString());
       setInputReps(firstNormal.reps.toString());
@@ -148,6 +203,7 @@ export default function WorkoutDetailPage({
         }
         setGhostMap(ghostRecord);
 
+        // 智慧決定初始選定動作：若已有記錄則選今日第 1 動，若無則預設選今日部位第 1 動
         if (distinctExIds.length > 0) {
           const initialExId = distinctExIds[0];
           setSelectedExId(initialExId);
@@ -157,8 +213,21 @@ export default function WorkoutDetailPage({
             setInputWeight(last.weight_kg.toString());
             setInputReps(last.reps.toString());
           }
-        } else if (allEx.length > 0) {
-          setSelectedExId(allEx[0].id);
+        } else {
+          // 今日部位對應動作
+          const targetMatches = allEx.filter((e) => matchesTargetMuscle(e, sess.target_muscle));
+          const initial = targetMatches.length > 0 ? targetMatches[0] : allEx[0];
+          if (initial) {
+            setSelectedExId(initial.id);
+            // 抓幽靈組
+            const res = await getLastExerciseSets(initial.id, id);
+            if (res && res.sets.length > 0) {
+              const normalSet = res.sets.find((s) => s.set_type === "normal") || res.sets[0];
+              setInputWeight(normalSet.weight_kg.toString());
+              setInputReps(normalSet.reps.toString());
+              setGhostMap((prev) => ({ ...prev, [initial.id]: res.sets }));
+            }
+          }
         }
       } catch (err) {
         console.error("Failed to load workout:", err);
@@ -239,6 +308,15 @@ export default function WorkoutDetailPage({
     const exSets = sets.filter((s) => s.exercise_id === exId);
     setsByExercise.push({ exercise: ex, sets: exSets });
   }
+
+  // 動作下拉清單過濾（預設只顯示今日部位）
+  const targetOnlyExercises = exercises.filter((e) =>
+    matchesTargetMuscle(e, session.target_muscle)
+  );
+  const displayExercises =
+    filterMode === "target" && targetOnlyExercises.length > 0
+      ? targetOnlyExercises
+      : exercises;
 
   return (
     <div className="space-y-5 pb-12">
@@ -434,18 +512,72 @@ export default function WorkoutDetailPage({
           </div>
         </div>
 
-        {/* 選擇動作 */}
-        <select
-          value={selectedExId}
-          onChange={(e) => handleSelectExercise(e.target.value)}
-          className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 focus:border-emerald-500 outline-none"
-        >
-          {exercises.map((ex) => (
-            <option key={ex.id} value={ex.id}>
-              {ex.name} ({ex.muscle_group})
-            </option>
-          ))}
-        </select>
+        {/* 動作過濾與選擇器 */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-[11px] font-bold text-gray-300 flex items-center gap-1.5">
+              <Dumbbell className="w-3.5 h-3.5 text-emerald-400" />
+              <span>選擇動作</span>
+            </label>
+
+            {/* 部位過濾切換開關 */}
+            <div className="flex items-center gap-1 bg-[#090a0f] p-0.5 rounded-lg border border-[#262b3d] text-[10px]">
+              <button
+                type="button"
+                onClick={() => setFilterMode("target")}
+                className={`px-2 py-0.5 rounded font-bold transition-all ${
+                  filterMode === "target"
+                    ? "bg-emerald-500 text-black shadow"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                🎯 僅{session.target_muscle.split(" ")[0]} ({targetOnlyExercises.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterMode("all")}
+                className={`px-2 py-0.5 rounded font-bold transition-all ${
+                  filterMode === "all"
+                    ? "bg-emerald-500 text-black shadow"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                全部 ({exercises.length})
+              </button>
+            </div>
+          </div>
+
+          {/* 下拉選單：預設僅顯示今日部位動作 */}
+          <select
+            value={selectedExId}
+            onChange={(e) => handleSelectExercise(e.target.value)}
+            className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 focus:border-emerald-500 outline-none font-medium"
+          >
+            {displayExercises.map((ex) => (
+              <option key={ex.id} value={ex.id}>
+                {ex.name} ({ex.muscle_group})
+              </option>
+            ))}
+          </select>
+
+          {/* 常用動作快捷膠囊 (Quick Pills)：單擊直接切換動作 */}
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {displayExercises.slice(0, 6).map((ex) => (
+              <button
+                key={ex.id}
+                type="button"
+                onClick={() => handleSelectExercise(ex.id)}
+                className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${
+                  selectedExId === ex.id
+                    ? "bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold"
+                    : "bg-[#090a0f] border-[#262b3d] text-gray-400 hover:text-gray-200"
+                }`}
+              >
+                {ex.name}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* 重量與次數輸入 (智慧預填) */}
         <div className="grid grid-cols-2 gap-2">
