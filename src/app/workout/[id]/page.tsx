@@ -18,11 +18,11 @@ import {
   X,
   Volume2,
   Dumbbell,
-  Filter,
+  Sparkles,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { getLastExerciseSets } from "@/lib/db/crud";
-import type { Exercise, SetItem, WorkoutSession } from "@/lib/types";
+import type { Exercise, SetItem, WorkoutSession, WeightType, MuscleGroup } from "@/lib/types";
 
 function matchesTargetMuscle(ex: Exercise, target: string): boolean {
   if (!target) return true;
@@ -55,7 +55,9 @@ function matchesTargetMuscle(ex: Exercise, target: string): boolean {
       ex.muscle_group === "腿部" ||
       ex.name.includes("腿") ||
       ex.name.includes("蹲") ||
-      ex.name.includes("推蹬")
+      ex.name.includes("推蹬") ||
+      ex.name.includes("勾") ||
+      ex.name.includes("伸展")
     )
       return true;
   }
@@ -88,15 +90,17 @@ export default function WorkoutDetailPage({
   const [sets, setSets] = useState<SetItem[]>([]);
   const [ghostMap, setGhostMap] = useState<Record<string, SetItem[]>>({});
 
-  // 動作過濾模式：預設 'target' (只顯示今日部位動作)，亦可切換 'all'
-  const [filterMode, setFilterMode] = useState<"target" | "all">("target");
-
   // 快速加組表單狀態
   const [selectedExId, setSelectedExId] = useState<string>("");
   const [inputWeight, setInputWeight] = useState<string>("");
   const [inputReps, setInputReps] = useState<string>("");
   const [inputType, setInputType] = useState<string>("normal");
   const [inputNotes, setInputNotes] = useState<string>("");
+
+  // 自訂新動作模式
+  const [showAddCustom, setShowAddCustom] = useState<boolean>(false);
+  const [newExName, setNewExName] = useState<string>("");
+  const [newExWeightType, setNewExWeightType] = useState<WeightType>("barbell_total");
 
   // 組間休息計時器狀態
   const [timerSeconds, setTimerSeconds] = useState<number | null>(null);
@@ -203,7 +207,7 @@ export default function WorkoutDetailPage({
         }
         setGhostMap(ghostRecord);
 
-        // 智慧決定初始選定動作：若已有記錄則選今日第 1 動，若無則預設選今日部位第 1 動
+        // 智慧決定初始選定動作：若已有記錄則選今日第 1 動，若無則預設選今日部位第 1 個常用動作
         if (distinctExIds.length > 0) {
           const initialExId = distinctExIds[0];
           setSelectedExId(initialExId);
@@ -219,7 +223,6 @@ export default function WorkoutDetailPage({
           const initial = targetMatches.length > 0 ? targetMatches[0] : allEx[0];
           if (initial) {
             setSelectedExId(initial.id);
-            // 抓幽靈組
             const res = await getLastExerciseSets(initial.id, id);
             if (res && res.sets.length > 0) {
               const normalSet = res.sets.find((s) => s.set_type === "normal") || res.sets[0];
@@ -237,6 +240,33 @@ export default function WorkoutDetailPage({
     }
     load();
   }, [id, router]);
+
+  // 使用者自訂新增動作
+  async function handleCreateCustomExercise() {
+    if (!newExName.trim() || !session) return;
+
+    let group: MuscleGroup = "胸部";
+    if (session.target_muscle.includes("背")) group = "背部";
+    else if (session.target_muscle.includes("腿")) group = "腿部";
+    else if (session.target_muscle.includes("肩")) group = "肩部";
+
+    const customId = `custom-ex-${Date.now()}`;
+    const newEx: Exercise = {
+      id: customId,
+      name: newExName.trim(),
+      muscle_group: group,
+      weight_type: newExWeightType,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    };
+
+    await db.exercises.add(newEx);
+    setExercises((prev) => [...prev, newEx]);
+    handleSelectExercise(customId);
+    setNewExName("");
+    setShowAddCustom(false);
+  }
 
   // 新增組數
   async function handleAddSet() {
@@ -309,14 +339,10 @@ export default function WorkoutDetailPage({
     setsByExercise.push({ exercise: ex, sets: exSets });
   }
 
-  // 動作下拉清單過濾（預設只顯示今日部位）
-  const targetOnlyExercises = exercises.filter((e) =>
+  // 嚴格只過濾今日部位的動作（固定常用動作 + 使用者自訂的新動作）
+  const displayExercises = exercises.filter((e) =>
     matchesTargetMuscle(e, session.target_muscle)
   );
-  const displayExercises =
-    filterMode === "target" && targetOnlyExercises.length > 0
-      ? targetOnlyExercises
-      : exercises;
 
   return (
     <div className="space-y-5 pb-12">
@@ -512,65 +538,82 @@ export default function WorkoutDetailPage({
           </div>
         </div>
 
-        {/* 動作過濾與選擇器 */}
+        {/* 動作選擇器：只顯示今日核心固定動作，並支援即時新增自訂動作 */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-[11px] font-bold text-gray-300 flex items-center gap-1.5">
+            <span className="text-[11px] font-bold text-gray-300 flex items-center gap-1.5">
               <Dumbbell className="w-3.5 h-3.5 text-emerald-400" />
-              <span>選擇動作</span>
-            </label>
+              <span>今日部位動作 ({session.target_muscle})</span>
+            </span>
 
-            {/* 部位過濾切換開關 */}
-            <div className="flex items-center gap-1 bg-[#090a0f] p-0.5 rounded-lg border border-[#262b3d] text-[10px]">
-              <button
-                type="button"
-                onClick={() => setFilterMode("target")}
-                className={`px-2 py-0.5 rounded font-bold transition-all ${
-                  filterMode === "target"
-                    ? "bg-emerald-500 text-black shadow"
-                    : "text-gray-400 hover:text-white"
-                }`}
-              >
-                🎯 僅{session.target_muscle.split(" ")[0]} ({targetOnlyExercises.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterMode("all")}
-                className={`px-2 py-0.5 rounded font-bold transition-all ${
-                  filterMode === "all"
-                    ? "bg-emerald-500 text-black shadow"
-                    : "text-gray-400 hover:text-white"
-                }`}
-              >
-                全部 ({exercises.length})
-              </button>
-            </div>
+            {/* ＋ 自訂動作開關 */}
+            <button
+              type="button"
+              onClick={() => setShowAddCustom(!showAddCustom)}
+              className="text-[11px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20 transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>自訂新動作</span>
+            </button>
           </div>
 
-          {/* 下拉選單：預設僅顯示今日部位動作 */}
-          <select
-            value={selectedExId}
-            onChange={(e) => handleSelectExercise(e.target.value)}
-            className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 focus:border-emerald-500 outline-none font-medium"
-          >
-            {displayExercises.map((ex) => (
-              <option key={ex.id} value={ex.id}>
-                {ex.name} ({ex.muscle_group})
-              </option>
-            ))}
-          </select>
+          {/* 展開新增自訂動作欄位 */}
+          {showAddCustom && (
+            <div className="bg-[#090a0f] p-3 rounded-xl border border-emerald-500/40 space-y-2.5 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between text-xs font-bold text-emerald-300">
+                <span>新增自訂動作至【{session.target_muscle}】</span>
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustom(false)}
+                  className="text-gray-500 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
 
-          {/* 常用動作快捷膠囊 (Quick Pills)：單擊直接切換動作 */}
+              <div className="grid grid-cols-3 gap-2">
+                <input
+                  type="text"
+                  placeholder="輸入動作名稱 (如: 雙槓臂屈伸)..."
+                  value={newExName}
+                  onChange={(e) => setNewExName(e.target.value)}
+                  className="col-span-2 bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-emerald-500"
+                />
+                <select
+                  value={newExWeightType}
+                  onChange={(e) => setNewExWeightType(e.target.value as WeightType)}
+                  className="bg-[#181b26] border border-[#262b3d] text-gray-200 text-xs rounded-xl px-2 py-2 outline-none"
+                >
+                  <option value="barbell_total">槓鈴 (總重)</option>
+                  <option value="dumbbell_single">啞鈴 (單邊)</option>
+                  <option value="machine_stack">訓練機 (插銷/滑輪)</option>
+                  <option value="bodyweight">自重動作</option>
+                </select>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCreateCustomExercise}
+                disabled={!newExName.trim()}
+                className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-black py-2 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>儲存並立刻選用</span>
+              </button>
+            </div>
+          )}
+
+          {/* 固定動作快速膠囊列 (Quick Buttons)：單擊直接切換 */}
           <div className="flex flex-wrap gap-1.5 pt-0.5">
-            {displayExercises.slice(0, 6).map((ex) => (
+            {displayExercises.map((ex) => (
               <button
                 key={ex.id}
                 type="button"
                 onClick={() => handleSelectExercise(ex.id)}
-                className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${
+                className={`text-xs px-3 py-1.5 rounded-xl border transition-all ${
                   selectedExId === ex.id
-                    ? "bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold"
-                    : "bg-[#090a0f] border-[#262b3d] text-gray-400 hover:text-gray-200"
+                    ? "bg-emerald-500 text-black border-emerald-400 font-black shadow-md scale-[1.02]"
+                    : "bg-[#181b26] border-[#262b3d] text-gray-300 hover:border-gray-500 font-medium"
                 }`}
               >
                 {ex.name}
@@ -580,7 +623,7 @@ export default function WorkoutDetailPage({
         </div>
 
         {/* 重量與次數輸入 (智慧預填) */}
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2 pt-1">
           <div>
             <label className="text-[10px] text-gray-400 block mb-1">重量 (Kg)</label>
             <input
