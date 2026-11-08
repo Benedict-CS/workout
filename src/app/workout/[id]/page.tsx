@@ -19,10 +19,13 @@ import {
   Volume2,
   Dumbbell,
   Sparkles,
+  Pencil,
+  Edit3,
+  Calendar,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { getLastExerciseSets } from "@/lib/db/crud";
-import type { Exercise, SetItem, WorkoutSession, WeightType, MuscleGroup } from "@/lib/types";
+import type { Exercise, SetItem, WorkoutSession, WeightType, MuscleGroup, SetType } from "@/lib/types";
 
 function matchesTargetMuscle(ex: Exercise, target: string): boolean {
   if (!target) return true;
@@ -89,6 +92,19 @@ export default function WorkoutDetailPage({
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [sets, setSets] = useState<SetItem[]>([]);
   const [ghostMap, setGhostMap] = useState<Record<string, SetItem[]>>({});
+
+  // 整場訓練編輯 Modal
+  const [showEditSessionModal, setShowEditSessionModal] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editTargetMuscle, setEditTargetMuscle] = useState("");
+
+  // 單組編輯狀態
+  const [editingSet, setEditingSet] = useState<SetItem | null>(null);
+  const [editSetWeight, setEditSetWeight] = useState("");
+  const [editSetReps, setEditSetReps] = useState("");
+  const [editSetType, setEditSetType] = useState<SetType>("normal");
+  const [editSetNotes, setEditSetNotes] = useState("");
 
   // 快速加組表單狀態
   const [selectedExId, setSelectedExId] = useState<string>("");
@@ -164,14 +180,12 @@ export default function WorkoutDetailPage({
   // 切換動作時智慧預填上一組數據
   function handleSelectExercise(exId: string) {
     setSelectedExId(exId);
-    // 找出今日已記錄的最後一組
     const existingSets = sets.filter((s) => s.exercise_id === exId);
     if (existingSets.length > 0) {
       const last = existingSets[existingSets.length - 1];
       setInputWeight(last.weight_kg.toString());
       setInputReps(last.reps.toString());
     } else if (ghostMap[exId] && ghostMap[exId].length > 0) {
-      // 若今日尚未記錄，從歷史幽靈對照抓做組參考
       const firstNormal = ghostMap[exId].find((s) => s.set_type === "normal") || ghostMap[exId][0];
       setInputWeight(firstNormal.weight_kg.toString());
       setInputReps(firstNormal.reps.toString());
@@ -187,6 +201,9 @@ export default function WorkoutDetailPage({
           return;
         }
         setSession(sess);
+        setEditTitle(sess.display_title);
+        setEditDate(sess.date);
+        setEditTargetMuscle(sess.target_muscle);
 
         const allEx = await db.exercises.toArray();
         setExercises(allEx);
@@ -198,7 +215,6 @@ export default function WorkoutDetailPage({
           .sortBy("set_order");
         setSets(currentSets);
 
-        // 讀取該次訓練中有出現動作的「上次歷史記錄」
         const distinctExIds = Array.from(new Set(currentSets.map((s) => s.exercise_id)));
         const ghostRecord: Record<string, SetItem[]> = {};
         for (const exId of distinctExIds) {
@@ -207,7 +223,6 @@ export default function WorkoutDetailPage({
         }
         setGhostMap(ghostRecord);
 
-        // 智慧決定初始選定動作：若已有記錄則選今日第 1 動，若無則預設選今日部位第 1 個常用動作
         if (distinctExIds.length > 0) {
           const initialExId = distinctExIds[0];
           setSelectedExId(initialExId);
@@ -218,7 +233,6 @@ export default function WorkoutDetailPage({
             setInputReps(last.reps.toString());
           }
         } else {
-          // 今日部位對應動作
           const targetMatches = allEx.filter((e) => matchesTargetMuscle(e, sess.target_muscle));
           const initial = targetMatches.length > 0 ? targetMatches[0] : allEx[0];
           if (initial) {
@@ -268,6 +282,73 @@ export default function WorkoutDetailPage({
     setShowAddCustom(false);
   }
 
+  // 儲存整場訓練編輯 (修改標題、日期、部位)
+  async function handleSaveEditSession() {
+    if (!session || !editTitle.trim() || !editDate) return;
+    const parts = editDate.split("-");
+    const monthKey = `${parts[0]}-${parts[1]}`;
+
+    const updated: WorkoutSession = {
+      ...session,
+      display_title: editTitle.trim(),
+      date: editDate,
+      month_key: monthKey,
+      target_muscle: editTargetMuscle,
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    };
+
+    await db.sessions.put(updated);
+    setSession(updated);
+    setShowEditSessionModal(false);
+  }
+
+  // 刪除整場訓練 (包括其下所有組數)
+  async function handleDeleteEntireSession() {
+    if (!confirm(`確定要刪除這場訓練【${session?.display_title}】嗎？\n所有已記錄的組數都會被永久清除。`)) {
+      return;
+    }
+
+    await db.transaction("rw", [db.sessions, db.sets], async () => {
+      await db.sets.where("session_id").equals(id).delete();
+      await db.sessions.delete(id);
+    });
+
+    router.push("/");
+  }
+
+  // 開啟修改單組
+  function handleStartEditSet(s: SetItem) {
+    setEditingSet(s);
+    setEditSetWeight(s.weight_kg.toString());
+    setEditSetReps(s.reps.toString());
+    setEditSetType(s.set_type);
+    setEditSetNotes(s.feedback || s.notes || "");
+  }
+
+  // 儲存修改單組
+  async function handleSaveEditSet() {
+    if (!editingSet) return;
+    const wNum = parseFloat(editSetWeight) || 0;
+    const rNum = parseInt(editSetReps, 10) || 0;
+
+    const updated: SetItem = {
+      ...editingSet,
+      weight_kg: wNum,
+      reps: rNum,
+      set_type: editSetType,
+      raw_text: `${wNum}Kg x${rNum} ${editSetNotes}`.trim(),
+      feedback: editSetNotes || undefined,
+      notes: editSetNotes || undefined,
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    };
+
+    await db.sets.put(updated);
+    setSets((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    setEditingSet(null);
+  }
+
   // 新增組數
   async function handleAddSet() {
     if (!selectedExId || !inputReps) return;
@@ -302,17 +383,16 @@ export default function WorkoutDetailPage({
       }
     }
 
-    // 自動啟動組間休息倒數計時器
     if (autoTimerEnabled) {
       startRestTimer(defaultRestDuration);
     }
 
-    // 保留重量與次數預填下一組，清空備註
     setInputNotes("");
   }
 
-  // 刪除組數
+  // 刪除組數 (附帶二次確認)
   async function handleDeleteSet(setId: string) {
+    if (!confirm("確定要刪除此組紀錄嗎？")) return;
     await db.sets.delete(setId);
     setSets((prev) => prev.filter((s) => s.id !== setId));
   }
@@ -339,16 +419,15 @@ export default function WorkoutDetailPage({
     setsByExercise.push({ exercise: ex, sets: exSets });
   }
 
-  // 嚴格只過濾今日部位的動作（固定常用動作 + 使用者自訂的新動作）
   const displayExercises = exercises.filter((e) =>
     matchesTargetMuscle(e, session.target_muscle)
   );
 
   return (
     <div className="space-y-5 pb-12">
-      {/* 頂部標題 */}
+      {/* 頂部標題與管理功能 (返回 / 編輯場次 / 刪除場次) */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <Link
             href="/"
             className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] rounded-xl text-gray-300 active:scale-95 transition-all"
@@ -356,26 +435,217 @@ export default function WorkoutDetailPage({
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
-            <h1 className="text-lg font-black text-white">{session.display_title}</h1>
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-base font-black text-white">{session.display_title}</h1>
+              {/* 編輯場次按鈕 */}
+              <button
+                onClick={() => setShowEditSessionModal(true)}
+                className="text-gray-400 hover:text-emerald-400 p-1 transition-colors"
+                title="編輯場次資訊"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            </div>
             <p className="text-xs text-gray-400">{session.date}</p>
           </div>
         </div>
 
-        {/* 休息倒數手動快速開關 */}
-        <button
-          onClick={() => (timerSeconds === null ? startRestTimer(90) : setTimerSeconds(null))}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
-            timerSeconds !== null
-              ? "bg-amber-500/20 border-amber-500 text-amber-300"
-              : "bg-[#181b26] border-[#262b3d] text-gray-400 hover:text-white"
-          }`}
-        >
-          <Timer className="w-4 h-4" />
-          <span>{timerSeconds !== null ? `${timerSeconds}s` : "休息計時"}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {/* 刪除整場訓練按鈕 */}
+          <button
+            onClick={handleDeleteEntireSession}
+            className="p-2 bg-[#181b26] hover:bg-red-950/40 text-gray-400 hover:text-red-400 border border-[#262b3d] hover:border-red-500/40 rounded-xl transition-all"
+            title="刪除整場訓練"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+
+          {/* 休息倒數開關 */}
+          <button
+            onClick={() => (timerSeconds === null ? startRestTimer(90) : setTimerSeconds(null))}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+              timerSeconds !== null
+                ? "bg-amber-500/20 border-amber-500 text-amber-300"
+                : "bg-[#181b26] border-[#262b3d] text-gray-400 hover:text-white"
+            }`}
+          >
+            <Timer className="w-4 h-4" />
+            <span>{timerSeconds !== null ? `${timerSeconds}s` : "休息計時"}</span>
+          </button>
+        </div>
       </div>
 
-      {/* 浮動組間休息倒數 Bar (Sticky Header) */}
+      {/* 編輯整場訓練 Modal */}
+      {showEditSessionModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12141c] border border-emerald-500/40 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-[#262b3d] pb-2.5">
+              <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                <Pencil className="w-4 h-4 text-emerald-400" />
+                <span>修改訓練場次資訊</span>
+              </h3>
+              <button
+                onClick={() => setShowEditSessionModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-[11px] text-gray-400 block mb-1">場次標題</label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs font-bold rounded-xl p-2.5 focus:border-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] text-gray-400 block mb-1">訓練日期</label>
+                <input
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 focus:border-emerald-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] text-gray-400 block mb-1">主攻部位</label>
+                <select
+                  value={editTargetMuscle}
+                  onChange={(e) => setEditTargetMuscle(e.target.value)}
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 focus:border-emerald-500 outline-none"
+                >
+                  <option value="胸部">胸部</option>
+                  <option value="背部">背部</option>
+                  <option value="腿部">腿部</option>
+                  <option value="肩部">肩部</option>
+                  <option value="手臂">手臂</option>
+                  <option value="胸部 + 三頭">胸部 + 三頭</option>
+                  <option value="背部 + 二頭">背部 + 二頭</option>
+                  <option value="游泳">游泳</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setShowEditSessionModal(false)}
+                className="flex-1 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 py-2.5 rounded-xl text-xs font-bold transition-all"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveEditSession}
+                className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black py-2.5 rounded-xl text-xs font-black shadow transition-all"
+              >
+                儲存更新
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 修改單組組數 Modal (Edit Set Modal) */}
+      {editingSet && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12141c] border border-amber-500/40 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-[#262b3d] pb-2.5">
+              <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-amber-400" />
+                <span>修改第 #{editingSet.set_order} 組紀錄</span>
+              </h3>
+              <button
+                onClick={() => setEditingSet(null)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-gray-400 block mb-1">重量 (Kg)</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  value={editSetWeight}
+                  onChange={(e) => setEditSetWeight(e.target.value)}
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-sm font-bold rounded-xl p-2.5 focus:border-emerald-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-400 block mb-1">次數 (Reps)</label>
+                <input
+                  type="number"
+                  value={editSetReps}
+                  onChange={(e) => setEditSetReps(e.target.value)}
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-sm font-bold rounded-xl p-2.5 focus:border-emerald-500 outline-none"
+                />
+              </div>
+            </div>
+
+            {/* 組別型態 */}
+            <div>
+              <label className="text-[10px] text-gray-400 block mb-1">組別類型</label>
+              <div className="grid grid-cols-4 gap-1.5">
+                {[
+                  { id: "normal", label: "正式組" },
+                  { id: "warmup", label: "熱身組" },
+                  { id: "primer", label: "激發組" },
+                  { id: "rest_pause", label: "休補組" },
+                ].map((type) => (
+                  <button
+                    key={type.id}
+                    type="button"
+                    onClick={() => setEditSetType(type.id as SetType)}
+                    className={`text-xs py-1.5 rounded-lg border font-medium transition-all ${
+                      editSetType === type.id
+                        ? "bg-amber-500/20 border-amber-500 text-amber-300 font-bold"
+                        : "bg-[#181b26] border-[#262b3d] text-gray-400"
+                    }`}
+                  >
+                    {type.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 體感註記 */}
+            <div>
+              <label className="text-[10px] text-gray-400 block mb-1">體感備註</label>
+              <input
+                type="text"
+                placeholder="備註 (如: 感受度佳、補2、力竭)..."
+                value={editSetNotes}
+                onChange={(e) => setEditSetNotes(e.target.value)}
+                className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 focus:border-emerald-500 outline-none"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setEditingSet(null)}
+                className="flex-1 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 py-2.5 rounded-xl text-xs font-bold transition-all"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveEditSet}
+                className="flex-1 bg-amber-500 hover:bg-amber-400 text-black py-2.5 rounded-xl text-xs font-black shadow transition-all"
+              >
+                儲存修改
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 浮動組間休息倒數 Bar */}
       {timerSeconds !== null && (
         <div className="bg-gradient-to-r from-amber-950/80 via-[#181b26] to-[#12141c] border border-amber-500/40 rounded-2xl p-3 shadow-2xl flex items-center justify-between text-xs animate-in fade-in duration-200">
           <div className="flex items-center gap-2.5">
@@ -449,7 +719,7 @@ export default function WorkoutDetailPage({
                 </span>
               </div>
 
-              {/* 上次對照幽靈卡片 (Ghost Reference) */}
+              {/* 上次對照幽靈卡片 */}
               {ghostSets && ghostSets.length > 0 && (
                 <div className="bg-[#181b26]/70 border border-amber-500/20 rounded-xl p-2.5 text-xs text-gray-300">
                   <div className="flex items-center gap-1.5 text-amber-400 text-[11px] font-bold mb-1">
@@ -469,12 +739,12 @@ export default function WorkoutDetailPage({
                 </div>
               )}
 
-              {/* 今日組數清單 */}
+              {/* 今日組數清單 (支援修改與刪除) */}
               <div className="space-y-1.5">
                 {exSets.map((s, sIdx) => (
                   <div
                     key={s.id}
-                    className="bg-[#181b26] px-3 py-2 rounded-xl border border-[#262b3d]/70 flex items-center justify-between text-xs"
+                    className="bg-[#181b26] px-3 py-2 rounded-xl border border-[#262b3d]/70 flex items-center justify-between text-xs group"
                   >
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-gray-400 w-5">#{sIdx + 1}</span>
@@ -504,9 +774,21 @@ export default function WorkoutDetailPage({
                           力竭
                         </span>
                       )}
+
+                      {/* ✏️ 修改此組按鈕 */}
+                      <button
+                        onClick={() => handleStartEditSet(s)}
+                        className="text-gray-400 hover:text-amber-400 p-1 transition-colors"
+                        title="修改此組數據"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* 🗑️ 刪除此組按鈕 */}
                       <button
                         onClick={() => handleDeleteSet(s.id)}
-                        className="text-gray-500 hover:text-red-400 p-1"
+                        className="text-gray-400 hover:text-red-400 p-1 transition-colors"
+                        title="刪除此組"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

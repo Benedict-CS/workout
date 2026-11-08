@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Search, Calendar, ChevronRight, Filter } from "lucide-react";
+import { Search, Calendar, ChevronRight, Filter, Trash2 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import type { WorkoutSession, SetItem } from "@/lib/types";
 
@@ -13,20 +13,34 @@ export default function HistoryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function load() {
-      const all = await db.sessions
-        .filter((s) => !s.deleted_at)
-        .reverse()
-        .sortBy("date");
-      setSessions(all);
+  async function loadData() {
+    const all = await db.sessions
+      .filter((s) => !s.deleted_at)
+      .reverse()
+      .sortBy("date");
+    setSessions(all);
 
-      const distinctMonths = Array.from(new Set(all.map((s) => s.month_key))).sort().reverse();
-      setMonthKeys(distinctMonths);
-      setLoading(false);
-    }
-    load();
+    const distinctMonths = Array.from(new Set(all.map((s) => s.month_key))).sort().reverse();
+    setMonthKeys(distinctMonths);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadData();
   }, []);
+
+  async function handleDeleteSession(e: React.MouseEvent, sessionId: string, title: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm(`確定要刪除這場訓練【${title}】嗎？\n包含其中的所有組數記錄都將被清除。`)) return;
+
+    await db.transaction("rw", [db.sessions, db.sets], async () => {
+      await db.sets.where("session_id").equals(sessionId).delete();
+      await db.sessions.delete(sessionId);
+    });
+
+    setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+  }
 
   const filtered = sessions.filter((s) => {
     if (selectedMonth !== "all" && s.month_key !== selectedMonth) return false;
@@ -80,17 +94,30 @@ export default function HistoryPage() {
             <Link
               key={s.id}
               href={`/workout/${s.id}`}
-              className="bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-emerald-500/40 rounded-xl p-3.5 flex items-center justify-between transition-all"
+              className="bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-emerald-500/40 rounded-xl p-3.5 flex items-center justify-between transition-all group"
             >
               <div>
-                <h4 className="font-bold text-gray-100 text-sm">{s.display_title}</h4>
+                <h4 className="font-bold text-gray-100 text-sm group-hover:text-emerald-400 transition-colors">
+                  {s.display_title}
+                </h4>
                 <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-1">
                   <span>{s.date}</span>
                   <span>•</span>
                   <span className="text-emerald-400">{s.target_muscle}</span>
                 </div>
               </div>
-              <ChevronRight className="w-4 h-4 text-gray-500" />
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => handleDeleteSession(e, s.id, s.display_title)}
+                  className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-950/30 rounded-lg transition-all"
+                  title="刪除此場紀錄"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+                <ChevronRight className="w-4 h-4 text-gray-500" />
+              </div>
             </Link>
           ))}
         </div>
