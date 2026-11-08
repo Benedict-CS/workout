@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Search,
-  Calendar,
+  Calendar as CalendarIcon,
   ChevronRight,
+  ChevronLeft,
   Trash2,
   Download,
   Copy,
@@ -17,6 +18,8 @@ import {
   Share2,
   X,
   Sparkles,
+  List,
+  LayoutGrid,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import {
@@ -25,6 +28,8 @@ import {
 } from "@/lib/markdown-generator";
 import { parseWorkoutMarkdown } from "@/lib/parser/markdown-parser";
 import type { WorkoutSession, SetItem, Exercise, BigThreeRecord } from "@/lib/types";
+
+const WEEK_DAYS = ["日", "一", "二", "三", "四", "五", "六"];
 
 export default function HistoryPage() {
   const [sessions, setSessions] = useState<WorkoutSession[]>([]);
@@ -37,6 +42,11 @@ export default function HistoryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [copyToast, setCopyToast] = useState<string | null>(null);
+
+  // 檢視模式切換：清單 vs 月曆
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+  const [calendarMonth, setCalendarMonth] = useState<string>("");
+  const [selectedCalDate, setSelectedCalDate] = useState<string | null>(null);
 
   // Markdown 貼上匯入 Modal
   const [showImportModal, setShowImportModal] = useState(false);
@@ -64,6 +74,9 @@ export default function HistoryPage() {
       .sort()
       .reverse();
     setMonthKeys(distinctMonths);
+    if (distinctMonths.length > 0) {
+      setCalendarMonth(distinctMonths[0]);
+    }
     setLoading(false);
   }
 
@@ -209,6 +222,23 @@ export default function HistoryPage() {
     return true;
   });
 
+  // 日曆數據計算
+  const calParts = (calendarMonth || "2026-11").split("-");
+  const calYear = parseInt(calParts[0], 10);
+  const calMonth = parseInt(calParts[1], 10);
+  const firstDay = new Date(calYear, calMonth - 1, 1).getDay();
+  const daysInCalMonth = new Date(calYear, calMonth, 0).getDate();
+
+  const sessionsByDateMap = new Map<string, WorkoutSession[]>();
+  for (const s of sessions) {
+    if (!sessionsByDateMap.has(s.date)) {
+      sessionsByDateMap.set(s.date, []);
+    }
+    sessionsByDateMap.get(s.date)!.push(s);
+  }
+
+  const calMonthIdx = monthKeys.indexOf(calendarMonth);
+
   return (
     <div className="space-y-4 pb-20">
       {/* 標題與匯出操作按鈕 */}
@@ -260,6 +290,33 @@ export default function HistoryPage() {
           <span>{copyToast}</span>
         </div>
       )}
+
+      {/* 檢視模式切換：清單 vs 月曆 */}
+      <div className="flex items-center justify-between bg-[#12141c] border border-[#262b3d] rounded-xl p-1 text-xs">
+        <button
+          onClick={() => setViewMode("list")}
+          className={`flex-1 py-1.5 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all ${
+            viewMode === "list"
+              ? "bg-[#181b26] text-emerald-400 shadow-sm"
+              : "text-gray-400 hover:text-white"
+          }`}
+        >
+          <List className="w-3.5 h-3.5" />
+          <span>清單檢視 ({sessions.length})</span>
+        </button>
+
+        <button
+          onClick={() => setViewMode("calendar")}
+          className={`flex-1 py-1.5 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all ${
+            viewMode === "calendar"
+              ? "bg-[#181b26] text-emerald-400 shadow-sm"
+              : "text-gray-400 hover:text-white"
+          }`}
+        >
+          <CalendarIcon className="w-3.5 h-3.5" />
+          <span>月曆檢視</span>
+        </button>
+      </div>
 
       {/* 貼上 Markdown 匯入彈窗 */}
       {showImportModal && (
@@ -324,115 +381,257 @@ export default function HistoryPage() {
         </div>
       )}
 
-      {/* 搜尋與月份篩選列 */}
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
-          <input
-            type="text"
-            placeholder="搜尋部位、動作、場地(交大/三劍客)..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[#12141c] border border-[#262b3d] text-white text-xs rounded-xl pl-9 pr-3 py-2.5 focus:border-emerald-500 outline-none placeholder-gray-500"
-          />
-        </div>
-        <select
-          value={selectedMonth}
-          onChange={(e) => setSelectedMonth(e.target.value)}
-          className="bg-[#12141c] border border-[#262b3d] text-xs text-emerald-400 font-bold rounded-xl px-3 outline-none"
-        >
-          <option value="all">全部月份 ({sessions.length})</option>
-          {monthKeys.map((mk) => {
-            const count = sessions.filter((s) => s.month_key === mk).length;
-            return (
-              <option key={mk} value={mk}>
-                {mk} ({count}次)
-              </option>
-            );
-          })}
-        </select>
-      </div>
+      {/* 視圖 1: 月曆檢視模式 */}
+      {viewMode === "calendar" ? (
+        <div className="space-y-3">
+          {/* 月份切換列 */}
+          <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-3 flex items-center justify-between">
+            <button
+              onClick={() => {
+                if (calMonthIdx < monthKeys.length - 1) {
+                  setCalendarMonth(monthKeys[calMonthIdx + 1]);
+                  setSelectedCalDate(null);
+                }
+              }}
+              disabled={calMonthIdx >= monthKeys.length - 1}
+              className="p-1.5 bg-[#181b26] border border-[#262b3d] rounded-xl text-gray-300 disabled:opacity-30 active:scale-95"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
 
-      {/* 日誌清單 */}
-      {loading ? (
-        <div className="text-center py-12 text-gray-400 text-xs">載入日誌中...</div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-14 text-gray-500 text-xs bg-[#12141c] border border-[#262b3d] rounded-2xl p-6">
-          沒有找到相符的訓練紀錄
+            <span className="font-black text-sm text-white">
+              {calYear} 年 {calMonth} 月份
+            </span>
+
+            <button
+              onClick={() => {
+                if (calMonthIdx > 0) {
+                  setCalendarMonth(monthKeys[calMonthIdx - 1]);
+                  setSelectedCalDate(null);
+                }
+              }}
+              disabled={calMonthIdx <= 0}
+              className="p-1.5 bg-[#181b26] border border-[#262b3d] rounded-xl text-gray-300 disabled:opacity-30 active:scale-95"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* 月曆網格 */}
+          <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-3 shadow-md">
+            {/* 星期列 */}
+            <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-gray-400 mb-2">
+              {WEEK_DAYS.map((wd, i) => (
+                <div key={wd} className={i === 0 || i === 6 ? "text-amber-400/80" : ""}>
+                  {wd}
+                </div>
+              ))}
+            </div>
+
+            {/* 日期格子 */}
+            <div className="grid grid-cols-7 gap-1">
+              {Array.from({ length: firstDay }).map((_, i) => (
+                <div key={`empty-${i}`} className="h-14 rounded-xl opacity-0 pointer-events-none" />
+              ))}
+
+              {Array.from({ length: daysInCalMonth }).map((_, i) => {
+                const dayNum = i + 1;
+                const dStr = dayNum.toString().padStart(2, "0");
+                const mStr = calMonth.toString().padStart(2, "0");
+                const fullDate = `${calYear}-${mStr}-${dStr}`;
+                const daySessions = sessionsByDateMap.get(fullDate) || [];
+                const isSelected = selectedCalDate === fullDate;
+
+                return (
+                  <button
+                    key={fullDate}
+                    onClick={() => {
+                      if (daySessions.length > 0) {
+                        setSelectedCalDate(fullDate);
+                      }
+                    }}
+                    className={`h-14 rounded-xl p-1 border text-left flex flex-col justify-between transition-all ${
+                      isSelected
+                        ? "bg-emerald-500/20 border-emerald-500 ring-2 ring-emerald-500/50"
+                        : daySessions.length > 0
+                        ? "bg-[#181b26] border-[#262b3d] hover:border-emerald-500/50"
+                        : "bg-[#090a0f]/40 border-transparent text-gray-600"
+                    }`}
+                  >
+                    <span
+                      className={`text-[10px] font-bold ${
+                        daySessions.length > 0 ? "text-gray-200" : "text-gray-600"
+                      }`}
+                    >
+                      {dayNum}
+                    </span>
+
+                    {/* 部位標籤膠囊 */}
+                    <div className="space-y-0.5">
+                      {daySessions.map((ds) => {
+                        let badgeBg = "bg-red-500/20 text-red-300 border-red-500/40";
+                        if (ds.target_muscle.includes("背"))
+                          badgeBg = "bg-blue-500/20 text-blue-300 border-blue-500/40";
+                        if (ds.target_muscle.includes("腿"))
+                          badgeBg = "bg-emerald-500/20 text-emerald-300 border-emerald-500/40";
+                        if (ds.target_muscle.includes("游泳"))
+                          badgeBg = "bg-cyan-500/20 text-cyan-300 border-cyan-500/40";
+
+                        const label = ds.target_muscle.slice(0, 1);
+                        return (
+                          <div
+                            key={ds.id}
+                            className={`text-[9px] font-black px-1 rounded border text-center truncate ${badgeBg}`}
+                          >
+                            {label}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 選取日期的訓練詳情卡片 */}
+          {selectedCalDate && (
+            <div className="space-y-2 pt-1 animate-in fade-in duration-150">
+              <span className="text-xs font-bold text-gray-300 block">
+                {selectedCalDate} 的訓練：
+              </span>
+              {(sessionsByDateMap.get(selectedCalDate) || []).map((s) => (
+                <Link
+                  key={s.id}
+                  href={`/workout/${s.id}`}
+                  className="bg-[#181b26] hover:bg-[#202533] border border-emerald-500/40 rounded-xl p-3 flex items-center justify-between text-xs transition-all shadow-md block"
+                >
+                  <div>
+                    <h4 className="font-bold text-white text-sm">{s.display_title}</h4>
+                    <span className="text-emerald-400 text-[11px] mt-0.5 block">
+                      {s.target_muscle} {s.location ? `• ${s.location}` : ""}
+                    </span>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-emerald-400" />
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
-        <div className="space-y-2.5">
-          {filtered.map((s) => {
-            const sessSets = sets.filter((setItem) => setItem.session_id === s.id);
-            const distinctEx = new Set(sessSets.map((setItem) => setItem.exercise_id)).size;
+        /* 視圖 2: 清單條列檢視模式 */
+        <div className="space-y-3">
+          {/* 搜尋與月份篩選列 */}
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+              <input
+                type="text"
+                placeholder="搜尋部位、動作、場地(交大/三劍客)..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-[#12141c] border border-[#262b3d] text-white text-xs rounded-xl pl-9 pr-3 py-2.5 focus:border-emerald-500 outline-none placeholder-gray-500"
+              />
+            </div>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bg-[#12141c] border border-[#262b3d] text-xs text-emerald-400 font-bold rounded-xl px-3 outline-none"
+            >
+              <option value="all">全部月份 ({sessions.length})</option>
+              {monthKeys.map((mk) => {
+                const count = sessions.filter((s) => s.month_key === mk).length;
+                return (
+                  <option key={mk} value={mk}>
+                    {mk} ({count}次)
+                  </option>
+                );
+              })}
+            </select>
+          </div>
 
-            return (
-              <div
-                key={s.id}
-                className="bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-emerald-500/40 rounded-2xl p-3.5 flex items-center justify-between transition-all group shadow-sm"
-              >
-                <Link href={`/workout/${s.id}`} className="space-y-1 flex-1 pr-2">
-                  <h4 className="font-bold text-gray-100 text-sm group-hover:text-emerald-400 transition-colors">
-                    {s.display_title}
-                  </h4>
-                  <div className="flex items-center gap-2 text-[11px] text-gray-400 flex-wrap">
-                    <span>{s.date}</span>
-                    <span>•</span>
-                    <span className="text-emerald-400 font-medium">{s.target_muscle}</span>
-                    <span>•</span>
-                    <span>{distinctEx} 個動作</span>
-                    <span>•</span>
-                    <span>{sessSets.length} 組</span>
-                    {s.location && (
-                      <>
+          {/* 日誌清單 */}
+          {loading ? (
+            <div className="text-center py-12 text-gray-400 text-xs">載入日誌中...</div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-14 text-gray-500 text-xs bg-[#12141c] border border-[#262b3d] rounded-2xl p-6">
+              沒有找到相符的訓練紀錄
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {filtered.map((s) => {
+                const sessSets = sets.filter((setItem) => setItem.session_id === s.id);
+                const distinctEx = new Set(sessSets.map((setItem) => setItem.exercise_id)).size;
+
+                return (
+                  <div
+                    key={s.id}
+                    className="bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-emerald-500/40 rounded-2xl p-3.5 flex items-center justify-between transition-all group shadow-sm"
+                  >
+                    <Link href={`/workout/${s.id}`} className="space-y-1 flex-1 pr-2">
+                      <h4 className="font-bold text-gray-100 text-sm group-hover:text-emerald-400 transition-colors">
+                        {s.display_title}
+                      </h4>
+                      <div className="flex items-center gap-2 text-[11px] text-gray-400 flex-wrap">
+                        <span>{s.date}</span>
                         <span>•</span>
-                        <span className="text-blue-400 flex items-center gap-0.5">
-                          <MapPin className="w-2.5 h-2.5" />
-                          {s.location}
-                        </span>
-                      </>
-                    )}
+                        <span className="text-emerald-400 font-medium">{s.target_muscle}</span>
+                        <span>•</span>
+                        <span>{distinctEx} 個動作</span>
+                        <span>•</span>
+                        <span>{sessSets.length} 組</span>
+                        {s.location && (
+                          <>
+                            <span>•</span>
+                            <span className="text-blue-400 flex items-center gap-0.5">
+                              <MapPin className="w-2.5 h-2.5" />
+                              {s.location}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </Link>
+
+                    <div className="flex items-center gap-1">
+                      {/* 分享按鈕 */}
+                      <button
+                        type="button"
+                        onClick={(e) => handleShareSession(e, s)}
+                        className="p-2 text-gray-400 hover:text-blue-400 hover:bg-blue-950/30 rounded-lg transition-all"
+                        title="分享此場紀錄"
+                      >
+                        <Share2 className="w-4 h-4" />
+                      </button>
+
+                      {/* 一鍵複製該場 Markdown */}
+                      <button
+                        type="button"
+                        onClick={(e) => handleCopySessionMarkdown(e, s)}
+                        className="p-2 text-gray-400 hover:text-emerald-400 hover:bg-emerald-950/30 rounded-lg transition-all"
+                        title="一鍵複製這場訓練為 Markdown 語法"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+
+                      {/* 刪除這場紀錄 */}
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteSession(e, s.id, s.display_title)}
+                        className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-950/30 rounded-lg transition-all"
+                        title="刪除此場紀錄"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+
+                      <Link href={`/workout/${s.id}`} className="p-1">
+                        <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
+                      </Link>
+                    </div>
                   </div>
-                </Link>
-
-                <div className="flex items-center gap-1">
-                  {/* 分享按鈕 */}
-                  <button
-                    type="button"
-                    onClick={(e) => handleShareSession(e, s)}
-                    className="p-2 text-gray-400 hover:text-blue-400 hover:bg-blue-950/30 rounded-lg transition-all"
-                    title="分享此場紀錄"
-                  >
-                    <Share2 className="w-4 h-4" />
-                  </button>
-
-                  {/* 一鍵複製該場 Markdown */}
-                  <button
-                    type="button"
-                    onClick={(e) => handleCopySessionMarkdown(e, s)}
-                    className="p-2 text-gray-400 hover:text-emerald-400 hover:bg-emerald-950/30 rounded-lg transition-all"
-                    title="一鍵複製這場訓練為 Markdown 語法"
-                  >
-                    <Copy className="w-4 h-4" />
-                  </button>
-
-                  {/* 刪除這場紀錄 */}
-                  <button
-                    type="button"
-                    onClick={(e) => handleDeleteSession(e, s.id, s.display_title)}
-                    className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-950/30 rounded-lg transition-all"
-                    title="刪除此場紀錄"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-
-                  <Link href={`/workout/${s.id}`} className="p-1">
-                    <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
-                  </Link>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

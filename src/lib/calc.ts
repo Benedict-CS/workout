@@ -1,5 +1,7 @@
+import type { SetType } from "./types";
+
 /**
- * 健身力量計算工具庫 (1RM 計算、槓鈴片換算、重量體重比)
+ * 健身力量計算工具庫 (1RM 計算、槓鈴片換算、熱身組規劃、體重比)
  */
 
 export interface PlateCount {
@@ -7,6 +9,14 @@ export interface PlateCount {
   count: number;
   color: string;
   textColor: string;
+}
+
+export interface WarmupSetPlan {
+  percentage: number;
+  weightKg: number;
+  reps: number;
+  label: string;
+  type: SetType;
 }
 
 const AVAILABLE_PLATES = [
@@ -68,4 +78,65 @@ export function calculateBarbellPlates(
     plates,
     remaining: sideTarget,
   };
+}
+
+/**
+ * 專業熱身金字塔規劃 (Warm-up Sets Progression)
+ * 針對目標正式組重量，科學化階梯式熱身，防止運動傷害並激活神經系統
+ */
+export function generateWarmupPlan(
+  workWeightKg: number,
+  barWeightKg = 20
+): WarmupSetPlan[] {
+  if (workWeightKg <= barWeightKg) return [];
+
+  const plan: WarmupSetPlan[] = [];
+
+  // 1. 空槓熱身 (激活關節與動作軌跡)
+  plan.push({
+    percentage: Math.round((barWeightKg / workWeightKg) * 100),
+    weightKg: barWeightKg,
+    reps: 10,
+    label: "空槓熱身",
+    type: "warmup",
+  });
+
+  // 2. 50% 目標重量 (5下)
+  const diff = workWeightKg - barWeightKg;
+  const w50 = Math.round((barWeightKg + diff * 0.45) / 2.5) * 2.5;
+  if (w50 > barWeightKg && w50 < workWeightKg) {
+    plan.push({
+      percentage: Math.round((w50 / workWeightKg) * 100),
+      weightKg: w50,
+      reps: 5,
+      label: "輕量增溫組",
+      type: "warmup",
+    });
+  }
+
+  // 3. 70% 目標重量 (3下，神經激發)
+  const w70 = Math.round((barWeightKg + diff * 0.7) / 2.5) * 2.5;
+  if (w70 > w50 && w70 < workWeightKg) {
+    plan.push({
+      percentage: Math.round((w70 / workWeightKg) * 100),
+      weightKg: w70,
+      reps: 3,
+      label: "神經激發組",
+      type: "primer",
+    });
+  }
+
+  // 4. 85-90% 目標重量 (1下，大重量手感適應，不累積疲勞)
+  const w85 = Math.round((barWeightKg + diff * 0.88) / 2.5) * 2.5;
+  if (w85 > w70 && w85 < workWeightKg && w85 >= workWeightKg - 5) {
+    plan.push({
+      percentage: Math.round((w85 / workWeightKg) * 100),
+      weightKg: w85,
+      reps: 1,
+      label: "重量手感適應",
+      type: "primer",
+    });
+  }
+
+  return plan;
 }

@@ -286,6 +286,20 @@ export default function AnalyticsPage() {
             </span>
           </div>
         </div>
+
+        {/* 力量等級進度條 */}
+        <div className="mt-3 pt-3 border-t border-[#262b3d]/60 space-y-2 text-xs">
+          <div className="flex items-center justify-between text-[11px] text-gray-400">
+            <span>當前力量總和水平：<strong className="text-emerald-400 font-bold">3.91x 體重 (中階紮實力量)</strong></span>
+            <span className="text-amber-400 font-bold">下一里程碑: 4.6x (276Kg)</span>
+          </div>
+          <div className="w-full bg-[#090a0f] rounded-full h-2 border border-[#262b3d] overflow-hidden">
+            <div
+              className="bg-gradient-to-r from-emerald-500 to-amber-400 h-full rounded-full transition-all"
+              style={{ width: `${Math.min(100, Math.round(((bigThree?.total_kg ?? 235) / 276) * 100))}%` }}
+            />
+          </div>
+        </div>
       </section>
 
       {/* 力量成長走勢折線圖 (1RM Progression) */}

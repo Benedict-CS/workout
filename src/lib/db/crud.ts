@@ -74,6 +74,42 @@ export async function getLastExerciseSets(
 }
 
 /**
+ * 取得某個動作最近 N 次的歷史訓練紀錄 (含日期、場地與完整組數)，便於現場即時查閱對照
+ */
+export async function getExerciseHistorySessions(
+  exerciseId: string,
+  limit = 5
+): Promise<{ session: WorkoutSession; sets: SetItem[] }[]> {
+  const sets = await db.sets
+    .where("exercise_id")
+    .equals(exerciseId)
+    .filter((s) => !s.deleted_at && s.weight_kg > 0)
+    .toArray();
+
+  if (sets.length === 0) return [];
+
+  const sessionIds = Array.from(new Set(sets.map((s) => s.session_id)));
+  const sessions = await db.sessions
+    .where("id")
+    .anyOf(sessionIds)
+    .filter((s) => !s.deleted_at)
+    .reverse()
+    .sortBy("date");
+
+  const topSessions = sessions.slice(0, limit);
+  const result: { session: WorkoutSession; sets: SetItem[] }[] = [];
+
+  for (const sess of topSessions) {
+    const sessSets = sets
+      .filter((s) => s.session_id === sess.id)
+      .sort((a, b) => a.set_order - b.set_order);
+    result.push({ session: sess, sets: sessSets });
+  }
+
+  return result;
+}
+
+/**
  * 取得指定部位「最近一次」訓練菜單結構 (動作清單與組數)，以供快速複製或套用
  */
 export async function getPreviousSessionTemplate(
