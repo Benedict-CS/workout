@@ -108,13 +108,19 @@ function matchesTargetMuscle(ex: Exercise, target: string): boolean {
 const FEELING_TAGS = [
   "力竭",
   "完全力竭",
-  "強迫次數",
+  "+ 休2",
+  "+ 休3",
+  "+ 休4",
+  "+ 補2",
+  "+ 補3",
   "遞減組",
+  "一段",
+  "二段",
+  "中間微休",
+  "感受度佳",
+  "感受度普通",
   "熱身",
   "神經激發",
-  "感受度佳",
-  "補1",
-  "補2",
   "姿勢良好",
 ];
 
@@ -516,10 +522,19 @@ export default function WorkoutDetailPage({
     const wNum = parseFloat(editSetWeight) || 0;
     const rNum = parseInt(editSetReps, 10) || 0;
 
-    let generatedRaw = `${wNum}Kg x${rNum}`;
-    if (editSetType === "warmup") generatedRaw += " 熱身";
-    if (editSetType === "primer") generatedRaw += " 神經激發";
-    if (editSetNotes.trim()) generatedRaw += ` ${editSetNotes.trim()}`;
+    let generatedRaw = "";
+    if (editSetType === "warmup") {
+      generatedRaw = `${wNum}Kg x${rNum} 熱身`;
+    } else if (editSetType === "primer") {
+      generatedRaw = `${wNum}Kg x${rNum} 神經激發`;
+    } else {
+      const match = editingSet.raw_text?.match(/^(set\s+\d+:\s*)/i);
+      const prefix = match ? match[1] : "";
+      generatedRaw = `${prefix}${wNum}Kg x${rNum}`;
+    }
+    if (editSetNotes.trim()) {
+      generatedRaw += ` ${editSetNotes.trim()}`;
+    }
 
     const updated: SetItem = {
       ...editingSet,
@@ -1073,6 +1088,17 @@ export default function WorkoutDetailPage({
                 儲存更新
               </button>
             </div>
+
+            <div className="pt-2 border-t border-[#262b3d]/60">
+              <button
+                type="button"
+                onClick={handleDeleteEntireSession}
+                className="w-full py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>刪除此整場訓練紀錄</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1152,6 +1178,28 @@ export default function WorkoutDetailPage({
                 onChange={(e) => setEditSetNotes(e.target.value)}
                 className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 focus:border-emerald-500 outline-none"
               />
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {["力竭", "+ 休2", "+ 休3", "+ 補2", "一段", "二段", "遞減組", "感受度佳"].map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => {
+                      if (editSetNotes.includes(t)) {
+                        setEditSetNotes((p) => p.replace(t, "").trim());
+                      } else {
+                        setEditSetNotes((p) => (p ? `${p} ${t}` : t));
+                      }
+                    }}
+                    className={`text-[10px] px-2 py-0.5 rounded-lg border transition-all ${
+                      editSetNotes.includes(t)
+                        ? "bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold"
+                        : "bg-[#181b26] border-[#262b3d] text-gray-400"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="flex gap-2 pt-2">
