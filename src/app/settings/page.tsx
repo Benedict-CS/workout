@@ -271,12 +271,40 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <button
-          onClick={handleSavePreferences}
-          className="w-full bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-emerald-400 font-bold py-2 rounded-xl text-xs transition-all"
-        >
-          {prefSaved ? "偏好設定已儲存！" : "儲存偏好設定"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(880, ctx.currentTime);
+                gain.gain.setValueAtTime(0.2, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.8);
+              } catch {}
+              if (typeof navigator !== "undefined" && navigator.vibrate) {
+                navigator.vibrate([200, 100, 200, 100, 400]);
+              }
+            }}
+            className="flex-1 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 font-bold py-2 rounded-xl text-xs transition-all flex items-center justify-center gap-1"
+          >
+            <Clock className="w-3.5 h-3.5 text-amber-400" />
+            <span>測試音效與震動</span>
+          </button>
+
+          <button
+            onClick={handleSavePreferences}
+            className="flex-1 bg-[#181b26] hover:bg-[#202533] border border-emerald-500/40 text-emerald-400 font-bold py-2 rounded-xl text-xs transition-all"
+          >
+            {prefSaved ? "偏好已儲存！" : "儲存偏好設定"}
+          </button>
+        </div>
       </section>
 
       {/* Markdown 與備份管理 */}

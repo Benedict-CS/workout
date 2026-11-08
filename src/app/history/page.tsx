@@ -13,12 +13,17 @@ import {
   MapPin,
   FileText,
   Filter,
+  UploadCloud,
+  Share2,
+  X,
+  Sparkles,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import {
   formatSessionToMarkdown,
   exportAllSessionsToMarkdown,
 } from "@/lib/markdown-generator";
+import { parseWorkoutMarkdown } from "@/lib/parser/markdown-parser";
 import type { WorkoutSession, SetItem, Exercise, BigThreeRecord } from "@/lib/types";
 
 export default function HistoryPage() {
@@ -32,6 +37,12 @@ export default function HistoryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [copyToast, setCopyToast] = useState<string | null>(null);
+
+  // Markdown 貼上匯入 Modal
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importSuccessMsg, setImportSuccessMsg] = useState<string | null>(null);
 
   async function loadData() {
     const allSessions = await db.sessions
@@ -90,6 +101,28 @@ export default function HistoryPage() {
     setTimeout(() => setCopyToast(null), 2500);
   }
 
+  // 行動裝置原生系統分享
+  async function handleShareSession(e: React.MouseEvent, session: WorkoutSession) {
+    e.preventDefault();
+    e.stopPropagation();
+    const sessionSets = sets.filter((s) => s.session_id === session.id);
+    const md = formatSessionToMarkdown(session, sessionSets, exercises);
+
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: session.display_title,
+          text: md,
+        });
+        return;
+      } catch {}
+    }
+
+    navigator.clipboard.writeText(md);
+    setCopyToast("已複製訓練文字至剪貼簿！");
+    setTimeout(() => setCopyToast(null), 2500);
+  }
+
   // 匯出全庫完整 Markdown 檔案 (.md)
   function handleExportAllMarkdown() {
     const fullMd = exportAllSessionsToMarkdown(sessions, sets, exercises, bigThree);
@@ -121,6 +154,48 @@ export default function HistoryPage() {
     setTimeout(() => setCopyToast(null), 2500);
   }
 
+  // 貼上 Markdown 匯入
+  async function handleImportMarkdown() {
+    if (!importText.trim()) return;
+    setImporting(true);
+    try {
+      const parsed = parseWorkoutMarkdown(importText.trim());
+      if (parsed.sessions.length === 0) {
+        alert("未識別到標準訓練日誌格式（請確認包含 <details><summary>... 或動作與組數）");
+        setImporting(false);
+        return;
+      }
+
+      await db.transaction("rw", [db.sessions, db.exercises, db.sets, db.big_three], async () => {
+        for (const ex of parsed.exercises) {
+          const exists = await db.exercises.get(ex.id);
+          if (!exists) await db.exercises.put(ex);
+        }
+        for (const sess of parsed.sessions) {
+          await db.sessions.put(sess);
+        }
+        for (const s of parsed.sets) {
+          await db.sets.put(s);
+        }
+        if (parsed.bigThree) {
+          await db.big_three.put(parsed.bigThree);
+        }
+      });
+
+      setImportSuccessMsg(`成功匯入 ${parsed.sessions.length} 場訓練、${parsed.sets.length} 組紀錄！`);
+      await loadData();
+      setTimeout(() => {
+        setImportSuccessMsg(null);
+        setShowImportModal(false);
+        setImportText("");
+      }, 1800);
+    } catch (err) {
+      alert("匯入發生錯誤，請檢查 Markdown 格式是否正確");
+    } finally {
+      setImporting(false);
+    }
+  }
+
   const filtered = sessions.filter((s) => {
     if (selectedMonth !== "all" && s.month_key !== selectedMonth) return false;
     if (
@@ -146,6 +221,17 @@ export default function HistoryPage() {
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* 貼上 Markdown 匯入 */}
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] text-emerald-400 rounded-xl text-xs font-bold flex items-center gap-1 active:scale-95 transition-all"
+            title="貼上 Markdown 語法匯入"
+          >
+            <UploadCloud className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">匯入 MD</span>
+          </button>
+
+          {/* 複製 Markdown */}
           <button
             onClick={handleCopySelectedMonthMarkdown}
             className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] text-emerald-400 rounded-xl text-xs font-bold flex items-center gap-1 active:scale-95 transition-all"
@@ -155,6 +241,7 @@ export default function HistoryPage() {
             <span className="hidden sm:inline">複製 Markdown</span>
           </button>
 
+          {/* 下載完整 .md 檔案 */}
           <button
             onClick={handleExportAllMarkdown}
             className="p-2 bg-emerald-500 hover:bg-emerald-400 text-black rounded-xl text-xs font-black flex items-center gap-1 active:scale-95 transition-all shadow"
@@ -171,6 +258,69 @@ export default function HistoryPage() {
         <div className="bg-emerald-500 text-black px-4 py-2 rounded-xl text-xs font-black shadow-2xl flex items-center gap-2 animate-in fade-in duration-150">
           <Check className="w-4 h-4 stroke-[3]" />
           <span>{copyToast}</span>
+        </div>
+      )}
+
+      {/* 貼上 Markdown 匯入彈窗 */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12141c] border border-emerald-500/40 rounded-2xl max-w-lg w-full p-5 space-y-3.5 shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-[#262b3d] pb-2.5">
+              <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-emerald-400" />
+                <span>貼上 Markdown 訓練紀錄匯入</span>
+              </h3>
+              <button
+                onClick={() => setShowImportModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-[11px] text-gray-400">
+              支援貼入單次 `<details><summary>...</summary></details>` 或多月份完整筆記，系統將自動解析出訓練日期、場地、動作與組數！
+            </p>
+
+            <textarea
+              rows={8}
+              placeholder="在此貼上 Markdown 內容...
+例如:
+<details>
+<summary><b>11/8 (胸) - 交大健身房 - 第 5 次</b></summary>
+- 槓鈴臥推：
+  - set 1: 50Kg x8
+  - set 2: 50Kg x8
+</details>"
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              className="w-full bg-[#090a0f] border border-[#262b3d] text-emerald-300 text-xs font-mono p-3 rounded-xl outline-none focus:border-emerald-500"
+            />
+
+            {importSuccessMsg && (
+              <div className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold p-2.5 rounded-xl flex items-center gap-2">
+                <Check className="w-4 h-4" />
+                <span>{importSuccessMsg}</span>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowImportModal(false)}
+                className="flex-1 bg-[#181b26] text-gray-300 py-2.5 rounded-xl text-xs font-bold"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleImportMarkdown}
+                disabled={!importText.trim() || importing}
+                className="flex-1 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black py-2.5 rounded-xl text-xs font-black shadow transition-all flex items-center justify-center gap-1.5"
+              >
+                <UploadCloud className="w-4 h-4 stroke-[2.5]" />
+                <span>{importing ? "正在解析並儲存..." : "開始匯入至資料庫"}</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -217,12 +367,11 @@ export default function HistoryPage() {
             const distinctEx = new Set(sessSets.map((setItem) => setItem.exercise_id)).size;
 
             return (
-              <Link
+              <div
                 key={s.id}
-                href={`/workout/${s.id}`}
                 className="bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-emerald-500/40 rounded-2xl p-3.5 flex items-center justify-between transition-all group shadow-sm"
               >
-                <div className="space-y-1">
+                <Link href={`/workout/${s.id}`} className="space-y-1 flex-1 pr-2">
                   <h4 className="font-bold text-gray-100 text-sm group-hover:text-emerald-400 transition-colors">
                     {s.display_title}
                   </h4>
@@ -244,9 +393,19 @@ export default function HistoryPage() {
                       </>
                     )}
                   </div>
-                </div>
+                </Link>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1">
+                  {/* 分享按鈕 */}
+                  <button
+                    type="button"
+                    onClick={(e) => handleShareSession(e, s)}
+                    className="p-2 text-gray-400 hover:text-blue-400 hover:bg-blue-950/30 rounded-lg transition-all"
+                    title="分享此場紀錄"
+                  >
+                    <Share2 className="w-4 h-4" />
+                  </button>
+
                   {/* 一鍵複製該場 Markdown */}
                   <button
                     type="button"
@@ -267,9 +426,11 @@ export default function HistoryPage() {
                     <Trash2 className="w-4 h-4" />
                   </button>
 
-                  <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
+                  <Link href={`/workout/${s.id}`} className="p-1">
+                    <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
+                  </Link>
                 </div>
-              </Link>
+              </div>
             );
           })}
         </div>

@@ -42,6 +42,7 @@ export default function NewWorkoutPage() {
 
   const [date, setDate] = useState(todayStr);
   const [targetMuscle, setTargetMuscle] = useState("胸部");
+  const [customMuscle, setCustomMuscle] = useState("");
   const [location, setLocation] = useState("交大健身房");
   const [customLocation, setCustomLocation] = useState("");
   const [customTitle, setCustomTitle] = useState("");
@@ -93,11 +94,12 @@ export default function NewWorkoutPage() {
 
     const monthlyIndex = currentMonthCount + 1;
     const finalLocation = (customLocation.trim() || location).trim();
+    const finalMuscle = (customMuscle.trim() || targetMuscle).trim();
 
     // 格式化為使用者的標準 Markdown 命名：如 "10/11 (胸) - 交大健身房 - 第 6 次"
     const locationPart = finalLocation ? ` - ${finalLocation}` : "";
     const title =
-      customTitle.trim() || `${m}/${d} (${targetMuscle})${locationPart} - 第 ${monthlyIndex} 次`;
+      customTitle.trim() || `${m}/${d} (${finalMuscle})${locationPart} - 第 ${monthlyIndex} 次`;
 
     const sessionId = `session-${date}-${Date.now()}`;
 
@@ -106,7 +108,7 @@ export default function NewWorkoutPage() {
       date: date,
       month_key: monthKey,
       display_title: title,
-      target_muscle: targetMuscle,
+      target_muscle: finalMuscle,
       monthly_index: monthlyIndex,
       location: finalLocation || undefined,
       created_at: new Date().toISOString(),
@@ -216,9 +218,12 @@ export default function NewWorkoutPage() {
               <button
                 key={p}
                 type="button"
-                onClick={() => setTargetMuscle(p)}
+                onClick={() => {
+                  setTargetMuscle(p);
+                  setCustomMuscle("");
+                }}
                 className={`py-2 px-3 text-xs rounded-xl border font-bold text-left transition-all ${
-                  targetMuscle === p
+                  targetMuscle === p && !customMuscle
                     ? "bg-emerald-500/20 border-emerald-500 text-emerald-300"
                     : "bg-[#181b26] border-[#262b3d] text-gray-300 hover:border-gray-600"
                 }`}
@@ -227,6 +232,16 @@ export default function NewWorkoutPage() {
               </button>
             ))}
           </div>
+          <input
+            type="text"
+            placeholder="或輸入自訂課表 (如: 胸+肩、推日、拉日)..."
+            value={customMuscle}
+            onChange={(e) => {
+              setCustomMuscle(e.target.value);
+              if (e.target.value.trim()) setTargetMuscle(e.target.value.trim());
+            }}
+            className="w-full mt-2 bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-3 py-2 focus:border-emerald-500 outline-none placeholder-gray-500"
+          />
         </div>
 
         {/* 📋 一鍵複製上一次菜單功能 */}

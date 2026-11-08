@@ -85,13 +85,33 @@ export function parseWorkoutMarkdown(markdown: string, defaultYear = 2026): Pars
       continue;
     }
 
-    // 3. 抓取單次訓練日標題，例如 `<summary><b>6/12 (胸) - 第 1 次</b></summary>`
-    const summaryMatch = line.match(/<summary><b>(\d{1,2})\/(\d{1,2})\s*\((.*?)\)\s*-\s*第\s*(\d+)\s*次<\/b><\/summary>/);
+    // 3. 抓取單次訓練日標題，支援包含場地或一般格式：
+    // 例如 `<summary><b>10/11 (胸) - 交大健身房 - 第 6 次</b></summary>`
+    // 或 `<summary><b>6/12 (胸) - 第 1 次</b></summary>`
+    // 或 `<summary><b>7/21 (游泳)</b></summary>`
+    const summaryMatch = line.match(/<summary><b>(\d{1,2})\/(\d{1,2})\s*\((.*?)\)(.*?)<\/b><\/summary>/);
     if (summaryMatch) {
       const m = parseInt(summaryMatch[1], 10);
       const d = parseInt(summaryMatch[2], 10);
       const targetMuscle = summaryMatch[3].trim();
-      const monthlyIndex = parseInt(summaryMatch[4], 10);
+      const restPart = summaryMatch[4].trim(); // 例如 "- 交大健身房 - 第 6 次" 或 "- 第 1 次"
+
+      let location = "";
+      let monthlyIndex = 1;
+
+      const idxMatch = restPart.match(/第\s*(\d+)\s*次/);
+      if (idxMatch) {
+        monthlyIndex = parseInt(idxMatch[1], 10);
+      }
+
+      // 提取場地 (如果在括號後且在第幾次前)
+      const restTokens = restPart.split(/\s*-\s*/).map((t) => t.trim()).filter(Boolean);
+      for (const tok of restTokens) {
+        if (!tok.includes("第") && !tok.includes("次")) {
+          location = tok;
+          break;
+        }
+      }
 
       const monthStr = m.toString().padStart(2, "0");
       const dayStr = d.toString().padStart(2, "0");
@@ -99,13 +119,18 @@ export function parseWorkoutMarkdown(markdown: string, defaultYear = 2026): Pars
       const monthKey = `${currentYear}-${monthStr}`;
       const sessionId = `session-${dateStr}-${monthlyIndex}`;
 
+      let displayTitle = `${m}/${d} (${targetMuscle})`;
+      if (location) displayTitle += ` - ${location}`;
+      if (idxMatch) displayTitle += ` - 第 ${monthlyIndex} 次`;
+
       currentSession = {
         id: sessionId,
         date: dateStr,
         month_key: monthKey,
-        display_title: `${m}/${d} (${targetMuscle}) - 第 ${monthlyIndex} 次`,
+        display_title: displayTitle,
         target_muscle: targetMuscle,
         monthly_index: monthlyIndex,
+        location: location || undefined,
         created_at: new Date(dateStr).toISOString(),
         updated_at: new Date(dateStr).toISOString(),
         sync_status: "synced",

@@ -29,6 +29,10 @@ import {
   Trophy,
   Repeat,
   Check,
+  ChevronUp,
+  ChevronDown,
+  VolumeX,
+  Share2,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { getLastExerciseSets, getPreviousSessionTemplate, getExerciseMaxPR } from "@/lib/db/crud";
@@ -174,23 +178,26 @@ export default function WorkoutDetailPage({
   const [timerActive, setTimerActive] = useState<boolean>(false);
   const [autoTimerEnabled, setAutoTimerEnabled] = useState<boolean>(true);
   const [defaultRestDuration, setDefaultRestDuration] = useState<number>(90);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // 提示音效與震動
   function playAlarm() {
-    try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(880, ctx.currentTime);
-      gain.gain.setValueAtTime(0.2, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.8);
-    } catch {}
+    if (!isMuted) {
+      try {
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.8);
+      } catch {}
+    }
 
     if (typeof navigator !== "undefined" && navigator.vibrate) {
       navigator.vibrate([200, 100, 200, 100, 400]);
@@ -570,6 +577,50 @@ export default function WorkoutDetailPage({
     setTimeout(() => setCopyToast(false), 2500);
   }
 
+  // 原生系統分享
+  async function handleShareSession() {
+    if (!session) return;
+    const md = formatSessionToMarkdown(session, sets, exercises);
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: session.display_title,
+          text: md,
+        });
+        return;
+      } catch {}
+    }
+    navigator.clipboard.writeText(md);
+    setCopyToast(true);
+    setTimeout(() => setCopyToast(false), 2500);
+  }
+
+  // 調整組數上下移動順序
+  async function handleMoveSet(setId: string, direction: "up" | "down") {
+    const idx = sets.findIndex((s) => s.id === setId);
+    if (idx === -1) return;
+    if (direction === "up" && idx === 0) return;
+    if (direction === "down" && idx === sets.length - 1) return;
+
+    const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+    const newSets = [...sets];
+    const temp = newSets[idx];
+    newSets[idx] = newSets[targetIdx];
+    newSets[targetIdx] = temp;
+
+    newSets.forEach((s, i) => {
+      s.set_order = i + 1;
+    });
+
+    await db.transaction("rw", db.sets, async () => {
+      for (const s of newSets) {
+        await db.sets.put(s);
+      }
+    });
+
+    setSets(newSets);
+  }
+
   // 體感 Tag 單擊切換 / 加入
   function handleToggleFeelingTag(tag: string) {
     if (tag === "熱身") {
@@ -627,9 +678,13 @@ export default function WorkoutDetailPage({
     setsByExercise.push({ exercise: ex, sets: exSets });
   }
 
-  const displayExercises = exercises.filter((e) =>
-    matchesTargetMuscle(e, session.target_muscle)
-  );
+  const displayExercises = exercises
+    .filter((e) => matchesTargetMuscle(e, session.target_muscle))
+    .sort((a, b) => {
+      if (a.is_favorite && !b.is_favorite) return -1;
+      if (!a.is_favorite && b.is_favorite) return 1;
+      return 0;
+    });
 
   const current1RM = calculate1RM(parseFloat(inputWeight) || 0, parseInt(inputReps, 10) || 0);
   const exercisePR = selectedExId ? maxPrMap[selectedExId] : null;
@@ -671,6 +726,15 @@ export default function WorkoutDetailPage({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* 原生分享按鈕 */}
+          <button
+            onClick={handleShareSession}
+            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] text-blue-400 hover:text-blue-300 rounded-xl active:scale-95 transition-all"
+            title="分享訓練紀錄"
+          >
+            <Share2 className="w-4 h-4" />
+          </button>
+
           {/* 一鍵複製 Markdown 按鈕 */}
           <button
             onClick={handleCopyMarkdown}
@@ -698,6 +762,30 @@ export default function WorkoutDetailPage({
           >
             <Trash2 className="w-4 h-4" />
           </button>
+        </div>
+      </div>
+
+      {/* 訓練總容量與數據看板 */}
+      <div className="grid grid-cols-3 gap-2 bg-[#12141c] border border-[#262b3d] rounded-2xl p-2.5 text-center shadow-md">
+        <div className="bg-[#181b26] p-2 rounded-xl border border-[#262b3d]/60">
+          <span className="text-[10px] text-gray-400 block mb-0.5">本場總容量</span>
+          <span className="text-xs sm:text-sm font-black text-white">
+            {sets.reduce((sum, s) => sum + s.weight_kg * s.reps, 0) >= 1000
+              ? `${Math.round((sets.reduce((sum, s) => sum + s.weight_kg * s.reps, 0) / 1000) * 10) / 10} 噸`
+              : `${sets.reduce((sum, s) => sum + s.weight_kg * s.reps, 0)} Kg`}
+          </span>
+        </div>
+        <div className="bg-[#181b26] p-2 rounded-xl border border-[#262b3d]/60">
+          <span className="text-[10px] text-gray-400 block mb-0.5">已記錄組數</span>
+          <span className="text-xs sm:text-sm font-black text-emerald-400">
+            {sets.length} 組
+          </span>
+        </div>
+        <div className="bg-[#181b26] p-2 rounded-xl border border-[#262b3d]/60">
+          <span className="text-[10px] text-gray-400 block mb-0.5">執行動作數</span>
+          <span className="text-xs sm:text-sm font-black text-amber-300">
+            {setsByExercise.length} 個動作
+          </span>
         </div>
       </div>
 
@@ -1107,6 +1195,17 @@ export default function WorkoutDetailPage({
               {timerActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
             </button>
             <button
+              onClick={() => setIsMuted(!isMuted)}
+              className={`p-1.5 rounded-lg border transition-all ${
+                isMuted
+                  ? "bg-red-500/20 text-red-300 border-red-500/40"
+                  : "bg-[#181b26] text-gray-400 hover:text-white border-[#262b3d]"
+              }`}
+              title={isMuted ? "已靜音" : "開啟倒數音效"}
+            >
+              {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+            </button>
+            <button
               onClick={() => setTimerSeconds(null)}
               className="p-1.5 text-gray-500 hover:text-white"
             >
@@ -1208,6 +1307,30 @@ export default function WorkoutDetailPage({
                           力竭
                         </span>
                       )}
+
+                      {/* ⇅ 調整組數順序 */}
+                      <div className="flex items-center text-gray-500 opacity-60 group-hover:opacity-100 transition-opacity">
+                        {sIdx > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleMoveSet(s.id, "up")}
+                            className="p-1 hover:text-white transition-colors"
+                            title="往前移動一組"
+                          >
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {sIdx < exSets.length - 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleMoveSet(s.id, "down")}
+                            className="p-1 hover:text-white transition-colors"
+                            title="往後移動一組"
+                          >
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
 
                       {/* ✏️ 修改此組按鈕 */}
                       <button
