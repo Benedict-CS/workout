@@ -860,6 +860,19 @@ export default function WorkoutDetailPage({
   const exercisePR = selectedExId ? maxPrMap[selectedExId] : null;
   const isNewPR = exercisePR && current1RM > 0 && current1RM > exercisePR.max1RM;
 
+  // 計算當前動作下一組的超負荷目標 (比對上次訓練同一組的重量與次數)
+  const currentExSets = sets.filter((s) => s.exercise_id === selectedExId);
+  const currentGhostSets = selectedExId ? ghostMap[selectedExId] : undefined;
+  const refGhostSet = currentGhostSets && currentGhostSets[currentExSets.length];
+  const overloadGoal =
+    refGhostSet && refGhostSet.weight_kg > 0
+      ? {
+          setNumber: currentExSets.length + 1,
+          prevWeight: refGhostSet.weight_kg,
+          prevReps: refGhostSet.reps,
+        }
+      : null;
+
   const currentPlateCalc = calculateBarbellPlates(plateCalcWeight, barWeight);
 
   return (
@@ -1949,6 +1962,42 @@ export default function WorkoutDetailPage({
             ))}
           </div>
         </div>
+
+        {/* 漸進式超負荷目標提示 (自動比對上次同一組重量與次數) */}
+        {overloadGoal && (
+          <div className="bg-[#181b26] border border-emerald-500/30 rounded-xl px-2.5 py-1.5 text-xs flex items-center justify-between gap-1.5 animate-in fade-in duration-150">
+            <div className="flex items-center gap-1.5 text-emerald-300 min-w-0">
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="text-[11px] truncate">
+                上次第 {overloadGoal.setNumber} 組：<strong>{overloadGoal.prevWeight}Kg × {overloadGoal.prevReps}</strong>
+              </span>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setInputWeight(overloadGoal.prevWeight.toString());
+                  setInputReps((overloadGoal.prevReps + 1).toString());
+                }}
+                className="px-2 py-0.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-lg text-[10px] font-bold active:scale-95 transition-all"
+                title="挑戰多做一下"
+              >
+                +1下 ({overloadGoal.prevReps + 1})
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setInputWeight((overloadGoal.prevWeight + 2.5).toString());
+                  setInputReps(overloadGoal.prevReps.toString());
+                }}
+                className="px-2 py-0.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-lg text-[10px] font-bold active:scale-95 transition-all"
+                title="挑戰加重 2.5Kg"
+              >
+                +2.5Kg
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 重量與次數輸入 (附微調按鈕與槓片換算器) */}
         <div className="space-y-1.5 pt-1">

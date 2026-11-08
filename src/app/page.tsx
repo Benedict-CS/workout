@@ -17,6 +17,7 @@ import {
 import { db } from "@/lib/db/schema";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
 import { formatSessionToMarkdown } from "@/lib/markdown-generator";
+import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 import type { BigThreeRecord, WorkoutSession, SetItem, Exercise } from "@/lib/types";
 
 export default function HomePage() {
@@ -119,6 +120,9 @@ export default function HomePage() {
           <span>{copyToast}</span>
         </div>
       )}
+
+      {/* PWA 加入主畫面提示 Banner */}
+      <PWAInstallBanner />
 
       {/* 頂部三項數據卡片 */}
       <section className="bg-gradient-to-br from-[#181b26] to-[#12141c] border border-[#262b3d] rounded-2xl p-4 shadow-xl relative overflow-hidden">
