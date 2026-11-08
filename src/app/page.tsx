@@ -27,6 +27,7 @@ export default function HomePage() {
   const [monthStats, setMonthStats] = useState<Record<string, number>>({});
   const [sessionSetsMap, setSessionSetsMap] = useState<Record<string, SetItem[]>>({});
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [lastMuscleMap, setLastMuscleMap] = useState<Record<string, string>>({});
   const [copyToast, setCopyToast] = useState<string | null>(null);
 
   useEffect(() => {
@@ -48,6 +49,31 @@ export default function HomePage() {
           .sortBy("date")
           .then((l) => l.slice(0, 15));
         setRecentSessions(sessions);
+
+        // 計算各部位最後一次訓練距今日期
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        function formatDaysAgo(dateStr: string): string {
+          const parts = dateStr.split("-").map(Number);
+          const target = new Date(parts[0], parts[1] - 1, parts[2]);
+          target.setHours(0, 0, 0, 0);
+          const diffDays = Math.round((today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
+          if (diffDays === 0) return "今天";
+          if (diffDays === 1) return "昨天";
+          if (diffDays === 2) return "前天";
+          if (diffDays < 0) return `${Math.abs(diffDays)}天後`;
+          return `${diffDays}天前`;
+        }
+
+        const muscleDaysMap: Record<string, string> = {};
+        for (const s of sessions) {
+          if (s.target_muscle.includes("胸") && !muscleDaysMap["胸"]) muscleDaysMap["胸"] = formatDaysAgo(s.date);
+          if (s.target_muscle.includes("背") && !muscleDaysMap["背"]) muscleDaysMap["背"] = formatDaysAgo(s.date);
+          if (s.target_muscle.includes("腿") && !muscleDaysMap["腿"]) muscleDaysMap["腿"] = formatDaysAgo(s.date);
+          if (s.target_muscle.includes("游泳") && !muscleDaysMap["游泳"]) muscleDaysMap["游泳"] = formatDaysAgo(s.date);
+        }
+        setLastMuscleMap(muscleDaysMap);
 
         // 讀取最近 sessions 的組數預覽
         const sessionIds = sessions.map((s) => s.id);
@@ -218,6 +244,9 @@ export default function HomePage() {
           >
             <span className="text-red-400 text-sm">🔥</span>
             <span>練胸日</span>
+            <span className="text-[9px] text-gray-400 font-normal">
+              {lastMuscleMap["胸"] || "未記錄"}
+            </span>
           </Link>
           <Link
             href="/workout/new?muscle=背部"
@@ -225,6 +254,9 @@ export default function HomePage() {
           >
             <span className="text-blue-400 text-sm">⚡</span>
             <span>練背日</span>
+            <span className="text-[9px] text-gray-400 font-normal">
+              {lastMuscleMap["背"] || "未記錄"}
+            </span>
           </Link>
           <Link
             href="/workout/new?muscle=腿部"
@@ -232,6 +264,9 @@ export default function HomePage() {
           >
             <span className="text-emerald-400 text-sm">🦵</span>
             <span>練腿日</span>
+            <span className="text-[9px] text-gray-400 font-normal">
+              {lastMuscleMap["腿"] || "未記錄"}
+            </span>
           </Link>
           <Link
             href="/workout/new?muscle=游泳"
@@ -239,6 +274,9 @@ export default function HomePage() {
           >
             <span className="text-cyan-400 text-sm">🏊</span>
             <span>游泳/有氧</span>
+            <span className="text-[9px] text-gray-400 font-normal">
+              {lastMuscleMap["游泳"] || "未記錄"}
+            </span>
           </Link>
         </div>
       </div>

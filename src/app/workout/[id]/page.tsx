@@ -37,6 +37,11 @@ import {
   BookOpen,
   RefreshCw,
   Camera,
+  Star,
+  StarOff,
+  Bell,
+  Search,
+  Zap,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import {
@@ -49,6 +54,8 @@ import {
   calculate1RM,
   calculateBarbellPlates,
   generateWarmupPlan,
+  calculateSetVolume,
+  calculateTotalVolume,
   type WarmupSetPlan,
 } from "@/lib/calc";
 import { formatSessionToMarkdown } from "@/lib/markdown-generator";
@@ -173,6 +180,15 @@ export default function WorkoutDetailPage({
   const [inputType, setInputType] = useState<SetType>("normal");
   const [inputNotes, setInputNotes] = useState<string>("");
 
+  // 遞減組 (Drop Set) 二段輸入模式
+  const [isDropSetMode, setIsDropSetMode] = useState<boolean>(false);
+  const [dropWeight, setDropWeight] = useState<string>("");
+  const [dropReps, setDropReps] = useState<string>("4");
+
+  // 底部動作選擇器分類篩選與快速搜尋
+  const [dockMuscleFilter, setDockMuscleFilter] = useState<string>("current");
+  const [dockExerciseSearch, setDockExerciseSearch] = useState<string>("");
+
   // Markdown 檢視與複製 Modal
   const [showMarkdownModal, setShowMarkdownModal] = useState(false);
   const [copyToast, setCopyToast] = useState(false);
@@ -240,6 +256,16 @@ export default function WorkoutDetailPage({
 
     if (typeof navigator !== "undefined" && navigator.vibrate) {
       navigator.vibrate([200, 100, 200, 100, 400]);
+    }
+
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+      try {
+        new Notification("⏱️ 休息時間結束！", {
+          body: `${session?.target_muscle || "訓練"} 組間休息結束，該進行下一組了！加油！`,
+          icon: "/icons/icon-192.png",
+          tag: "workout-rest-timer",
+        });
+      } catch {}
     }
   }
 
@@ -638,19 +664,30 @@ export default function WorkoutDetailPage({
     const repsNum = parseInt(inputReps, 10) || 0;
 
     const exSets = sets.filter((s) => s.exercise_id === selectedExId);
-    const formalIndex = exSets.filter((s) => s.set_type === "normal").length + 1;
+    const formalIndex = exSets.filter((s) => s.set_type === "normal" || s.set_type === "drop").length + 1;
 
     let raw = "";
-    if (inputType === "warmup") {
+    let restDetail: string | undefined = undefined;
+
+    if (isDropSetMode && dropWeight && dropReps) {
+      const dropWNum = parseFloat(dropWeight) || 0;
+      const dropRNum = parseInt(dropReps, 10) || 0;
+      raw = `set ${formalIndex}: ${weightNum}Kg x${repsNum} + ${dropWNum}Kg x${dropRNum} (遞減組)`;
+      restDetail = `${dropWNum}Kg x${dropRNum} (遞減組)`;
+      if (inputNotes.trim()) {
+        raw += ` ${inputNotes.trim()}`;
+      }
+    } else if (inputType === "warmup") {
       raw = `${weightNum}Kg x${repsNum} 熱身`;
+      if (inputNotes.trim()) raw += ` ${inputNotes.trim()}`;
     } else if (inputType === "primer") {
       raw = `${weightNum}Kg x${repsNum} 神經激發`;
+      if (inputNotes.trim()) raw += ` ${inputNotes.trim()}`;
     } else {
       raw = `set ${formalIndex}: ${weightNum}Kg x${repsNum}`;
-    }
-
-    if (inputNotes.trim()) {
-      raw += ` ${inputNotes.trim()}`;
+      if (inputNotes.trim()) {
+        raw += ` ${inputNotes.trim()}`;
+      }
     }
 
     const isFailure = inputNotes.includes("力竭") || inputType === "cooldown";
@@ -660,10 +697,11 @@ export default function WorkoutDetailPage({
       session_id: id,
       exercise_id: selectedExId,
       set_order: newOrder,
-      set_type: inputType,
+      set_type: isDropSetMode ? "drop" : inputType,
       weight_kg: weightNum,
       reps: repsNum,
       raw_text: raw,
+      rest_pause_detail: restDetail,
       is_failure: isFailure,
       feedback: inputNotes || undefined,
       notes: inputNotes || undefined,
@@ -692,6 +730,8 @@ export default function WorkoutDetailPage({
     }
 
     setInputNotes("");
+    setIsDropSetMode(false);
+    setInputType("normal");
   }
 
   // 一鍵重複上一組 (Duplicate Last Set)
@@ -871,14 +911,16 @@ export default function WorkoutDetailPage({
   function handleToggleFeelingTag(tag: string) {
     if (tag === "熱身") {
       setInputType("warmup");
+      setIsDropSetMode(false);
       return;
     }
     if (tag === "神經激發") {
       setInputType("primer");
+      setIsDropSetMode(false);
       return;
     }
     if (tag === "遞減組") {
-      setInputType("drop");
+      toggleDropSetMode();
       return;
     }
     if (inputNotes.includes(tag)) {
@@ -886,6 +928,85 @@ export default function WorkoutDetailPage({
     } else {
       setInputNotes((prev) => (prev ? `${prev} ${tag}` : tag));
     }
+  }
+
+  // 遞減組模式切換 (自動推算推薦降重重量)
+  function toggleDropSetMode() {
+    const nextDrop = !isDropSetMode;
+    setIsDropSetMode(nextDrop);
+    setInputType(nextDrop ? "drop" : "normal");
+    if (nextDrop) {
+      const curW = parseFloat(inputWeight) || 0;
+      const autoDrop = curW > 10 ? (Math.round((curW * 0.75) / 2.5) * 2.5).toString() : Math.max(0, curW - 2.5).toString();
+      setDropWeight(autoDrop);
+      if (!dropReps) setDropReps("4");
+    }
+  }
+
+  function adjustDropWeight(delta: number) {
+    const cur = parseFloat(dropWeight) || 0;
+    const next = Math.max(0, cur + delta);
+    setDropWeight(next.toString());
+  }
+
+  function adjustDropReps(delta: number) {
+    const cur = parseInt(dropReps, 10) || 0;
+    const next = Math.max(1, cur + delta);
+    setDropReps(next.toString());
+  }
+
+  // 標記/取消 動作為常用最愛 (永久儲存至 IndexedDB)
+  async function handleToggleFavoriteExercise(exerciseId: string, e?: React.MouseEvent) {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    const ex = exercises.find((item) => item.id === exerciseId);
+    if (!ex) return;
+    const updated = {
+      ...ex,
+      is_favorite: !ex.is_favorite,
+      updated_at: new Date().toISOString(),
+    };
+    await db.exercises.put(updated);
+    setExercises((prev) => prev.map((item) => (item.id === exerciseId ? updated : item)));
+  }
+
+  // 調整整個動作群組在今日訓練中的上下順序
+  async function handleMoveExercise(exId: string, direction: "up" | "down") {
+    const currentOrder = [...exerciseIdOrder];
+    const index = currentOrder.indexOf(exId);
+    if (index === -1) return;
+    if (direction === "up" && index === 0) return;
+    if (direction === "down" && index === currentOrder.length - 1) return;
+
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    const temp = currentOrder[index];
+    currentOrder[index] = currentOrder[targetIndex];
+    currentOrder[targetIndex] = temp;
+
+    const reordered: SetItem[] = [];
+    for (const groupExId of currentOrder) {
+      const groupSets = sets.filter((s) => s.exercise_id === groupExId);
+      reordered.push(...groupSets);
+    }
+    for (const s of sets) {
+      if (!currentOrder.includes(s.exercise_id)) {
+        reordered.push(s);
+      }
+    }
+
+    reordered.forEach((s, idx) => {
+      s.set_order = idx + 1;
+    });
+
+    await db.transaction("rw", db.sets, async () => {
+      for (const s of reordered) {
+        await db.sets.put(s);
+      }
+    });
+
+    setSets(reordered);
   }
 
   // 微調重量
@@ -924,12 +1045,34 @@ export default function WorkoutDetailPage({
     setsByExercise.push({ exercise: ex, sets: exSets });
   }
 
+  // 底部動作挑選膠囊過濾邏輯 (支援本場部位、常用最愛、各肌群、以及即時搜尋)
   const displayExercises = exercises
-    .filter((e) => matchesTargetMuscle(e, session.target_muscle))
+    .filter((e) => {
+      if (dockExerciseSearch.trim()) {
+        const query = dockExerciseSearch.trim().toLowerCase();
+        if (
+          !e.name.toLowerCase().includes(query) &&
+          !e.muscle_group.toLowerCase().includes(query)
+        ) {
+          return false;
+        }
+      }
+
+      if (dockMuscleFilter === "current") {
+        return matchesTargetMuscle(e, session.target_muscle);
+      }
+      if (dockMuscleFilter === "favorite") {
+        return !!e.is_favorite;
+      }
+      if (dockMuscleFilter === "all") {
+        return true;
+      }
+      return e.muscle_group === dockMuscleFilter;
+    })
     .sort((a, b) => {
       if (a.is_favorite && !b.is_favorite) return -1;
       if (!a.is_favorite && b.is_favorite) return 1;
-      return 0;
+      return a.name.localeCompare(b.name, "zh-Hant");
     });
 
   const current1RM = calculate1RM(parseFloat(inputWeight) || 0, parseInt(inputReps, 10) || 0);
@@ -950,7 +1093,7 @@ export default function WorkoutDetailPage({
       : null;
 
   const currentPlateCalc = calculateBarbellPlates(plateCalcWeight, barWeight);
-  const totalVolumeKg = sets.reduce((sum, s) => sum + s.weight_kg * s.reps, 0);
+  const totalVolumeKg = calculateTotalVolume(sets);
 
   return (
     <div className="space-y-4 pb-20">
@@ -1068,9 +1211,9 @@ export default function WorkoutDetailPage({
         <div className="bg-[#181b26] p-2 rounded-xl border border-[#262b3d]/60">
           <span className="text-[10px] text-gray-400 block mb-0.5">本場總容量</span>
           <span className="text-xs sm:text-sm font-black text-white">
-            {sets.reduce((sum, s) => sum + s.weight_kg * s.reps, 0) >= 1000
-              ? `${Math.round((sets.reduce((sum, s) => sum + s.weight_kg * s.reps, 0) / 1000) * 10) / 10} 噸`
-              : `${sets.reduce((sum, s) => sum + s.weight_kg * s.reps, 0)} Kg`}
+            {totalVolumeKg >= 1000
+              ? `${Math.round((totalVolumeKg / 1000) * 10) / 10} 噸`
+              : `${totalVolumeKg} Kg`}
           </span>
         </div>
         <div className="bg-[#181b26] p-2 rounded-xl border border-[#262b3d]/60">
@@ -1935,6 +2078,30 @@ export default function WorkoutDetailPage({
                   )}
                 </div>
                 <div className="flex items-center gap-1.5">
+                  {exercise && exerciseIdOrder.length > 1 && (
+                    <div className="flex items-center text-gray-500 mr-0.5">
+                      {idx > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleMoveExercise(exercise.id, "up")}
+                          className="p-1 hover:text-white transition-colors"
+                          title="將此動作順序往前移"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {idx < exerciseIdOrder.length - 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleMoveExercise(exercise.id, "down")}
+                          className="p-1 hover:text-white transition-colors"
+                          title="將此動作順序往後移"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  )}
                   <span className="text-xs bg-[#181b26] text-gray-300 px-2 py-0.5 rounded border border-[#262b3d]">
                     {exSets.length} 組
                   </span>
@@ -2153,22 +2320,113 @@ export default function WorkoutDetailPage({
             </div>
           )}
 
-          {/* 固定動作快速膠囊列 (Quick Buttons)：單擊直接切換 */}
-          <div className="flex flex-wrap gap-1.5 pt-0.5">
-            {displayExercises.map((ex) => (
-              <button
-                key={ex.id}
-                type="button"
-                onClick={() => handleSelectExercise(ex.id)}
-                className={`text-xs px-3 py-1.5 rounded-xl border transition-all ${
-                  selectedExId === ex.id
-                    ? "bg-emerald-500 text-black border-emerald-400 font-black shadow-md scale-[1.02]"
-                    : "bg-[#181b26] border-[#262b3d] text-gray-300 hover:border-gray-500 font-medium"
-                }`}
-              >
-                {ex.name}
-              </button>
-            ))}
+          {/* 動作分類篩選與快速搜尋 */}
+          <div className="space-y-1.5 pt-0.5">
+            <div className="flex items-center justify-between gap-1.5">
+              {/* 分類切換膠囊 */}
+              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
+                <button
+                  type="button"
+                  onClick={() => setDockMuscleFilter("current")}
+                  className={`text-[11px] px-2.5 py-1 rounded-lg border font-bold shrink-0 transition-all ${
+                    dockMuscleFilter === "current"
+                      ? "bg-emerald-500 text-black border-emerald-400"
+                      : "bg-[#181b26] text-gray-400 border-[#262b3d] hover:text-white"
+                  }`}
+                >
+                  🎯 本場 ({session.target_muscle})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDockMuscleFilter("favorite")}
+                  className={`text-[11px] px-2.5 py-1 rounded-lg border font-bold shrink-0 transition-all flex items-center gap-1 ${
+                    dockMuscleFilter === "favorite"
+                      ? "bg-amber-500 text-black border-amber-400"
+                      : "bg-[#181b26] text-amber-400/80 border-[#262b3d] hover:text-amber-300"
+                  }`}
+                >
+                  <Star className="w-3 h-3 fill-current" />
+                  <span>常用</span>
+                </button>
+
+                {["胸部", "背部", "腿部", "肩部", "手臂", "all"].map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setDockMuscleFilter(cat)}
+                    className={`text-[11px] px-2 py-1 rounded-lg border font-medium shrink-0 transition-all ${
+                      dockMuscleFilter === cat
+                        ? "bg-emerald-500 text-black border-emerald-400 font-bold"
+                        : "bg-[#181b26] text-gray-400 border-[#262b3d] hover:text-white"
+                    }`}
+                  >
+                    {cat === "all" ? "全部" : cat.replace("部", "")}
+                  </button>
+                ))}
+              </div>
+
+              {/* 搜尋動作輸入框 */}
+              <div className="relative shrink-0 w-28 sm:w-36">
+                <Search className="w-3 h-3 absolute left-2 top-2 text-gray-500" />
+                <input
+                  type="text"
+                  placeholder="搜尋動作..."
+                  value={dockExerciseSearch}
+                  onChange={(e) => setDockExerciseSearch(e.target.value)}
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-[11px] rounded-lg pl-6 pr-5 py-1 outline-none focus:border-emerald-500"
+                />
+                {dockExerciseSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setDockExerciseSearch("")}
+                    className="absolute right-1.5 top-1.5 text-gray-400 hover:text-white"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 固定動作快速膠囊列 (Quick Buttons) 附 ⭐ 最愛標記 */}
+            <div className="flex flex-wrap gap-1.5 pt-0.5 max-h-36 overflow-y-auto pr-0.5">
+              {displayExercises.length === 0 ? (
+                <div className="text-gray-500 text-xs py-2 w-full text-center">
+                  未找到相符動作，可點擊上方「＋ 自訂新動作」
+                </div>
+              ) : (
+                displayExercises.map((ex) => (
+                  <div
+                    key={ex.id}
+                    className={`flex items-center rounded-xl border text-xs transition-all ${
+                      selectedExId === ex.id
+                        ? "bg-emerald-500 text-black border-emerald-400 font-black shadow-md scale-[1.02]"
+                        : "bg-[#181b26] border-[#262b3d] text-gray-300 hover:border-gray-500 font-medium"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleSelectExercise(ex.id)}
+                      className="px-2.5 py-1.5 text-left truncate max-w-[150px] sm:max-w-none"
+                    >
+                      {ex.name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => handleToggleFavoriteExercise(ex.id, e)}
+                      className={`pr-2 py-1.5 transition-colors ${
+                        selectedExId === ex.id
+                          ? ex.is_favorite ? "text-amber-900 hover:text-black" : "text-emerald-900/40 hover:text-black"
+                          : ex.is_favorite ? "text-amber-400" : "text-gray-600 hover:text-amber-400"
+                      }`}
+                      title={ex.is_favorite ? "取消常用最愛" : "標記為常用動作"}
+                    >
+                      <Star className={`w-3 h-3 ${ex.is_favorite ? "fill-current" : ""}`} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
 
@@ -2377,6 +2635,119 @@ export default function WorkoutDetailPage({
                   ))}
                 </div>
               </div>
+
+              {/* 遞減組模式快速開關 */}
+              <div className="flex items-center justify-between border-t border-[#262b3d]/60 pt-2">
+                <button
+                  type="button"
+                  onClick={toggleDropSetMode}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all ${
+                    isDropSetMode
+                      ? "bg-gradient-to-r from-amber-500 to-amber-600 text-black border-amber-400 shadow-md font-black"
+                      : "bg-[#181b26] text-amber-400 border-amber-500/30 hover:border-amber-400 hover:bg-[#202533]"
+                  }`}
+                >
+                  <Zap className={`w-3.5 h-3.5 ${isDropSetMode ? "fill-current" : ""}`} />
+                  <span>{isDropSetMode ? "⚡ 遞減組模式 (已開啟)" : "⚡ 遞減組 (Drop Set)"}</span>
+                </button>
+
+                {isDropSetMode && (
+                  <span className="text-[11px] text-amber-300 font-mono">
+                    預覽: + {dropWeight || "?"}Kg x{dropReps || "?"}
+                  </span>
+                )}
+              </div>
+
+              {/* 遞減組二段降重輸入面板 */}
+              {isDropSetMode && (
+                <div className="bg-[#181b26]/90 border border-amber-500/40 rounded-xl p-2.5 space-y-2 animate-in slide-in-from-top-1 duration-150">
+                  <div className="flex items-center justify-between text-xs text-amber-300 font-bold">
+                    <span className="flex items-center gap-1">
+                      <Zap className="w-3 h-3 fill-current" />
+                      <span>二段降重數據 (Drop Weight & Reps)</span>
+                    </span>
+                    <span className="text-[10px] text-gray-400">自動格式化為 Markdown 遞減組</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-gray-400 block mb-1">二段重量 (Kg)</label>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => adjustDropWeight(-2.5)}
+                          className="px-2 py-2 bg-[#090a0f] text-gray-300 rounded-lg border border-[#262b3d] text-xs font-bold active:scale-95"
+                        >
+                          -2.5
+                        </button>
+                        <input
+                          type="number"
+                          step="0.5"
+                          placeholder="40"
+                          value={dropWeight}
+                          onChange={(e) => setDropWeight(e.target.value)}
+                          className="w-full bg-[#090a0f] border border-[#262b3d] text-amber-300 text-sm font-black rounded-lg p-2 text-center focus:border-amber-500 outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => adjustDropWeight(2.5)}
+                          className="px-2 py-2 bg-[#090a0f] text-gray-300 rounded-lg border border-[#262b3d] text-xs font-bold active:scale-95"
+                        >
+                          +2.5
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-gray-400 block mb-1">二段次數 (Reps)</label>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => adjustDropReps(-1)}
+                          className="px-2 py-2 bg-[#090a0f] text-gray-300 rounded-lg border border-[#262b3d] text-xs font-bold active:scale-95"
+                        >
+                          -1
+                        </button>
+                        <input
+                          type="number"
+                          placeholder="4"
+                          value={dropReps}
+                          onChange={(e) => setDropReps(e.target.value)}
+                          className="w-full bg-[#090a0f] border border-[#262b3d] text-amber-300 text-sm font-black rounded-lg p-2 text-center focus:border-amber-500 outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => adjustDropReps(1)}
+                          className="px-2 py-2 bg-[#090a0f] text-gray-300 rounded-lg border border-[#262b3d] text-xs font-bold active:scale-95"
+                        >
+                          +1
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 常用遞減次數快選 */}
+                  <div className="flex items-center justify-between gap-1 pt-0.5">
+                    <span className="text-[10px] text-gray-500">二段次數快選：</span>
+                    <div className="flex gap-1">
+                      {[2, 3, 4, 5, 6].map((r) => (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => setDropReps(r.toString())}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all ${
+                            dropReps === r.toString()
+                              ? "bg-amber-500 text-black border-amber-400"
+                              : "bg-[#090a0f] text-gray-400 border-[#262b3d] hover:text-white"
+                          }`}
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* 新 PR 提醒提示 */}
               {isNewPR && (

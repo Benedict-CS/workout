@@ -27,6 +27,7 @@ import {
 } from "recharts";
 import { db } from "@/lib/db/schema";
 import { estimate1RM } from "@/lib/db/crud";
+import { calculateSetVolume } from "@/lib/calc";
 import type { WorkoutSession, SetItem, Exercise, BigThreeRecord } from "@/lib/types";
 
 interface PRItem {
@@ -156,7 +157,7 @@ export default function AnalyticsPage() {
             monthVolMap.set(mk, { totalKg: 0, setCount: 0, sessionIds: new Set() });
           }
           const rec = monthVolMap.get(mk)!;
-          rec.totalKg += setItem.weight_kg * setItem.reps;
+          rec.totalKg += calculateSetVolume(setItem);
           rec.setCount += 1;
           rec.sessionIds.add(sess.id);
         }

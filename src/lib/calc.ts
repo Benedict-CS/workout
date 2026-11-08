@@ -1,4 +1,4 @@
-import type { SetType } from "./types";
+import type { SetType, SetItem } from "./types";
 
 /**
  * 健身力量計算工具庫 (1RM 計算、槓鈴片換算、熱身組規劃、體重比)
@@ -139,4 +139,31 @@ export function generateWarmupPlan(
   }
 
   return plan;
+}
+
+export interface VolumableSet {
+  weight_kg: number;
+  reps: number;
+  raw_text?: string;
+}
+
+/**
+ * 精確計算單組的總訓練容量 (Kg)
+ * 支援一般組 (e.g. 60Kg x 8) 與遞減組/休息暫停組 (e.g. 45Kg x8 + 40Kg x4 (遞減組) 或 60Kg x4 + 休 + 55Kg x5)
+ */
+export function calculateSetVolume(s: VolumableSet): number {
+  if (s.raw_text) {
+    const matches = Array.from(s.raw_text.matchAll(/(\d+(?:\.\d+)?)\s*Kg\s*x\s*(\d+)/gi));
+    if (matches.length > 0) {
+      return matches.reduce((sum: number, m: RegExpMatchArray) => sum + parseFloat(m[1]) * parseInt(m[2], 10), 0);
+    }
+  }
+  return (s.weight_kg || 0) * (s.reps || 0);
+}
+
+/**
+ * 計算一組多筆做組紀錄的總容量 (Kg)
+ */
+export function calculateTotalVolume(sets: VolumableSet[]): number {
+  return sets.reduce((sum: number, s: VolumableSet) => sum + calculateSetVolume(s), 0);
 }

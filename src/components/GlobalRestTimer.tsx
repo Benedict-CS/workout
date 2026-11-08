@@ -1,12 +1,53 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Clock, Plus, X, ArrowUpRight, CheckCircle2 } from "lucide-react";
+import { Clock, Plus, X, ArrowUpRight, CheckCircle2, Bell, BellRing } from "lucide-react";
 
 interface TimerInfo {
   sessionId: string;
   title: string;
+}
+
+function playAlarmChime() {
+  try {
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new AudioContextClass();
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc1.type = "sine";
+    osc2.type = "sine";
+    osc1.frequency.setValueAtTime(880, ctx.currentTime);
+    osc2.frequency.setValueAtTime(1046, ctx.currentTime + 0.15);
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.9);
+    osc1.start(ctx.currentTime);
+    osc1.stop(ctx.currentTime + 0.15);
+    osc2.start(ctx.currentTime + 0.15);
+    osc2.stop(ctx.currentTime + 0.9);
+  } catch {}
+
+  if (typeof navigator !== "undefined" && navigator.vibrate) {
+    try {
+      navigator.vibrate([200, 100, 200, 100, 400]);
+    } catch {}
+  }
+}
+
+function triggerNotification(title: string) {
+  if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+    try {
+      new Notification("⏱️ 休息時間結束！", {
+        body: `${title} 組間休息結束，該進行下一組了！`,
+        icon: "/icons/icon-192.png",
+        tag: "workout-rest-timer",
+      });
+    } catch {}
+  }
 }
 
 export function GlobalRestTimer() {
@@ -16,14 +57,21 @@ export function GlobalRestTimer() {
   const [remaining, setRemaining] = useState<number | null>(null);
   const [timerInfo, setTimerInfo] = useState<TimerInfo | null>(null);
   const [isFinished, setIsFinished] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>("default");
+  const hasAlertedRef = useRef(false);
 
   useEffect(() => {
+    if (typeof Notification !== "undefined") {
+      setNotifPermission(Notification.permission);
+    }
+
     function updateState() {
       const storedEndStr = localStorage.getItem("workout_timer_end");
       const storedInfoStr = localStorage.getItem("workout_timer_info");
 
       if (!storedEndStr) {
         setRemaining(null);
+        hasAlertedRef.current = false;
         return;
       }
 
@@ -35,9 +83,18 @@ export function GlobalRestTimer() {
         setRemaining(0);
         setIsFinished(true);
         localStorage.removeItem("workout_timer_end");
+
+        if (!hasAlertedRef.current) {
+          hasAlertedRef.current = true;
+          playAlarmChime();
+          const title = storedInfoStr ? (JSON.parse(storedInfoStr)?.title || "訓練") : "訓練";
+          triggerNotification(title);
+        }
+
         setTimeout(() => {
           setIsFinished(false);
           setRemaining(null);
+          hasAlertedRef.current = false;
         }, 4000);
       } else {
         setRemaining(remain);
@@ -64,6 +121,14 @@ export function GlobalRestTimer() {
       window.removeEventListener("workout_timer_update", updateState);
     };
   }, []);
+
+  async function handleRequestNotification(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (typeof Notification !== "undefined") {
+      const perm = await Notification.requestPermission();
+      setNotifPermission(perm);
+    }
+  }
 
   // 如果目前使用者就在當前的 workout 詳情頁，則由該頁面的內建計時器展示，避免重疊
   const isCurrentlyInWorkoutPage =
@@ -142,6 +207,17 @@ export function GlobalRestTimer() {
       </div>
 
       <div className="flex items-center gap-1.5 shrink-0">
+        {notifPermission !== "granted" && typeof Notification !== "undefined" && (
+          <button
+            type="button"
+            onClick={handleRequestNotification}
+            className="p-1.5 bg-[#181b26] hover:bg-amber-500/20 text-gray-400 hover:text-amber-400 border border-[#262b3d] rounded-lg active:scale-95 transition-all"
+            title="開啟組間休息系統推播通知"
+          >
+            <Bell className="w-3.5 h-3.5" />
+          </button>
+        )}
+
         {!isFinished && (
           <button
             type="button"
