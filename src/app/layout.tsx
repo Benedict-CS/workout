@@ -6,6 +6,12 @@ import { Dumbbell, History, Activity, Settings, PlusCircle } from "lucide-react"
 export const metadata: Metadata = {
   title: "Workout - 力量訓練日誌",
   description: "專業力量訓練離線記錄 App，支援漸進式超負荷、休補暫停與歷史對比",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Workout",
+  },
 };
 
 export const viewport: Viewport = {

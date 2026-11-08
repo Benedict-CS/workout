@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -11,6 +11,12 @@ import {
   AlertCircle,
   CheckCircle2,
   History,
+  Timer,
+  Play,
+  Pause,
+  RotateCcw,
+  X,
+  Volume2,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { getLastExerciseSets } from "@/lib/db/crud";
@@ -36,6 +42,82 @@ export default function WorkoutDetailPage({
   const [inputReps, setInputReps] = useState<string>("");
   const [inputType, setInputType] = useState<string>("normal");
   const [inputNotes, setInputNotes] = useState<string>("");
+
+  // 組間休息計時器狀態
+  const [timerSeconds, setTimerSeconds] = useState<number | null>(null);
+  const [timerActive, setTimerActive] = useState<boolean>(false);
+  const [autoTimerEnabled, setAutoTimerEnabled] = useState<boolean>(true);
+  const [defaultRestDuration, setDefaultRestDuration] = useState<number>(90);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 提示音效
+  function playAlarm() {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.8);
+    } catch {}
+
+    if (typeof navigator !== "undefined" && navigator.vibrate) {
+      navigator.vibrate([200, 100, 200, 100, 400]);
+    }
+  }
+
+  // 計時器倒數邏輯
+  useEffect(() => {
+    if (timerActive && timerSeconds !== null && timerSeconds > 0) {
+      timerIntervalRef.current = setInterval(() => {
+        setTimerSeconds((prev) => {
+          if (prev === null || prev <= 1) {
+            clearInterval(timerIntervalRef.current!);
+            setTimerActive(false);
+            playAlarm();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    }
+    return () => {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    };
+  }, [timerActive, timerSeconds]);
+
+  function startRestTimer(seconds: number) {
+    setTimerSeconds(seconds);
+    setTimerActive(true);
+  }
+
+  function adjustTimer(delta: number) {
+    setTimerSeconds((prev) => Math.max(0, (prev || 0) + delta));
+  }
+
+  // 切換動作時智慧預填上一組數據
+  function handleSelectExercise(exId: string) {
+    setSelectedExId(exId);
+    // 找出今日已記錄的最後一組
+    const existingSets = sets.filter((s) => s.exercise_id === exId);
+    if (existingSets.length > 0) {
+      const last = existingSets[existingSets.length - 1];
+      setInputWeight(last.weight_kg.toString());
+      setInputReps(last.reps.toString());
+    } else if (ghostMap[exId] && ghostMap[exId].length > 0) {
+      // 若今日尚未記錄，從歷史幽靈對照抓第一組做組參考
+      const firstNormal = ghostMap[exId].find((s) => s.set_type === "normal") || ghostMap[exId][0];
+      setInputWeight(firstNormal.weight_kg.toString());
+      setInputReps(firstNormal.reps.toString());
+    }
+  }
 
   useEffect(() => {
     async function load() {
@@ -67,7 +149,14 @@ export default function WorkoutDetailPage({
         setGhostMap(ghostRecord);
 
         if (distinctExIds.length > 0) {
-          setSelectedExId(distinctExIds[0]);
+          const initialExId = distinctExIds[0];
+          setSelectedExId(initialExId);
+          const exSets = currentSets.filter((s) => s.exercise_id === initialExId);
+          if (exSets.length > 0) {
+            const last = exSets[exSets.length - 1];
+            setInputWeight(last.weight_kg.toString());
+            setInputReps(last.reps.toString());
+          }
         } else if (allEx.length > 0) {
           setSelectedExId(allEx[0].id);
         }
@@ -114,8 +203,12 @@ export default function WorkoutDetailPage({
       }
     }
 
-    // 重設輸入次數但保留重量
-    setInputReps("");
+    // 自動啟動組間休息倒數計時器
+    if (autoTimerEnabled) {
+      startRestTimer(defaultRestDuration);
+    }
+
+    // 保留重量與次數預填下一組，清空備註
     setInputNotes("");
   }
 
@@ -148,20 +241,81 @@ export default function WorkoutDetailPage({
   }
 
   return (
-    <div className="space-y-5 pb-10">
+    <div className="space-y-5 pb-12">
       {/* 頂部標題 */}
-      <div className="flex items-center gap-3">
-        <Link
-          href="/"
-          className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] rounded-xl text-gray-300 active:scale-95 transition-all"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-        <div>
-          <h1 className="text-lg font-black text-white">{session.display_title}</h1>
-          <p className="text-xs text-gray-400">{session.date}</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/"
+            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] rounded-xl text-gray-300 active:scale-95 transition-all"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <div>
+            <h1 className="text-lg font-black text-white">{session.display_title}</h1>
+            <p className="text-xs text-gray-400">{session.date}</p>
+          </div>
         </div>
+
+        {/* 休息倒數手動快速開關 */}
+        <button
+          onClick={() => (timerSeconds === null ? startRestTimer(90) : setTimerSeconds(null))}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+            timerSeconds !== null
+              ? "bg-amber-500/20 border-amber-500 text-amber-300"
+              : "bg-[#181b26] border-[#262b3d] text-gray-400 hover:text-white"
+          }`}
+        >
+          <Timer className="w-4 h-4" />
+          <span>{timerSeconds !== null ? `${timerSeconds}s` : "休息計時"}</span>
+        </button>
       </div>
+
+      {/* 浮動組間休息倒數 Bar (Sticky Header) */}
+      {timerSeconds !== null && (
+        <div className="bg-gradient-to-r from-amber-950/80 via-[#181b26] to-[#12141c] border border-amber-500/40 rounded-2xl p-3 shadow-2xl flex items-center justify-between text-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center font-black text-amber-400 text-sm">
+              {timerSeconds}
+            </div>
+            <div>
+              <span className="font-bold text-gray-200 block text-xs">
+                {timerSeconds === 0 ? "🔔 休息結束！該上槓了" : "組間休息倒數中"}
+              </span>
+              <span className="text-[10px] text-gray-400">
+                {timerActive ? "進行中" : "已暫停"}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => adjustTimer(-15)}
+              className="bg-[#090a0f] hover:bg-[#202533] text-gray-300 px-2 py-1 rounded-lg border border-[#262b3d] text-[11px]"
+            >
+              -15s
+            </button>
+            <button
+              onClick={() => adjustTimer(+30)}
+              className="bg-[#090a0f] hover:bg-[#202533] text-gray-300 px-2 py-1 rounded-lg border border-[#262b3d] text-[11px]"
+            >
+              +30s
+            </button>
+            <button
+              onClick={() => setTimerActive(!timerActive)}
+              className="p-1.5 bg-amber-500/20 text-amber-300 rounded-lg border border-amber-500/40"
+            >
+              {timerActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+            </button>
+            <button
+              onClick={() => setTimerSeconds(null)}
+              className="p-1.5 text-gray-500 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 動作與組數列表 */}
       <div className="space-y-4">
@@ -268,12 +422,22 @@ export default function WorkoutDetailPage({
             <Plus className="w-4 h-4" />
             <span>快速記錄下一組</span>
           </h4>
+          <div className="flex items-center gap-1.5 text-[11px] text-gray-400">
+            <input
+              type="checkbox"
+              id="autoTimer"
+              checked={autoTimerEnabled}
+              onChange={(e) => setAutoTimerEnabled(e.target.checked)}
+              className="accent-emerald-500 rounded"
+            />
+            <label htmlFor="autoTimer" className="cursor-pointer">儲存自動啟動計時</label>
+          </div>
         </div>
 
         {/* 選擇動作 */}
         <select
           value={selectedExId}
-          onChange={(e) => setSelectedExId(e.target.value)}
+          onChange={(e) => handleSelectExercise(e.target.value)}
           className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 focus:border-emerald-500 outline-none"
         >
           {exercises.map((ex) => (
@@ -283,7 +447,7 @@ export default function WorkoutDetailPage({
           ))}
         </select>
 
-        {/* 重量與次數輸入 */}
+        {/* 重量與次數輸入 (智慧預填) */}
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="text-[10px] text-gray-400 block mb-1">重量 (Kg)</label>
