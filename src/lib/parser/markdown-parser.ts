@@ -6,7 +6,7 @@ import type {
   SetType,
   WeightType,
   WorkoutSession,
-} from "../types.ts";
+} from "../types";
 
 export interface ParsedWorkoutData {
   bigThree: BigThreeRecord | null;
