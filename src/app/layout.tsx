@@ -7,6 +7,10 @@ export const metadata: Metadata = {
   title: "Workout - 力量訓練日誌",
   description: "專業力量訓練離線記錄 App，支援漸進式超負荷、休補暫停與歷史對比",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/icons/favicon-32.png",
+    apple: "/icons/apple-touch-icon.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -29,6 +33,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-TW">
+      <head>
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+      </head>
       <body className="antialiased">
         {/* 頂部導航列 */}
         <header className="sticky top-0 z-40 bg-[#090a0f]/80 backdrop-blur-md border-b border-[#262b3d]/60 px-4 py-3 flex items-center justify-between">
@@ -69,6 +78,23 @@ export default function RootLayout({
             <span>設定同步</span>
           </Link>
         </nav>
+
+        {/* 自動註冊 Service Worker 實現完整 PWA 離線快取 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').then(function(reg) {
+                    console.log('Workout PWA Service Worker Registered');
+                  }).catch(function(err) {
+                    console.warn('Workout PWA Service Worker Failed: ', err);
+                  });
+                });
+              }
+            `,
+          }}
+        />
       </body>
     </html>
   );
