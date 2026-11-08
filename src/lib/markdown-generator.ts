@@ -35,6 +35,27 @@ export function formatSessionToMarkdown(
     }
   }
 
+  // 如果是游泳紀錄，依個人筆記格式輸出簡潔的活動項目 (如: - 下午游泳)
+  if (session.target_muscle.includes("游泳")) {
+    const lines: string[] = [];
+    lines.push("<details>");
+    lines.push(`<summary><b>${summaryTitle}</b></summary>`);
+    if (sets.length === 0) {
+      lines.push("- 游泳");
+    } else {
+      for (const s of sets) {
+        let text = s.notes || s.raw_text?.replace(/^-+\s*/, "") || "游泳";
+        if (text.startsWith("set ")) {
+          text = s.notes || "游泳";
+        }
+        lines.push(`- ${text}`);
+      }
+    }
+    lines.push("");
+    lines.push("</details>");
+    return lines.join("\n");
+  }
+
   // 依動作群組化
   const groupedSets: { exercise: Exercise | undefined; sets: SetItem[] }[] = [];
   const exerciseIdOrder: string[] = [];

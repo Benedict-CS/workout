@@ -39,6 +39,7 @@ export default function HistoryPage() {
 
   const [monthKeys, setMonthKeys] = useState<string[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [copyToast, setCopyToast] = useState<string | null>(null);
@@ -211,6 +212,9 @@ export default function HistoryPage() {
 
   const filtered = sessions.filter((s) => {
     if (selectedMonth !== "all" && s.month_key !== selectedMonth) return false;
+    if (selectedLocation !== "all") {
+      if (!s.location || !s.location.includes(selectedLocation)) return false;
+    }
     if (
       searchQuery &&
       !s.display_title.toLowerCase().includes(searchQuery.toLowerCase()) &&
@@ -230,7 +234,7 @@ export default function HistoryPage() {
   const daysInCalMonth = new Date(calYear, calMonth, 0).getDate();
 
   const sessionsByDateMap = new Map<string, WorkoutSession[]>();
-  for (const s of sessions) {
+  for (const s of filtered) {
     if (!sessionsByDateMap.has(s.date)) {
       sessionsByDateMap.set(s.date, []);
     }
@@ -316,6 +320,39 @@ export default function HistoryPage() {
           <CalendarIcon className="w-3.5 h-3.5" />
           <span>月曆檢視</span>
         </button>
+      </div>
+
+      {/* 依訓練場地快速過濾 (交大健身房、三劍客...) */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-xs no-scrollbar">
+        <button
+          onClick={() => setSelectedLocation("all")}
+          className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all border ${
+            selectedLocation === "all"
+              ? "bg-emerald-500 text-black border-emerald-400 shadow-sm"
+              : "bg-[#12141c] text-gray-400 border-[#262b3d] hover:text-white"
+          }`}
+        >
+          全部場館 ({sessions.length})
+        </button>
+        {["交大健身房", "三劍客", "學校健身房", "健身工廠", "成吉思汗"].map((loc) => {
+          const count = sessions.filter((s) => s.location && s.location.includes(loc)).length;
+          if (count === 0 && selectedLocation !== loc) return null;
+          return (
+            <button
+              key={loc}
+              onClick={() => setSelectedLocation(selectedLocation === loc ? "all" : loc)}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all border flex items-center gap-1 ${
+                selectedLocation === loc
+                  ? "bg-blue-600 text-white border-blue-400 shadow-sm"
+                  : "bg-[#12141c] text-gray-400 border-[#262b3d] hover:text-white"
+              }`}
+            >
+              <MapPin className="w-3 h-3 text-blue-400" />
+              <span>{loc}</span>
+              <span className="text-[10px] opacity-75">({count})</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* 貼上 Markdown 匯入彈窗 */}

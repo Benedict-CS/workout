@@ -36,6 +36,7 @@ import {
   Flame,
   BookOpen,
   RefreshCw,
+  Camera,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import {
@@ -153,6 +154,10 @@ export default function WorkoutDetailPage({
   const [editDate, setEditDate] = useState("");
   const [editTargetMuscle, setEditTargetMuscle] = useState("");
   const [editLocation, setEditLocation] = useState("");
+
+  // 快捷場地切換與結算圖卡
+  const [showLocationQuickPicker, setShowLocationQuickPicker] = useState(false);
+  const [showShareCardModal, setShowShareCardModal] = useState(false);
 
   // 單組編輯狀態
   const [editingSet, setEditingSet] = useState<SetItem | null>(null);
@@ -505,6 +510,77 @@ export default function WorkoutDetailPage({
     });
 
     router.push("/");
+  }
+
+  // 1鍵快速切換場地 (交大健身房、三劍客...)
+  async function handleQuickUpdateLocation(newLoc: string) {
+    if (!session) return;
+    let newTitle = session.display_title;
+    if (session.location && newTitle.includes(session.location)) {
+      newTitle = newTitle.replace(session.location, newLoc);
+    } else {
+      const parts = newTitle.split(" - ");
+      if (parts.length >= 2) {
+        newTitle = `${parts[0]} - ${newLoc} - ${parts.slice(1).join(" - ")}`;
+      } else {
+        newTitle = `${newTitle} - ${newLoc}`;
+      }
+    }
+
+    const updated: WorkoutSession = {
+      ...session,
+      location: newLoc,
+      display_title: newTitle,
+      updated_at: new Date().toISOString(),
+    };
+
+    await db.sessions.put(updated);
+    setSession(updated);
+    setShowLocationQuickPicker(false);
+
+    // 更新計時器標題
+    const timerInfoStr = localStorage.getItem("workout_timer_info");
+    if (timerInfoStr) {
+      localStorage.setItem(
+        "workout_timer_info",
+        JSON.stringify({
+          sessionId: session.id,
+          title: `${session.target_muscle} (${newLoc})`,
+        })
+      );
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("workout_timer_update"));
+      }
+    }
+  }
+
+  // 記錄游泳項目
+  async function handleLogSwimActivity() {
+    if (!inputNotes.trim()) return;
+    let swimEx = exercises.find((e) => e.name.includes("游泳"));
+    if (!swimEx) {
+      swimEx = exercises[0];
+    }
+
+    const newOrder = sets.length + 1;
+    const newSet: SetItem = {
+      id: `set-${Date.now()}-${newOrder}`,
+      session_id: id,
+      exercise_id: swimEx ? swimEx.id : "swim-default",
+      set_order: newOrder,
+      set_type: "normal",
+      weight_kg: 0,
+      reps: 1,
+      raw_text: `- ${inputNotes.trim()}`,
+      notes: inputNotes.trim(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    };
+
+    await db.sets.add(newSet);
+    setSets((prev) => [...prev, newSet]);
+    setInputNotes("");
   }
 
   // 開啟修改單組
@@ -874,6 +950,7 @@ export default function WorkoutDetailPage({
       : null;
 
   const currentPlateCalc = calculateBarbellPlates(plateCalcWeight, barWeight);
+  const totalVolumeKg = sets.reduce((sum, s) => sum + s.weight_kg * s.reps, 0);
 
   return (
     <div className="space-y-4 pb-20">
@@ -897,18 +974,56 @@ export default function WorkoutDetailPage({
                 <Pencil className="w-3.5 h-3.5" />
               </button>
             </div>
-            <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
+            <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5 relative">
               <span>{session.date}</span>
               <span>•</span>
-              <span className="flex items-center gap-1 text-emerald-400 font-medium">
-                <MapPin className="w-3 h-3" />
-                {session.location || "交大健身房"}
-              </span>
+              <button
+                type="button"
+                onClick={() => setShowLocationQuickPicker((prev) => !prev)}
+                className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-medium bg-[#181b26] px-2 py-0.5 rounded-lg border border-[#262b3d] active:scale-95 transition-all"
+                title="點擊切換訓練場地"
+              >
+                <MapPin className="w-3 h-3 text-emerald-400" />
+                <span>{session.location || "交大健身房"}</span>
+                <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+              </button>
+
+              {/* 快速切換場地下拉 */}
+              {showLocationQuickPicker && (
+                <div className="absolute top-6 left-12 z-30 bg-[#12141c] border border-emerald-500/40 rounded-xl p-1.5 shadow-2xl space-y-1 text-xs animate-in zoom-in-95 duration-100 min-w-[130px]">
+                  <div className="text-[10px] text-gray-400 px-1.5 py-0.5 font-bold border-b border-[#262b3d]/60">
+                    切換訓練場地：
+                  </div>
+                  {["交大健身房", "三劍客", "學校健身房", "健身工廠", "成吉思汗"].map((loc) => (
+                    <button
+                      key={loc}
+                      type="button"
+                      onClick={() => handleQuickUpdateLocation(loc)}
+                      className={`w-full text-left px-2 py-1 rounded-lg transition-all text-xs ${
+                        session.location === loc
+                          ? "bg-emerald-500 text-black font-black"
+                          : "text-gray-300 hover:bg-[#181b26]"
+                      }`}
+                    >
+                      {loc}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* 📸 訓練結算圖卡按鈕 */}
+          <button
+            onClick={() => setShowShareCardModal(true)}
+            className="p-2 bg-[#12141c] hover:bg-amber-950/40 border border-[#262b3d] hover:border-amber-500/40 text-amber-400 hover:text-amber-300 rounded-xl active:scale-95 transition-all"
+            title="生成訓練打卡結算卡"
+          >
+            <Camera className="w-4 h-4" />
+          </button>
+
           {/* 原生分享按鈕 */}
           <button
             onClick={handleShareSession}
@@ -1000,6 +1115,100 @@ export default function WorkoutDetailPage({
           >
             沿用菜單
           </button>
+        </div>
+      )}
+
+      {/* 📸 訓練結算圖卡 Modal */}
+      {showShareCardModal && session && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12141c] border border-amber-500/40 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
+            {/* 卡片本體 (可截圖或分享) */}
+            <div className="bg-gradient-to-br from-[#181b26] via-[#12141c] to-[#090a0f] border border-[#262b3d] rounded-2xl p-5 space-y-4 text-center shadow-inner relative overflow-hidden">
+              <div className="absolute top-0 right-0 -mr-6 -mt-6 w-24 h-24 bg-amber-500/10 rounded-full blur-xl pointer-events-none" />
+
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[10px] font-black uppercase tracking-wider">
+                  <Trophy className="w-3 h-3" />
+                  <span>Workout Summary 結算</span>
+                </div>
+                <h3 className="text-lg font-black text-white">{session.target_muscle} 訓練達成</h3>
+                <div className="text-xs text-gray-400 flex items-center justify-center gap-1.5">
+                  <span>{session.date}</span>
+                  <span>•</span>
+                  <span className="text-blue-400 flex items-center gap-0.5">
+                    <MapPin className="w-3 h-3" />
+                    {session.location || "交大健身房"}
+                  </span>
+                </div>
+              </div>
+
+              {/* 核心數據統計 */}
+              <div className="grid grid-cols-2 gap-2 pt-1 text-left">
+                <div className="bg-[#090a0f]/80 p-3 rounded-xl border border-[#262b3d]">
+                  <span className="text-[10px] text-gray-400 block mb-0.5">總訓練量</span>
+                  <div className="text-base font-black text-amber-300">
+                    {(totalVolumeKg / 1000).toFixed(1)} <span className="text-xs font-normal text-gray-400">噸</span>
+                  </div>
+                  <span className="text-[10px] text-gray-500 block">({totalVolumeKg.toLocaleString()} Kg)</span>
+                </div>
+
+                <div className="bg-[#090a0f]/80 p-3 rounded-xl border border-[#262b3d]">
+                  <span className="text-[10px] text-gray-400 block mb-0.5">完成組數</span>
+                  <div className="text-base font-black text-emerald-400">
+                    {sets.length} <span className="text-xs font-normal text-gray-400">組</span>
+                  </div>
+                  <span className="text-[10px] text-gray-500 block">共 {setsByExercise.length} 個動作</span>
+                </div>
+              </div>
+
+              {/* 動作完成清單 */}
+              <div className="space-y-1.5 text-left pt-1">
+                <span className="text-[10px] text-gray-400 block font-bold">今日完成動作：</span>
+                <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                  {setsByExercise.map(({ exercise, sets: exSets }, idx) => (
+                    <div
+                      key={exercise?.id || idx}
+                      className="bg-[#181b26]/70 px-2.5 py-1.5 rounded-lg border border-[#262b3d] text-xs flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-1.5 truncate">
+                        <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span className="font-bold text-gray-200 truncate">{exercise?.name || "動作"}</span>
+                      </div>
+                      <span className="text-[11px] text-gray-400 shrink-0">{exSets.length} 組</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="text-[10px] text-gray-500 pt-1 border-t border-[#262b3d]/60 font-mono">
+                workout.benedicttiong.site
+              </div>
+            </div>
+
+            {/* 操作按鈕 */}
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const summaryText = `🏋️ ${session.display_title}\n🔥 總容量：${(totalVolumeKg / 1000).toFixed(1)} 噸 (${totalVolumeKg} Kg)\n⚡ 總組數：${sets.length} 組\n✅ 動作：${setsByExercise.map((g) => `${g.exercise?.name} (${g.sets.length}組)`).join("、")}\n\n紀錄於 workout.benedicttiong.site`;
+                  navigator.clipboard.writeText(summaryText);
+                  alert("已複製訓練結算文字簡報！可直接貼至 IG / Threads / Line 分享！");
+                }}
+                className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-2.5 rounded-xl text-xs transition-all shadow-lg flex items-center justify-center gap-1.5"
+              >
+                <Copy className="w-4 h-4 stroke-[2.5]" />
+                <span>複製打卡簡報文字</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowShareCardModal(false)}
+                className="w-full bg-[#181b26] hover:bg-[#202533] text-gray-400 hover:text-white py-2 rounded-xl text-xs font-bold transition-all"
+              >
+                關閉
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1964,7 +2173,7 @@ export default function WorkoutDetailPage({
         </div>
 
         {/* 漸進式超負荷目標提示 (自動比對上次同一組重量與次數) */}
-        {overloadGoal && (
+        {overloadGoal && session.target_muscle !== "游泳" && (
           <div className="bg-[#181b26] border border-emerald-500/30 rounded-xl px-2.5 py-1.5 text-xs flex items-center justify-between gap-1.5 animate-in fade-in duration-150">
             <div className="flex items-center gap-1.5 text-emerald-300 min-w-0">
               <TrendingUp className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
@@ -1999,167 +2208,227 @@ export default function WorkoutDetailPage({
           </div>
         )}
 
-        {/* 重量與次數輸入 (附微調按鈕與槓片換算器) */}
-        <div className="space-y-1.5 pt-1">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[10px] text-gray-400">重量 (Kg)</label>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setShowWarmupModal(true)}
-                    className="text-[10px] text-amber-400 hover:text-amber-300 flex items-center gap-0.5"
-                    title="科學化熱身組規劃"
-                  >
-                    <Flame className="w-2.5 h-2.5" />
-                    <span>熱身規劃</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPlateCalcWeight(parseFloat(inputWeight) || 60);
-                      setShowPlateCalcModal(true);
-                    }}
-                    className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-0.5"
-                    title="槓片換算器"
-                  >
-                    <Calculator className="w-2.5 h-2.5" />
-                    <span>槓片換算</span>
-                  </button>
-                </div>
-              </div>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => adjustWeight(-2.5)}
-                  className="px-2 py-2.5 bg-[#181b26] text-gray-300 rounded-xl border border-[#262b3d] text-xs font-bold active:scale-95"
-                >
-                  -2.5
-                </button>
-                <input
-                  type="number"
-                  step="0.5"
-                  placeholder="50"
-                  value={inputWeight}
-                  onChange={(e) => setInputWeight(e.target.value)}
-                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-base font-black rounded-xl p-2.5 text-center focus:border-emerald-500 outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => adjustWeight(2.5)}
-                  className="px-2 py-2.5 bg-[#181b26] text-gray-300 rounded-xl border border-[#262b3d] text-xs font-bold active:scale-95"
-                >
-                  +2.5
-                </button>
-              </div>
+        {/* 游泳專用介面 vs 重量次數輸入介面 */}
+        {session.target_muscle === "游泳" ? (
+          <div className="space-y-2.5 py-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-cyan-400 flex items-center gap-1.5">
+                <span>🏊</span>
+                <span>游泳項目快選與記錄</span>
+              </span>
+              <span className="text-[10px] text-gray-500">點選直接套用</span>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[10px] text-gray-400">次數 (Reps)</label>
-                {current1RM > 0 && (
-                  <span className="text-[10px] text-emerald-400 font-bold">
-                    1RM ~{current1RM}k
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-1">
+            {/* 游泳快捷標籤 */}
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                "下午游泳",
+                "上午游泳",
+                "游泳",
+                "自由式 1000m",
+                "自由式 1500m",
+                "蛙式 500m",
+                "輕鬆游 40分",
+                "間歇游 30分",
+              ].map((opt) => (
                 <button
+                  key={opt}
                   type="button"
-                  onClick={() => adjustReps(-1)}
-                  className="px-2 py-2.5 bg-[#181b26] text-gray-300 rounded-xl border border-[#262b3d] text-xs font-bold active:scale-95"
-                >
-                  -1
-                </button>
-                <input
-                  type="number"
-                  placeholder="8"
-                  value={inputReps}
-                  onChange={(e) => setInputReps(e.target.value)}
-                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-base font-black rounded-xl p-2.5 text-center focus:border-emerald-500 outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => adjustReps(1)}
-                  className="px-2 py-2.5 bg-[#181b26] text-gray-300 rounded-xl border border-[#262b3d] text-xs font-bold active:scale-95"
-                >
-                  +1
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* 常用次數快速點選 */}
-          <div className="flex items-center justify-between gap-1 pt-0.5">
-            <span className="text-[10px] text-gray-500">快選次數：</span>
-            <div className="flex gap-1">
-              {[6, 8, 10, 12, 15].map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => setInputReps(r.toString())}
-                  className={`px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-all ${
-                    inputReps === r.toString()
-                      ? "bg-emerald-500 text-black border-emerald-400"
-                      : "bg-[#181b26] text-gray-400 border-[#262b3d] hover:text-white"
+                  onClick={() => setInputNotes(opt)}
+                  className={`text-xs px-2.5 py-1.5 rounded-xl border transition-all ${
+                    inputNotes === opt
+                      ? "bg-cyan-500 text-black border-cyan-400 font-black shadow-md scale-[1.02]"
+                      : "bg-[#181b26] border-[#262b3d] text-gray-300 hover:text-white"
                   }`}
                 >
-                  {r}
+                  {opt}
                 </button>
               ))}
             </div>
-          </div>
 
-          {/* 新 PR 提醒提示 */}
-          {isNewPR && (
-            <div className="bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[11px] font-bold px-2.5 py-1 rounded-xl flex items-center gap-1.5 animate-bounce">
-              <Trophy className="w-3.5 h-3.5 text-amber-400" />
-              <span>突破歷史紀錄！這組將創下此動作全新 PR！</span>
+            <input
+              type="text"
+              placeholder="自訂游泳備註 (例如: 下午游泳 1000m、蛙式+自由式 45分鐘)..."
+              value={inputNotes}
+              onChange={(e) => setInputNotes(e.target.value)}
+              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-3 py-2.5 outline-none focus:border-cyan-500 font-medium"
+            />
+
+            <button
+              type="button"
+              onClick={handleLogSwimActivity}
+              disabled={!inputNotes.trim()}
+              className="w-full bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-black font-black py-3 rounded-xl shadow-lg transition-all active:scale-[0.98] text-xs flex items-center justify-center gap-2"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>記錄此游泳項目</span>
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* 重量與次數輸入 (附微調按鈕與槓片換算器) */}
+            <div className="space-y-1.5 pt-1">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] text-gray-400">重量 (Kg)</label>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setShowWarmupModal(true)}
+                        className="text-[10px] text-amber-400 hover:text-amber-300 flex items-center gap-0.5"
+                        title="科學化熱身組規劃"
+                      >
+                        <Flame className="w-2.5 h-2.5" />
+                        <span>熱身規劃</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPlateCalcWeight(parseFloat(inputWeight) || 60);
+                          setShowPlateCalcModal(true);
+                        }}
+                        className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-0.5"
+                        title="槓片換算器"
+                      >
+                        <Calculator className="w-2.5 h-2.5" />
+                        <span>槓片換算</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => adjustWeight(-2.5)}
+                      className="px-2 py-2.5 bg-[#181b26] text-gray-300 rounded-xl border border-[#262b3d] text-xs font-bold active:scale-95"
+                    >
+                      -2.5
+                    </button>
+                    <input
+                      type="number"
+                      step="0.5"
+                      placeholder="50"
+                      value={inputWeight}
+                      onChange={(e) => setInputWeight(e.target.value)}
+                      className="w-full bg-[#181b26] border border-[#262b3d] text-white text-base font-black rounded-xl p-2.5 text-center focus:border-emerald-500 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => adjustWeight(2.5)}
+                      className="px-2 py-2.5 bg-[#181b26] text-gray-300 rounded-xl border border-[#262b3d] text-xs font-bold active:scale-95"
+                    >
+                      +2.5
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] text-gray-400">次數 (Reps)</label>
+                    {current1RM > 0 && (
+                      <span className="text-[10px] text-emerald-400 font-bold">
+                        1RM ~{current1RM}k
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => adjustReps(-1)}
+                      className="px-2 py-2.5 bg-[#181b26] text-gray-300 rounded-xl border border-[#262b3d] text-xs font-bold active:scale-95"
+                    >
+                      -1
+                    </button>
+                    <input
+                      type="number"
+                      placeholder="8"
+                      value={inputReps}
+                      onChange={(e) => setInputReps(e.target.value)}
+                      className="w-full bg-[#181b26] border border-[#262b3d] text-white text-base font-black rounded-xl p-2.5 text-center focus:border-emerald-500 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => adjustReps(1)}
+                      className="px-2 py-2.5 bg-[#181b26] text-gray-300 rounded-xl border border-[#262b3d] text-xs font-bold active:scale-95"
+                    >
+                      +1
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 常用次數快速點選 */}
+              <div className="flex items-center justify-between gap-1 pt-0.5">
+                <span className="text-[10px] text-gray-500">快選次數：</span>
+                <div className="flex gap-1">
+                  {[6, 8, 10, 12, 15].map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setInputReps(r.toString())}
+                      className={`px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-all ${
+                        inputReps === r.toString()
+                          ? "bg-emerald-500 text-black border-emerald-400"
+                          : "bg-[#181b26] text-gray-400 border-[#262b3d] hover:text-white"
+                      }`}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 新 PR 提醒提示 */}
+              {isNewPR && (
+                <div className="bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[11px] font-bold px-2.5 py-1 rounded-xl flex items-center gap-1.5 animate-bounce">
+                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                  <span>突破歷史紀錄！這組將創下此動作全新 PR！</span>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* 體感標籤快速點選 (快速追加備註) */}
-        <div className="space-y-1">
-          <label className="text-[10px] text-gray-400 block">快捷體感標記 (點擊自動套入)：</label>
-          <div className="flex flex-wrap gap-1">
-            {FEELING_TAGS.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => handleToggleFeelingTag(tag)}
-                className={`text-[11px] px-2 py-0.5 rounded-lg border transition-all ${
-                  inputNotes.includes(tag) || (tag === "熱身" && inputType === "warmup")
-                    ? "bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold"
-                    : "bg-[#181b26] border-[#262b3d] text-gray-400 hover:text-gray-200"
-                }`}
-              >
-                {tag}
-              </button>
-            ))}
-          </div>
-        </div>
+            {/* 體感標籤快速點選 (快速追加備註) */}
+            <div className="space-y-1">
+              <label className="text-[10px] text-gray-400 block">快捷體感標記 (點擊自動套入)：</label>
+              <div className="flex flex-wrap gap-1">
+                {FEELING_TAGS.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => handleToggleFeelingTag(tag)}
+                    className={`text-[11px] px-2 py-0.5 rounded-lg border transition-all ${
+                      inputNotes.includes(tag) || (tag === "熱身" && inputType === "warmup")
+                        ? "bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold"
+                        : "bg-[#181b26] border-[#262b3d] text-gray-400 hover:text-gray-200"
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        {/* 備註自由輸入 */}
-        <input
-          type="text"
-          placeholder="自訂體感備註 (例如: 補2下、力竭、感受度佳)..."
-          value={inputNotes}
-          onChange={(e) => setInputNotes(e.target.value)}
-          className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-emerald-500"
-        />
+            {/* 備註自由輸入 */}
+            <input
+              type="text"
+              placeholder="自訂體感備註 (例如: 補2下、力竭、感受度佳)..."
+              value={inputNotes}
+              onChange={(e) => setInputNotes(e.target.value)}
+              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-emerald-500"
+            />
 
-        {/* 記錄組數按鈕 */}
-        <button
-          type="button"
-          onClick={handleAddSet}
-          disabled={!inputReps}
-          className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-black py-3 rounded-xl shadow-lg transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2"
-        >
-          <Plus className="w-4 h-4 stroke-[3]" />
-          <span>記錄此組完成</span>
-        </button>
+            {/* 記錄組數按鈕 */}
+            <button
+              type="button"
+              onClick={handleAddSet}
+              disabled={!inputReps}
+              className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-black py-3 rounded-xl shadow-lg transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>記錄此組完成</span>
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
