@@ -197,14 +197,47 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 快速開始記錄按鈕 */}
-      <Link
-        href="/workout/new"
-        className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-3.5 px-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-      >
-        <Zap className="w-5 h-5 fill-black" />
-        <span>開始記錄新訓練 (選場地 / 複製菜單)</span>
-      </Link>
+      {/* 快速開始記錄按鈕與一鍵部位捷徑 */}
+      <div className="space-y-2">
+        <Link
+          href="/workout/new"
+          className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-3.5 px-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+        >
+          <Zap className="w-5 h-5 fill-black" />
+          <span>開新訓練 (選場地 / 複製菜單)</span>
+        </Link>
+
+        <div className="grid grid-cols-4 gap-2">
+          <Link
+            href="/workout/new?muscle=胸部"
+            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-red-500/40 rounded-xl text-center text-xs font-bold text-gray-200 transition-all active:scale-95 flex flex-col items-center gap-0.5"
+          >
+            <span className="text-red-400 text-sm">🔥</span>
+            <span>練胸日</span>
+          </Link>
+          <Link
+            href="/workout/new?muscle=背部"
+            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-blue-500/40 rounded-xl text-center text-xs font-bold text-gray-200 transition-all active:scale-95 flex flex-col items-center gap-0.5"
+          >
+            <span className="text-blue-400 text-sm">⚡</span>
+            <span>練背日</span>
+          </Link>
+          <Link
+            href="/workout/new?muscle=腿部"
+            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-emerald-500/40 rounded-xl text-center text-xs font-bold text-gray-200 transition-all active:scale-95 flex flex-col items-center gap-0.5"
+          >
+            <span className="text-emerald-400 text-sm">🦵</span>
+            <span>練腿日</span>
+          </Link>
+          <Link
+            href="/workout/new?muscle=游泳"
+            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-cyan-500/40 rounded-xl text-center text-xs font-bold text-gray-200 transition-all active:scale-95 flex flex-col items-center gap-0.5"
+          >
+            <span className="text-cyan-400 text-sm">🏊</span>
+            <span>游泳/有氧</span>
+          </Link>
+        </div>
+      </div>
 
       {/* 最近訓練日誌流 */}
       <section className="space-y-3">

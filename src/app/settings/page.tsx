@@ -1,22 +1,27 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Cloud,
   Download,
   Upload,
   RefreshCw,
   CheckCircle,
+  AlertCircle,
   Database,
   Trophy,
   MapPin,
   Clock,
   User,
   FileText,
+  Trash2,
+  Check,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
 import { exportAllSessionsToMarkdown } from "@/lib/markdown-generator";
+import { parseWorkoutMarkdown } from "@/lib/parser/markdown-parser";
+import { testSupabaseConnection, runFullSync } from "@/lib/db/sync";
 import type { BigThreeRecord, WorkoutSession, SetItem, Exercise } from "@/lib/types";
 
 const LOCATION_OPTIONS = [
@@ -32,6 +37,15 @@ export default function SettingsPage() {
   const [supabaseKey, setSupabaseKey] = useState("");
   const [saved, setSaved] = useState(false);
   const [reseeded, setReseeded] = useState(false);
+
+  // 雲端同步狀態
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
+  const [lastSyncTime, setLastSyncTime] = useState<string>("");
+
+  // 備份還原檔案輸入
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [restoreStatusMsg, setRestoreStatusMsg] = useState<string | null>(null);
 
   // 個人體重與三項設定
   const [bodyWeight, setBodyWeight] = useState<string>("60");
@@ -67,6 +81,11 @@ export default function SettingsPage() {
     if (storedUrl) setSupabaseUrl(storedUrl);
     const storedKey = localStorage.getItem("workout_supabase_key");
     if (storedKey) setSupabaseKey(storedKey);
+
+    const storedLastSync = localStorage.getItem("workout_last_sync_time");
+    if (storedLastSync) {
+      setLastSyncTime(new Date(storedLastSync).toLocaleString("zh-TW", { hour12: false }));
+    }
   }, []);
 
   async function handleSaveBigThree() {
@@ -113,6 +132,27 @@ export default function SettingsPage() {
     setTimeout(() => setSaved(false), 2500);
   }
 
+  // 測試 Supabase 連線
+  async function handleTestSupabase() {
+    setIsSyncing(true);
+    setSyncStatusMsg("正在連線至雲端 Supabase 資料庫...");
+    const res = await testSupabaseConnection(supabaseUrl, supabaseKey);
+    setSyncStatusMsg(res.message);
+    setIsSyncing(false);
+  }
+
+  // 立即雙向同步
+  async function handleTriggerSync() {
+    setIsSyncing(true);
+    setSyncStatusMsg("正在同步本地與雲端資料...");
+    const res = await runFullSync();
+    setSyncStatusMsg(res.message);
+    setIsSyncing(false);
+    if (res.success) {
+      setLastSyncTime(new Date().toLocaleString("zh-TW", { hour12: false }));
+    }
+  }
+
   // 匯出 Markdown 檔案 (.md)
   async function handleExportMarkdown() {
     const sessions = await db.sessions.toArray();
@@ -156,6 +196,62 @@ export default function SettingsPage() {
     URL.revokeObjectURL(url);
   }
 
+  // 匯入備份檔案 (.json 或 .md)
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const isJson = file.name.endsWith(".json") || text.trim().startsWith("{");
+
+      if (isJson) {
+        const parsed = JSON.parse(text);
+        if (!parsed.sessions || !parsed.sets) {
+          throw new Error("無效的 JSON 備份格式 (缺少 sessions 或 sets)");
+        }
+
+        const confirmRestore = confirm(
+          `偵測到 JSON 備份：\n訓練次數: ${parsed.sessions.length} 次\n動作組數: ${parsed.sets.length} 組\n\n確定要將資料還原合併至資料庫嗎？`
+        );
+        if (!confirmRestore) return;
+
+        await db.transaction("rw", [db.sessions, db.exercises, db.sets, db.big_three], async () => {
+          if (parsed.sessions?.length) await db.sessions.bulkPut(parsed.sessions);
+          if (parsed.exercises?.length) await db.exercises.bulkPut(parsed.exercises);
+          if (parsed.sets?.length) await db.sets.bulkPut(parsed.sets);
+          if (parsed.bigThree?.length) await db.big_three.bulkPut(parsed.bigThree);
+        });
+
+        setRestoreStatusMsg(`✅ 成功還原 ${parsed.sessions.length} 次訓練與 ${parsed.sets.length} 組紀錄！`);
+      } else {
+        // Markdown 檔案
+        const parsed = parseWorkoutMarkdown(text);
+        if (parsed.sessions.length === 0) {
+          throw new Error("未在此 Markdown 中解析出任何訓練紀錄");
+        }
+
+        const confirmRestore = confirm(
+          `偵測到 Markdown 日誌：\n解析出訓練次數: ${parsed.sessions.length} 次\n動作組數: ${parsed.sets.length} 組\n\n確定要匯入合併至資料庫嗎？`
+        );
+        if (!confirmRestore) return;
+
+        await db.transaction("rw", [db.sessions, db.exercises, db.sets, db.big_three], async () => {
+          if (parsed.sessions?.length) await db.sessions.bulkPut(parsed.sessions);
+          if (parsed.exercises?.length) await db.exercises.bulkPut(parsed.exercises);
+          if (parsed.sets?.length) await db.sets.bulkPut(parsed.sets);
+          if (parsed.bigThree) await db.big_three.put(parsed.bigThree);
+        });
+
+        setRestoreStatusMsg(`✅ 成功從 Markdown 匯入 ${parsed.sessions.length} 次訓練與 ${parsed.sets.length} 組紀錄！`);
+      }
+    } catch (err: any) {
+      setRestoreStatusMsg(`❌ 匯入失敗: ${err?.message || err}`);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   // 重新從內建種子資料重置
   async function handleReseed() {
     if (!confirm("確定要重設並重新載入完整的初始歷史記錄嗎？")) return;
@@ -168,11 +264,22 @@ export default function SettingsPage() {
     setTimeout(() => setReseeded(false), 2500);
   }
 
+  // 清空所有資料
+  async function handleClearAll() {
+    if (!confirm("⚠️ 警告：這將徹底清空本地的所有訓練日誌與動作紀錄！確定要執行嗎？")) return;
+    if (!confirm("最後確認：資料清空後無法復原，除非有事先備份檔案。確定清空？")) return;
+    await db.sessions.clear();
+    await db.exercises.clear();
+    await db.sets.clear();
+    await db.big_three.clear();
+    setRestoreStatusMsg("已清空所有本地資料！");
+  }
+
   return (
     <div className="space-y-5 pb-20">
       <div>
         <h1 className="text-xl font-black text-white">設定 & 個人客製化</h1>
-        <p className="text-xs text-gray-400">管理場地偏好、三項基準數據與 Markdown / 雲端備份</p>
+        <p className="text-xs text-gray-400">管理場地偏好、三項基準數據、備份匯入還原與 Supabase 雲端同步</p>
       </div>
 
       {/* 個人三項基準與體重設定 */}
@@ -182,7 +289,7 @@ export default function SettingsPage() {
             <Trophy className="w-4 h-4 text-amber-400" />
             <h2 className="text-sm font-bold text-gray-100">個人三項基準 & 體重倍數</h2>
           </div>
-          <span className="text-[10px] text-gray-400">自動更新首頁看板</span>
+          <span className="text-[10px] text-gray-400">自動更新首頁與分析看板</span>
         </div>
 
         <div className="grid grid-cols-4 gap-2">
@@ -229,24 +336,24 @@ export default function SettingsPage() {
           className="w-full bg-amber-500 hover:bg-amber-400 text-black font-black py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow"
         >
           {b3Saved ? <CheckCircle className="w-4 h-4" /> : null}
-          <span>{b3Saved ? "三項數據已成功儲存！" : "更新三項基準"}</span>
+          <span>{b3Saved ? "三項數據已成功儲存！" : "儲存三項數據與體重比"}</span>
         </button>
       </section>
 
-      {/* 偏好設定 (預設健身房與休息秒數) */}
+      {/* 偏好預設值 (預設場館與組間休息秒數) */}
       <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3">
         <div className="flex items-center gap-2 border-b border-[#262b3d]/60 pb-2">
           <MapPin className="w-4 h-4 text-emerald-400" />
-          <h2 className="text-sm font-bold text-gray-100">訓練場地 & 計時偏好</h2>
+          <h2 className="text-sm font-bold text-gray-100">預設場館與計時器</h2>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-[11px] text-gray-400 block mb-1">常用主訓練場地</label>
+            <label className="text-[11px] text-gray-400 block mb-1">常用預設場館</label>
             <select
               value={defaultGym}
               onChange={(e) => setDefaultGym(e.target.value)}
-              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs font-bold rounded-xl p-2.5 outline-none focus:border-emerald-500"
+              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 outline-none focus:border-emerald-500"
             >
               {LOCATION_OPTIONS.map((loc) => (
                 <option key={loc} value={loc}>
@@ -255,18 +362,18 @@ export default function SettingsPage() {
               ))}
             </select>
           </div>
-
           <div>
-            <label className="text-[11px] text-gray-400 block mb-1">預設組間休息倒數</label>
+            <label className="text-[11px] text-gray-400 block mb-1">預設組間休息時間</label>
             <select
               value={defaultRestTime}
               onChange={(e) => setDefaultRestTime(parseInt(e.target.value, 10))}
-              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs font-bold rounded-xl p-2.5 outline-none focus:border-emerald-500"
+              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 outline-none focus:border-emerald-500"
             >
-              <option value={60}>60 秒 (輕重量/孤立動作)</option>
-              <option value={90}>90 秒 (標準常規組)</option>
-              <option value={120}>120 秒 (2 分鐘 - 中大重量)</option>
-              <option value={180}>180 秒 (3 分鐘 - 大重量複合動作)</option>
+              <option value={45}>45 秒 (短間歇 / 泵感)</option>
+              <option value={60}>60 秒 (標準肌肥大)</option>
+              <option value={90}>90 秒 (中重量肌肥大)</option>
+              <option value={120}>120 秒 (大重量力量)</option>
+              <option value={180}>180 秒 (極限三項力量)</option>
             </select>
           </div>
         </div>
@@ -307,12 +414,22 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      {/* Markdown 與備份管理 */}
+      {/* Markdown 與備份匯入還原 */}
       <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3">
-        <div className="flex items-center gap-2 border-b border-[#262b3d]/60 pb-2">
-          <FileText className="w-4 h-4 text-emerald-400" />
-          <h2 className="text-sm font-bold text-gray-100">Markdown 導出與全庫備份</h2>
+        <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-emerald-400" />
+            <h2 className="text-sm font-bold text-gray-100">備份匯出與檔案還原</h2>
+          </div>
+          <span className="text-[10px] text-gray-400">支援 .json / .md</span>
         </div>
+
+        {/* 檔案還原提示訊息 */}
+        {restoreStatusMsg && (
+          <div className="p-2.5 rounded-xl text-xs bg-[#181b26] border border-emerald-500/30 text-emerald-300">
+            {restoreStatusMsg}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-2">
           <button
@@ -332,20 +449,56 @@ export default function SettingsPage() {
           </button>
         </div>
 
-        <button
-          onClick={handleReseed}
-          className="w-full bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-amber-400 text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          <span>{reseeded ? "已重置並載入 1,293 組種子數據" : "重新重置並載入原始種子資料"}</span>
-        </button>
+        {/* 隱藏的檔案選擇器 */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json,.md,text/markdown,application/json"
+          onChange={handleFileSelected}
+          className="hidden"
+        />
+
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="bg-[#181b26] hover:bg-[#202533] border border-cyan-500/40 text-cyan-300 text-xs font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all"
+          >
+            <Upload className="w-4 h-4 text-cyan-400" />
+            <span>從檔案還原 (.json / .md)</span>
+          </button>
+
+          <button
+            onClick={handleReseed}
+            className="bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-amber-400 text-xs font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>{reseeded ? "已重新載入種子數據" : "載入 1,293 組種子"}</span>
+          </button>
+        </div>
+
+        <div className="pt-2 border-t border-[#262b3d]/40">
+          <button
+            onClick={handleClearAll}
+            className="w-full py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>清空所有本機資料 (危險操作)</span>
+          </button>
+        </div>
       </section>
 
-      {/* Supabase 雲端設定 */}
-      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3">
-        <div className="flex items-center gap-2 border-b border-[#262b3d]/60 pb-2">
-          <Cloud className="w-4 h-4 text-blue-400" />
-          <h2 className="text-sm font-bold text-gray-100">Supabase 雲端跨裝置連線</h2>
+      {/* Supabase 雲端跨裝置連線 & 即時雙向同步 */}
+      <section className="bg-[#12141c] border border-blue-500/30 rounded-2xl p-4 space-y-3">
+        <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
+          <div className="flex items-center gap-2">
+            <Cloud className="w-4 h-4 text-blue-400" />
+            <h2 className="text-sm font-bold text-gray-100">Supabase 雲端資料庫雙向同步</h2>
+          </div>
+          {lastSyncTime ? (
+            <span className="text-[10px] text-gray-400">上次同步: {lastSyncTime}</span>
+          ) : (
+            <span className="text-[10px] text-gray-500">尚未同步</span>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -371,12 +524,39 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* 同步反饋訊息 */}
+        {syncStatusMsg && (
+          <div className="p-2.5 rounded-xl text-xs bg-[#181b26] border border-blue-500/30 text-blue-300 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-blue-400" />
+            <span>{syncStatusMsg}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={handleSaveSupabase}
+            className="bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 font-bold py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5"
+          >
+            {saved ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : null}
+            <span>{saved ? "已儲存憑證" : "儲存憑證"}</span>
+          </button>
+
+          <button
+            onClick={handleTestSupabase}
+            disabled={isSyncing}
+            className="bg-[#181b26] hover:bg-[#202533] border border-blue-500/40 text-blue-300 font-bold py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5"
+          >
+            <span>測試雲端連線</span>
+          </button>
+        </div>
+
         <button
-          onClick={handleSaveSupabase}
-          className="w-full bg-blue-500 hover:bg-blue-400 text-black font-black py-2 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow"
+          onClick={handleTriggerSync}
+          disabled={isSyncing}
+          className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-black py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg"
         >
-          {saved ? <CheckCircle className="w-4 h-4" /> : null}
-          <span>{saved ? "已儲存雲端設定" : "儲存雲端連線設定"}</span>
+          <RefreshCw className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`} />
+          <span>{isSyncing ? "正在雙向同步中..." : "⚡ 立即雙向同步 (Sync Now)"}</span>
         </button>
       </section>
     </div>

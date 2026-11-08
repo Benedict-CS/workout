@@ -9,6 +9,7 @@ import {
   PlusCircle,
   TrendingUp,
 } from "lucide-react";
+import { GlobalRestTimer } from "@/components/GlobalRestTimer";
 
 export const metadata: Metadata = {
   title: "Workout - 力量訓練日誌",
@@ -74,6 +75,9 @@ export default function RootLayout({
 
         {/* 主要內容區 (含底部預留高度防遮擋) */}
         <main className="max-w-xl mx-auto px-4 py-4 pb-24">{children}</main>
+
+        {/* 全域浮動休息計時器 (跨頁面持續顯示與一鍵跳回) */}
+        <GlobalRestTimer />
 
         {/* 底部 5 鍵導航 Bar (手機單手操作優化) */}
         <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#12141c]/95 backdrop-blur-lg border-t border-[#262b3d] px-3 py-2 flex items-center justify-around text-[11px] font-medium text-gray-400">

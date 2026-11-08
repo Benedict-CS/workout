@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -36,8 +36,9 @@ const MUSCLE_PRESETS = [
   "游泳",
 ];
 
-export default function NewWorkoutPage() {
+function NewWorkoutForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const todayStr = new Date().toISOString().split("T")[0];
 
   const [date, setDate] = useState(todayStr);
@@ -55,6 +56,21 @@ export default function NewWorkoutPage() {
   } | null>(null);
   const [clonePrevMenu, setClonePrevMenu] = useState(false);
   const [exercisesMap, setExercisesMap] = useState<Record<string, Exercise>>({});
+
+  // 讀取 URL 參數與預設偏好
+  useEffect(() => {
+    const urlMuscle = searchParams.get("muscle");
+    if (urlMuscle) {
+      setTargetMuscle(urlMuscle);
+    }
+    const urlLoc = searchParams.get("location");
+    if (urlLoc) {
+      setLocation(urlLoc);
+    } else {
+      const storedGym = localStorage.getItem("workout_default_gym");
+      if (storedGym) setLocation(storedGym);
+    }
+  }, [searchParams]);
 
   // 載入所有動作名稱快照
   useEffect(() => {
@@ -313,5 +329,20 @@ export default function NewWorkoutPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+export default function NewWorkoutPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-col items-center justify-center py-20 text-gray-500 text-xs gap-2">
+          <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+          <span>載入訓練設定中...</span>
+        </div>
+      }
+    >
+      <NewWorkoutForm />
+    </Suspense>
   );
 }

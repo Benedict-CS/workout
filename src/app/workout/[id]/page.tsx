@@ -35,6 +35,7 @@ import {
   Share2,
   Flame,
   BookOpen,
+  RefreshCw,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import {
@@ -194,6 +195,11 @@ export default function WorkoutDetailPage({
     history: { session: WorkoutSession; sets: SetItem[] }[];
   } | null>(null);
 
+  // 替換動作 Modal (機台有人用時一鍵換動作)
+  const [showSwapModal, setShowSwapModal] = useState(false);
+  const [swapSourceExercise, setSwapSourceExercise] = useState<Exercise | null>(null);
+  const [swapSearchQuery, setSwapSearchQuery] = useState("");
+
   // 組間休息計時器狀態 (時間戳基準，背景不暫停)
   const [targetEndTime, setTargetEndTime] = useState<number | null>(null);
   const [timerSeconds, setTimerSeconds] = useState<number | null>(null);
@@ -263,6 +269,19 @@ export default function WorkoutDetailPage({
     setTimerSeconds(seconds);
     setTimerActive(true);
     localStorage.setItem("workout_timer_end", end.toString());
+    if (session) {
+      const loc = session.location ? ` (${session.location})` : "";
+      localStorage.setItem(
+        "workout_timer_info",
+        JSON.stringify({
+          sessionId: session.id,
+          title: `${session.target_muscle}${loc}`,
+        })
+      );
+    }
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("workout_timer_update"));
+    }
   }
 
   function stopRestTimer() {
@@ -270,6 +289,9 @@ export default function WorkoutDetailPage({
     setTimerSeconds(null);
     setTargetEndTime(null);
     localStorage.removeItem("workout_timer_end");
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("workout_timer_update"));
+    }
   }
 
   function adjustTimer(delta: number) {
@@ -279,6 +301,9 @@ export default function WorkoutDetailPage({
       const remain = Math.max(0, Math.ceil((newEnd - Date.now()) / 1000));
       setTimerSeconds(remain);
       localStorage.setItem("workout_timer_end", newEnd.toString());
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("workout_timer_update"));
+      }
     } else if (timerSeconds !== null) {
       startRestTimer(Math.max(10, timerSeconds + delta));
     }
@@ -571,6 +596,10 @@ export default function WorkoutDetailPage({
       startRestTimer(defaultRestDuration);
     }
 
+    if (isNewPR && typeof navigator !== "undefined" && navigator.vibrate) {
+      navigator.vibrate([150, 80, 250]);
+    }
+
     setInputNotes("");
   }
 
@@ -618,6 +647,54 @@ export default function WorkoutDetailPage({
     if (!confirm("確定要刪除此組紀錄嗎？")) return;
     await db.sets.delete(setId);
     setSets((prev) => prev.filter((s) => s.id !== setId));
+  }
+
+  // 替換整套動作 (機台被佔用時快速換成同部位其他動作)
+  async function handleConfirmSwapExercise(targetId: string) {
+    if (!swapSourceExercise || !targetId || swapSourceExercise.id === targetId) return;
+
+    const targetEx = exercises.find((e) => e.id === targetId);
+    if (!targetEx) return;
+
+    const setsToUpdate = sets.filter((s) => s.exercise_id === swapSourceExercise.id);
+    for (const s of setsToUpdate) {
+      await db.sets.update(s.id, {
+        exercise_id: targetId,
+        updated_at: new Date().toISOString(),
+      });
+    }
+
+    setSets((prev) =>
+      prev.map((s) => {
+        if (s.exercise_id === swapSourceExercise.id) {
+          return { ...s, exercise_id: targetId, updated_at: new Date().toISOString() };
+        }
+        return s;
+      })
+    );
+
+    setSelectedExId(targetId);
+    setShowSwapModal(false);
+    setSwapSourceExercise(null);
+    setSwapSearchQuery("");
+
+    // 更新 PR 與歷史對照
+    const pr = await getExerciseMaxPR(targetId);
+    setMaxPrMap((prev) => ({ ...prev, [targetId]: pr }));
+    const lastRes = await getLastExerciseSets(targetId, id);
+    if (lastRes) {
+      setGhostMap((prev) => ({ ...prev, [targetId]: lastRes.sets }));
+    }
+  }
+
+  // 刪除該動作在本次訓練的所有組數
+  async function handleDeleteAllSetsOfExercise(exercise: Exercise) {
+    if (!confirm(`確定要刪除今天【${exercise.name}】的全部組數紀錄嗎？`)) return;
+    const setsToDelete = sets.filter((s) => s.exercise_id === exercise.id);
+    for (const s of setsToDelete) {
+      await db.sets.delete(s.id);
+    }
+    setSets((prev) => prev.filter((s) => s.exercise_id !== exercise.id));
   }
 
   // 複製上一次同部位菜單組數
@@ -1383,6 +1460,113 @@ export default function WorkoutDetailPage({
         </div>
       )}
 
+      {/* 替換動作 Modal (機台佔用時快速切換動作) */}
+      {showSwapModal && swapSourceExercise && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12141c] border border-cyan-500/40 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-[#262b3d] pb-2.5 flex-shrink-0">
+              <div>
+                <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                  <RefreshCw className="w-4 h-4 text-cyan-400" />
+                  <span>替換動作</span>
+                </h3>
+                <span className="text-[11px] text-gray-400">
+                  將【<strong className="text-emerald-400">{swapSourceExercise.name}</strong>】的組數替換為其他動作
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  setShowSwapModal(false);
+                  setSwapSourceExercise(null);
+                }}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 搜尋動作 */}
+            <div className="flex-shrink-0">
+              <input
+                type="text"
+                placeholder="搜尋替代動作名稱..."
+                value={swapSearchQuery}
+                onChange={(e) => setSwapSearchQuery(e.target.value)}
+                className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-cyan-500"
+              />
+            </div>
+
+            <div className="overflow-y-auto space-y-3 flex-1 pr-1">
+              {/* 同部位推薦動作 */}
+              <div>
+                <span className="text-[10px] text-gray-400 font-bold block mb-1.5">
+                  推薦同部位【{swapSourceExercise.muscle_group}】候選動作：
+                </span>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {exercises
+                    .filter(
+                      (e) =>
+                        e.id !== swapSourceExercise.id &&
+                        e.muscle_group === swapSourceExercise.muscle_group &&
+                        (!swapSearchQuery || e.name.toLowerCase().includes(swapSearchQuery.toLowerCase()))
+                    )
+                    .map((ex) => (
+                      <button
+                        key={ex.id}
+                        type="button"
+                        onClick={() => handleConfirmSwapExercise(ex.id)}
+                        className="p-2.5 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] hover:border-cyan-500 rounded-xl text-left text-xs font-bold text-gray-200 transition-all active:scale-95 flex flex-col justify-between gap-1"
+                      >
+                        <span className="text-white truncate">{ex.name}</span>
+                        <span className="text-[10px] text-gray-500">點擊立即替換</span>
+                      </button>
+                    ))}
+                </div>
+              </div>
+
+              {/* 其他所有動作 */}
+              {swapSearchQuery && (
+                <div>
+                  <span className="text-[10px] text-gray-400 font-bold block mb-1.5">
+                    其他匹配動作：
+                  </span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {exercises
+                      .filter(
+                        (e) =>
+                          e.id !== swapSourceExercise.id &&
+                          e.muscle_group !== swapSourceExercise.muscle_group &&
+                          e.name.toLowerCase().includes(swapSearchQuery.toLowerCase())
+                      )
+                      .map((ex) => (
+                        <button
+                          key={ex.id}
+                          type="button"
+                          onClick={() => handleConfirmSwapExercise(ex.id)}
+                          className="p-2.5 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] hover:border-cyan-500 rounded-xl text-left text-xs font-bold text-gray-200 transition-all active:scale-95 flex flex-col justify-between gap-1"
+                        >
+                          <span className="text-white truncate">{ex.name}</span>
+                          <span className="text-[10px] text-cyan-400">{ex.muscle_group}</span>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => {
+                setShowSwapModal(false);
+                setSwapSourceExercise(null);
+              }}
+              className="w-full bg-[#181b26] text-gray-400 hover:text-white py-2 rounded-xl text-xs font-bold flex-shrink-0"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 浮動組間休息倒數 Bar */}
       {timerSeconds !== null && (
         <div className="bg-gradient-to-r from-amber-950/80 via-[#181b26] to-[#12141c] border border-amber-500/40 rounded-2xl p-3 shadow-2xl flex items-center justify-between text-xs animate-in fade-in duration-200">
@@ -1480,9 +1664,36 @@ export default function WorkoutDetailPage({
                     </span>
                   )}
                 </div>
-                <span className="text-xs bg-[#181b26] text-gray-300 px-2 py-0.5 rounded border border-[#262b3d]">
-                  {exSets.length} 組
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs bg-[#181b26] text-gray-300 px-2 py-0.5 rounded border border-[#262b3d]">
+                    {exSets.length} 組
+                  </span>
+                  {exercise && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSwapSourceExercise(exercise);
+                          setShowSwapModal(true);
+                        }}
+                        className="text-[10px] bg-[#181b26] hover:bg-[#202533] text-cyan-300 border border-cyan-500/30 px-1.5 py-0.5 rounded-lg flex items-center gap-1 active:scale-95 transition-all"
+                        title="機台有人用？換同部位動作"
+                      >
+                        <RefreshCw className="w-2.5 h-2.5 text-cyan-400" />
+                        <span>換動作</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAllSetsOfExercise(exercise)}
+                        className="text-[10px] bg-[#181b26] hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-[#262b3d] px-1.5 py-0.5 rounded-lg flex items-center gap-1 active:scale-95 transition-all"
+                        title="清空此動作在今日訓練的全部組數"
+                      >
+                        <Trash2 className="w-2.5 h-2.5 text-red-400" />
+                        <span>清空</span>
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
               {/* 上次對照幽靈卡片 */}
