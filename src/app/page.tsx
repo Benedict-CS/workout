@@ -3,15 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Dumbbell,
   ChevronRight,
   ChevronLeft,
-  Plus,
+  ChevronDown,
   Calendar,
-  MapPin,
   Copy,
   Check,
-  Trophy,
+  Pencil,
+  FileText,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
@@ -41,25 +40,14 @@ interface MonthGroupData {
 export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [monthGroups, setMonthGroups] = useState<MonthGroupData[]>([]);
-  const [allTimeStats, setAllTimeStats] = useState({
-    胸: 0,
-    背: 0,
-    腿: 0,
-    游泳: 0,
-    total: 0,
-  });
   const [sessionSetsMap, setSessionSetsMap] = useState<Record<string, SetItem[]>>({});
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [copyToast, setCopyToast] = useState<string | null>(null);
 
-  // 目前週期課表計畫 (單數月 vs 雙數月)
-  const now = new Date();
-  const currentMonthNum = now.getMonth() + 1;
-  const isCurrentOdd = currentMonthNum % 2 !== 0;
-  const [planMonthView, setPlanMonthView] = useState<"odd" | "even">(isCurrentOdd ? "odd" : "even");
-  const dayOfWeek = now.getDay(); // 0 是週日, 1-6 是週一至週六
+  // 展開的訓練場次 ID 集合 (點擊 title 展開/收合，不跳轉新頁面)
+  const [expandedSessionIds, setExpandedSessionIds] = useState<Set<string>>(new Set());
 
-  // 單月分頁檢視 (左右切換如月曆，解決過長 scroll 問題)
+  // 單月分頁檢視 (左右切換如月曆，可手勢滑動或點擊月份標籤)
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const currentGroup = monthGroups[selectedMonthIndex] || monthGroups[0];
@@ -81,6 +69,29 @@ export default function HomePage() {
       setSelectedMonthIndex((prev) => prev - 1);
     }
     setTouchStartX(null);
+  }
+
+  // 單場點擊切換展開/收合
+  function toggleExpand(sessionId: string) {
+    setExpandedSessionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) {
+        next.delete(sessionId);
+      } else {
+        next.add(sessionId);
+      }
+      return next;
+    });
+  }
+
+  // 當前月全部展開 / 全部收合
+  function toggleExpandAll(sessions: WorkoutSession[]) {
+    const allExpanded = sessions.every((s) => expandedSessionIds.has(s.id));
+    if (allExpanded) {
+      setExpandedSessionIds(new Set());
+    } else {
+      setExpandedSessionIds(new Set(sessions.map((s) => s.id)));
+    }
   }
 
   useEffect(() => {
@@ -108,17 +119,7 @@ export default function HomePage() {
         }
         setSessionSetsMap(setsMap);
 
-        // 1. 計算全歷史累計次數 (胸、背、腿、游泳)
-        const totalCounts = { 胸: 0, 背: 0, 腿: 0, 游泳: 0, total: allSessions.length };
-        for (const sess of allSessions) {
-          if (sess.target_muscle.includes("胸")) totalCounts["胸"]++;
-          else if (sess.target_muscle.includes("背")) totalCounts["背"]++;
-          else if (sess.target_muscle.includes("腿")) totalCounts["腿"]++;
-          else if (sess.target_muscle.includes("泳")) totalCounts["游泳"]++;
-        }
-        setAllTimeStats(totalCounts);
-
-        // 2. 依月份分組 (11月, 10月, 9月, 8月...)
+        // 依月份分組 (11月, 10月, 9月, 8月...)
         const monthMap = new Map<string, WorkoutSession[]>();
         for (const sess of allSessions) {
           if (!monthMap.has(sess.month_key)) {
@@ -220,8 +221,12 @@ export default function HomePage() {
     );
   }
 
+  const allCurrentExpanded = currentGroup
+    ? currentGroup.sessions.every((s) => expandedSessionIds.has(s.id))
+    : false;
+
   return (
-    <div className="space-y-5 pb-24">
+    <div className="space-y-4 pb-24">
       {/* 複製提示 Toast */}
       {copyToast && (
         <div className="bg-emerald-500 text-black px-4 py-2 rounded-xl text-xs font-black shadow-2xl flex items-center gap-2 animate-in fade-in duration-150">
@@ -233,149 +238,8 @@ export default function HomePage() {
       {/* PWA 加入主畫面提示 Banner */}
       <PWAInstallBanner />
 
-      {/* 頂部：歷史累計總次數 (從有紀錄到現在總量) */}
-      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 shadow-lg">
-        <div className="flex items-center justify-between mb-2.5">
-          <div className="flex items-center gap-2">
-            <Trophy className="w-4 h-4 text-emerald-400" />
-            <h2 className="text-sm font-black text-white">累計訓練總次數</h2>
-          </div>
-          <span className="text-xs text-emerald-400 font-bold">
-            總共 {allTimeStats.total} 場訓練
-          </span>
-        </div>
-
-        <div className="grid grid-cols-4 gap-2 text-center">
-          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
-            <span className="text-[11px] text-gray-400 block mb-0.5">練胸</span>
-            <span className="text-lg font-black text-white">{allTimeStats["胸"]}</span>
-            <span className="text-[10px] text-gray-500 block">次</span>
-          </div>
-          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
-            <span className="text-[11px] text-gray-400 block mb-0.5">練背</span>
-            <span className="text-lg font-black text-white">{allTimeStats["背"]}</span>
-            <span className="text-[10px] text-gray-500 block">次</span>
-          </div>
-          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
-            <span className="text-[11px] text-gray-400 block mb-0.5">練腿</span>
-            <span className="text-lg font-black text-white">{allTimeStats["腿"]}</span>
-            <span className="text-[10px] text-gray-500 block">次</span>
-          </div>
-          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
-            <span className="text-[11px] text-gray-400 block mb-0.5">游泳</span>
-            <span className="text-lg font-black text-white">{allTimeStats["游泳"]}</span>
-            <span className="text-[10px] text-gray-500 block">次</span>
-          </div>
-        </div>
-      </section>
-
-      {/* 快捷開新訓練按鈕：點進去鎖定該項目 (胸、背、腿、游泳) */}
-      <div className="grid grid-cols-4 gap-2">
-        <Link
-          href="/workout/new?muscle=胸"
-          className="p-3 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-red-500/50 rounded-2xl text-center transition-all active:scale-95 flex flex-col items-center gap-1 shadow-sm"
-        >
-          <span className="text-lg">🔥</span>
-          <span className="text-xs font-black text-white">練胸</span>
-        </Link>
-        <Link
-          href="/workout/new?muscle=背"
-          className="p-3 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-blue-500/50 rounded-2xl text-center transition-all active:scale-95 flex flex-col items-center gap-1 shadow-sm"
-        >
-          <span className="text-lg">⚡</span>
-          <span className="text-xs font-black text-white">練背</span>
-        </Link>
-        <Link
-          href="/workout/new?muscle=腿"
-          className="p-3 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-emerald-500/50 rounded-2xl text-center transition-all active:scale-95 flex flex-col items-center gap-1 shadow-sm"
-        >
-          <span className="text-lg">🦵</span>
-          <span className="text-xs font-black text-white">練腿</span>
-        </Link>
-        <Link
-          href="/workout/new?muscle=游泳"
-          className="p-3 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-cyan-500/50 rounded-2xl text-center transition-all active:scale-95 flex flex-col items-center gap-1 shadow-sm"
-        >
-          <span className="text-lg">🏊</span>
-          <span className="text-xs font-black text-white">游泳</span>
-        </Link>
-      </div>
-
-      {/* 目前週期課表計畫 (單數月 vs 雙數月，自動高亮今日) */}
-      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-3.5 shadow-md space-y-2.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-sm">📅</span>
-            <div className="flex items-center gap-1.5">
-              <h3 className="text-xs font-black text-white">目前週期課表</h3>
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/40 font-bold">
-                {planMonthView === "odd" ? "單數月課表" : "雙數月課表"}
-              </span>
-            </div>
-          </div>
-          <button
-            onClick={() => setPlanMonthView(planMonthView === "odd" ? "even" : "odd")}
-            className="text-[10px] text-gray-400 hover:text-emerald-400 border border-[#262b3d] px-2 py-0.5 rounded-lg transition-colors"
-          >
-            切換至{planMonthView === "odd" ? "雙數月" : "單數月"}
-          </button>
-        </div>
-
-        {/* 7 天網格 */}
-        <div className="grid grid-cols-7 gap-1 text-center">
-          {[
-            { dayName: "一", dIdx: 1, target: planMonthView === "odd" ? "胸" : "背", muscle: planMonthView === "odd" ? "胸" : "背" },
-            { dayName: "二", dIdx: 2, target: planMonthView === "odd" ? "背" : "胸", muscle: planMonthView === "odd" ? "背" : "胸" },
-            { dayName: "三", dIdx: 3, target: "肩+臂", muscle: planMonthView === "odd" ? "胸" : "背" },
-            { dayName: "四", dIdx: 4, target: planMonthView === "odd" ? "胸(彈)" : "背(彈)", muscle: planMonthView === "odd" ? "胸" : "背" },
-            { dayName: "五", dIdx: 5, target: "休", isRest: true },
-            { dayName: "六", dIdx: 6, target: "腿", muscle: "腿" },
-            { dayName: "日", dIdx: 0, target: "游泳", muscle: "游泳" },
-          ].map((item) => {
-            const isToday = dayOfWeek === item.dIdx;
-
-            if (item.isRest) {
-              return (
-                <div
-                  key={item.dayName}
-                  className={`py-1.5 px-0.5 rounded-xl border text-[10px] flex flex-col justify-between h-14 ${
-                    isToday
-                      ? "bg-amber-500/10 border-amber-500/50 text-amber-300 ring-1 ring-amber-500/50"
-                      : "bg-[#090a0f]/60 border-[#262b3d]/60 text-gray-500"
-                  }`}
-                >
-                  <span className={`font-bold ${isToday ? "text-amber-400" : "text-gray-500"}`}>
-                    週{item.dayName}
-                  </span>
-                  <span className="font-medium text-[11px]">休</span>
-                </div>
-              );
-            }
-
-            return (
-              <Link
-                key={item.dayName}
-                href={`/workout/new?muscle=${item.muscle}`}
-                className={`py-1.5 px-0.5 rounded-xl border text-[10px] flex flex-col justify-between h-14 transition-all active:scale-95 ${
-                  isToday
-                    ? "bg-emerald-500/20 border-emerald-500 text-emerald-300 ring-2 ring-emerald-500/40"
-                    : "bg-[#181b26] border-[#262b3d] text-gray-300 hover:border-emerald-500/40"
-                }`}
-              >
-                <span className={`font-bold ${isToday ? "text-emerald-400" : "text-gray-400"}`}>
-                  週{item.dayName}
-                </span>
-                <span className="font-black text-[11px] truncate">
-                  {item.target}
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* 月份分頁導航列 (一個月一頁，左右切換如同日曆，亦可直接點選月份 Tab 或在卡片左右滑動) */}
-      <div className="space-y-3 pt-2">
+      {/* 月份分頁導航列 (一個月一頁，左右切換如同日曆，亦可直接點選月份 Tab 或手勢左右滑動) */}
+      <div className="space-y-2.5">
         {/* 月曆切換頂 Bar */}
         <div className="flex items-center justify-between bg-[#12141c] border border-[#262b3d] rounded-2xl p-2.5 shadow-md">
           <button
@@ -397,7 +261,7 @@ export default function HomePage() {
               </span>
             </div>
             <span className="text-[11px] text-gray-400">
-              當月共 {currentGroup?.stats.total || 0} 場訓練 • 可左右切換
+              當月共 {currentGroup?.stats.total || 0} 場訓練 • 可左右滑動切換
             </span>
           </div>
 
@@ -445,7 +309,7 @@ export default function HomePage() {
             onTouchEnd={handleTouchEnd}
             className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3.5 shadow-md transition-all"
           >
-            {/* 該月統計：部位頻率 + 該月 3 項最高重量 (直觀看每個月力量有沒有進步！) */}
+            {/* 該月統計：部位頻率 + 該月 3 項最高重量 (直觀看每個月力量進步) */}
             <div className="grid grid-cols-2 gap-2 text-xs">
               {/* 部位頻率 */}
               <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70 space-y-1">
@@ -500,10 +364,24 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* 該月份日誌清單 (純單行條目，點進去才看詳情) */}
-            <div className="space-y-1.5 pt-1">
+            {/* 該月份日誌清單 (點擊 title 直接展開詳情，不跳轉新頁面) */}
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs font-bold text-gray-400">
+                  訓練日誌清單 ({currentGroup.sessions.length} 場)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => toggleExpandAll(currentGroup.sessions)}
+                  className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium"
+                >
+                  {allCurrentExpanded ? "全部收合" : "全部展開"}
+                </button>
+              </div>
+
               {currentGroup.sessions.map((sess) => {
                 const sessSets = sessionSetsMap[sess.id] || [];
+                const isExpanded = expandedSessionIds.has(sess.id);
 
                 let badgeColor = "bg-red-500/20 text-red-300 border-red-500/40";
                 if (sess.target_muscle.includes("背")) {
@@ -514,47 +392,122 @@ export default function HomePage() {
                   badgeColor = "bg-cyan-500/20 text-cyan-300 border-cyan-500/40";
                 }
 
-                return (
-                  <Link
-                    key={sess.id}
-                    href={`/workout/${sess.id}`}
-                    className="bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] hover:border-emerald-500/40 rounded-xl px-3 py-2.5 flex items-center justify-between text-xs transition-all active:scale-[0.99] group block"
-                  >
-                    <div className="flex items-center gap-2.5 truncate pr-2">
-                      <span className={`px-2 py-0.5 rounded font-black text-[11px] border shrink-0 ${badgeColor}`}>
-                        {sess.target_muscle}
-                      </span>
+                // 依動作群組分類組數
+                const exMap = new Map<string, SetItem[]>();
+                const exOrder: string[] = [];
+                for (const st of sessSets) {
+                  if (!exMap.has(st.exercise_id)) {
+                    exMap.set(st.exercise_id, []);
+                    exOrder.push(st.exercise_id);
+                  }
+                  exMap.get(st.exercise_id)!.push(st);
+                }
 
-                      <div className="truncate">
-                        <span className="font-bold text-gray-100 group-hover:text-emerald-400 transition-colors">
+                return (
+                  <div
+                    key={sess.id}
+                    className="bg-[#181b26] border border-[#262b3d] hover:border-[#384059] rounded-xl overflow-hidden transition-all shadow-sm"
+                  >
+                    {/* 標題欄：點一下就展開/收合，完全不跳轉其他頁面 */}
+                    <div
+                      onClick={() => toggleExpand(sess.id)}
+                      className="px-3 py-2.5 flex items-center justify-between text-xs cursor-pointer select-none active:bg-[#202533]"
+                    >
+                      <div className="flex items-center gap-2 truncate pr-2">
+                        <span className={`px-2 py-0.5 rounded font-black text-[11px] border shrink-0 ${badgeColor}`}>
+                          {sess.target_muscle}
+                        </span>
+
+                        <span className="font-bold text-gray-100 hover:text-emerald-400 transition-colors truncate">
                           {sess.display_title}
                         </span>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      {sess.location && (
-                        <span className="text-[10px] text-gray-400 hidden sm:inline-block">
-                          {sess.location}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {sess.location && (
+                          <span className="text-[10px] text-gray-400 hidden sm:inline-block">
+                            {sess.location}
+                          </span>
+                        )}
+
+                        <span className="text-[11px] bg-[#090a0f] text-gray-400 px-2 py-0.5 rounded border border-[#262b3d]">
+                          {sessSets.length} 組
                         </span>
-                      )}
 
-                      <span className="text-[11px] bg-[#090a0f] text-gray-400 px-2 py-0.5 rounded border border-[#262b3d]">
-                        {sessSets.length} 組
-                      </span>
-
-                      <button
-                        type="button"
-                        onClick={(e) => handleCopyMarkdown(e, sess)}
-                        className="p-1 text-gray-500 hover:text-emerald-400 rounded transition-colors"
-                        title="複製 Markdown"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-
-                      <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-emerald-400 transition-colors" />
+                        <ChevronDown
+                          className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${
+                            isExpanded ? "rotate-180 text-emerald-400" : ""
+                          }`}
+                        />
+                      </div>
                     </div>
-                  </Link>
+
+                    {/* 展開詳情區：直接在原地顯示各動作與組數 */}
+                    {isExpanded && (
+                      <div className="px-4 py-3 bg-[#0f1118] border-t border-[#262b3d]/60 space-y-3 animate-in fade-in duration-150">
+                        {exOrder.length === 0 ? (
+                          <div className="text-gray-500 text-xs py-2">
+                            尚無詳細組數紀錄
+                          </div>
+                        ) : (
+                          <div className="space-y-2.5">
+                            {exOrder.map((exId) => {
+                              const ex = exercises.find((e) => e.id === exId);
+                              const exSets = exMap.get(exId) || [];
+                              const exName = ex ? ex.name : "訓練項目";
+
+                              return (
+                                <div key={exId} className="space-y-1">
+                                  <div className="font-bold text-emerald-400 text-xs flex items-center gap-1.5">
+                                    <span>•</span>
+                                    <span>{exName}：</span>
+                                  </div>
+                                  <div className="pl-4 space-y-0.5">
+                                    {exSets.map((st, sIdx) => {
+                                      const text =
+                                        st.raw_text ||
+                                        (st.weight_kg > 0
+                                          ? `set ${st.set_order}: ${st.weight_kg}Kg x${st.reps}`
+                                          : `set ${st.set_order}: x${st.reps}`);
+
+                                      return (
+                                        <div
+                                          key={st.id || sIdx}
+                                          className="text-[11px] text-gray-300 font-mono tracking-tight"
+                                        >
+                                          - {text}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* 底部操作工具列 */}
+                        <div className="flex items-center justify-between pt-2 border-t border-[#262b3d]/40 text-xs mt-2">
+                          <button
+                            type="button"
+                            onClick={(e) => handleCopyMarkdown(e, sess)}
+                            className="flex items-center gap-1.5 text-gray-400 hover:text-emerald-400 py-1 px-2.5 rounded-lg bg-[#181b26] border border-[#262b3d] transition-colors"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>複製 Markdown</span>
+                          </button>
+
+                          <Link
+                            href={`/workout/${sess.id}`}
+                            className="flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 py-1 px-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 font-bold transition-all active:scale-95"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                            <span>進入記錄 / 修改組數</span>
+                          </Link>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>

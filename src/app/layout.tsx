@@ -110,7 +110,7 @@ export default function RootLayout({
             className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors p-1"
           >
             <TrendingUp className="w-4 h-4" />
-            <span>三項進步</span>
+            <span>訓練分析</span>
           </Link>
 
           <Link

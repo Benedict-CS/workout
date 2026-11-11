@@ -42,6 +42,13 @@ export default function AnalyticsPage() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [bigThree, setBigThree] = useState<BigThreeRecord | null>(null);
+  const [allTimeStats, setAllTimeStats] = useState({
+    胸: 0,
+    背: 0,
+    腿: 0,
+    游泳: 0,
+    total: 0,
+  });
   const [monthlyTrend, setMonthlyTrend] = useState<MonthBigThreeData[]>([]);
   const [prList, setPrList] = useState<PRItem[]>([]);
 
@@ -55,6 +62,16 @@ export default function AnalyticsPage() {
         const sessions = await db.sessions
           .filter((s) => !s.deleted_at)
           .sortBy("date");
+
+        // 全歷史累計訓練總量
+        const totalCounts = { 胸: 0, 背: 0, 腿: 0, 游泳: 0, total: sessions.length };
+        for (const sess of sessions) {
+          if (sess.target_muscle.includes("胸")) totalCounts["胸"]++;
+          else if (sess.target_muscle.includes("背")) totalCounts["背"]++;
+          else if (sess.target_muscle.includes("腿")) totalCounts["腿"]++;
+          else if (sess.target_muscle.includes("泳")) totalCounts["游泳"]++;
+        }
+        setAllTimeStats(totalCounts);
 
         const sessionMap = new Map<string, WorkoutSession>();
         for (const s of sessions) sessionMap.set(s.id, s);
@@ -164,11 +181,47 @@ export default function AnalyticsPage() {
   return (
     <div className="space-y-5 pb-24">
       <div>
-        <h1 className="text-xl font-black text-white">三項進步分析</h1>
+        <h1 className="text-xl font-black text-white">訓練與力量分析</h1>
         <p className="text-xs text-gray-400">
-          追蹤每個月臥推、深蹲、硬舉實測最高重量成長
+          全歷史累計訓練總量與每月三項實測最高重量成長
         </p>
       </div>
+
+      {/* 全歷史累計訓練總量 */}
+      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 shadow-lg">
+        <div className="flex items-center justify-between mb-2.5">
+          <div className="flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-emerald-400" />
+            <h2 className="text-sm font-black text-white">全歷史累計訓練總量</h2>
+          </div>
+          <span className="text-xs text-emerald-400 font-bold">
+            總共 {allTimeStats.total} 場訓練
+          </span>
+        </div>
+
+        <div className="grid grid-cols-4 gap-2 text-center">
+          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
+            <span className="text-[11px] text-gray-400 block mb-0.5">練胸</span>
+            <span className="text-lg font-black text-white">{allTimeStats["胸"]}</span>
+            <span className="text-[10px] text-gray-500 block">次</span>
+          </div>
+          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
+            <span className="text-[11px] text-gray-400 block mb-0.5">練背</span>
+            <span className="text-lg font-black text-white">{allTimeStats["背"]}</span>
+            <span className="text-[10px] text-gray-500 block">次</span>
+          </div>
+          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
+            <span className="text-[11px] text-gray-400 block mb-0.5">練腿</span>
+            <span className="text-lg font-black text-white">{allTimeStats["腿"]}</span>
+            <span className="text-[10px] text-gray-500 block">次</span>
+          </div>
+          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
+            <span className="text-[11px] text-gray-400 block mb-0.5">游泳</span>
+            <span className="text-lg font-black text-white">{allTimeStats["游泳"]}</span>
+            <span className="text-[10px] text-gray-500 block">次</span>
+          </div>
+        </div>
+      </section>
 
       {/* 每月三項實測最高重量走勢圖 */}
       <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3 shadow-md">
