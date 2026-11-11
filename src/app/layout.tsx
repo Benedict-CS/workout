@@ -86,15 +86,15 @@ export default function RootLayout({
             className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors p-1"
           >
             <Activity className="w-4 h-4" />
-            <span>總覽</span>
+            <span>訓練日誌</span>
           </Link>
 
           <Link
-            href="/history"
+            href="/exercises"
             className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors p-1"
           >
-            <History className="w-4 h-4" />
-            <span>日誌</span>
+            <Dumbbell className="w-4 h-4" />
+            <span>動作庫</span>
           </Link>
 
           {/* 中央突出開新訓練鈕 */}
@@ -110,7 +110,7 @@ export default function RootLayout({
             className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors p-1"
           >
             <TrendingUp className="w-4 h-4" />
-            <span>分析</span>
+            <span>三項進步</span>
           </Link>
 
           <Link

@@ -25,11 +25,9 @@ import { testSupabaseConnection, runFullSync } from "@/lib/db/sync";
 import type { BigThreeRecord, WorkoutSession, SetItem, Exercise } from "@/lib/types";
 
 const LOCATION_OPTIONS = [
+  "三健客",
   "交大健身房",
-  "三劍客",
-  "學校健身房",
-  "健身工廠",
-  "成吉思汗",
+  "交大游泳池",
 ];
 
 export default function SettingsPage() {
@@ -54,9 +52,9 @@ export default function SettingsPage() {
   const [deadliftKg, setDeadliftKg] = useState<string>("90");
   const [b3Saved, setB3Saved] = useState(false);
 
-  // 偏好設定
-  const [defaultGym, setDefaultGym] = useState<string>("交大健身房");
-  const [defaultRestTime, setDefaultRestTime] = useState<number>(90);
+  // 偏好設定 (預設三健客、休息 150 秒)
+  const [defaultGym, setDefaultGym] = useState<string>("三健客");
+  const [defaultRestTime, setDefaultRestTime] = useState<number>(150);
   const [prefSaved, setPrefSaved] = useState(false);
 
   useEffect(() => {
@@ -369,45 +367,17 @@ export default function SettingsPage() {
               onChange={(e) => setDefaultRestTime(parseInt(e.target.value, 10))}
               className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 outline-none focus:border-emerald-500"
             >
-              <option value={45}>45 秒 (短間歇 / 泵感)</option>
-              <option value={60}>60 秒 (標準肌肥大)</option>
-              <option value={90}>90 秒 (中重量肌肥大)</option>
-              <option value={120}>120 秒 (大重量力量)</option>
-              <option value={180}>180 秒 (極限三項力量)</option>
+              <option value={120}>2 分鐘 (120 秒)</option>
+              <option value={150}>2 分半 (150 秒 - 常用)</option>
+              <option value={180}>3 分鐘 (180 秒)</option>
             </select>
           </div>
         </div>
 
         <div className="flex gap-2">
           <button
-            type="button"
-            onClick={() => {
-              try {
-                const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.type = "sine";
-                osc.frequency.setValueAtTime(880, ctx.currentTime);
-                gain.gain.setValueAtTime(0.2, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
-                osc.start();
-                osc.stop(ctx.currentTime + 0.8);
-              } catch {}
-              if (typeof navigator !== "undefined" && navigator.vibrate) {
-                navigator.vibrate([200, 100, 200, 100, 400]);
-              }
-            }}
-            className="flex-1 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 font-bold py-2 rounded-xl text-xs transition-all flex items-center justify-center gap-1"
-          >
-            <Clock className="w-3.5 h-3.5 text-amber-400" />
-            <span>測試音效與震動</span>
-          </button>
-
-          <button
             onClick={handleSavePreferences}
-            className="flex-1 bg-[#181b26] hover:bg-[#202533] border border-emerald-500/40 text-emerald-400 font-bold py-2 rounded-xl text-xs transition-all"
+            className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-2.5 rounded-xl text-xs transition-all shadow"
           >
             {prefSaved ? "偏好已儲存！" : "儲存偏好設定"}
           </button>
@@ -472,7 +442,7 @@ export default function SettingsPage() {
             className="bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-amber-400 text-xs font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            <span>{reseeded ? "已重新載入種子數據" : "載入 1,293 組種子"}</span>
+            <span>{reseeded ? "已重新載入歷史數據" : "重新載入種子數據"}</span>
           </button>
         </div>
 

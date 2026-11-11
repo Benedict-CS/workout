@@ -146,13 +146,11 @@ export function parseWorkoutMarkdown(markdown: string, defaultYear = 2026): Pars
     if (exerciseMatch && currentSession && !line.startsWith("- set") && !line.includes("x") && !line.includes("Kg")) {
       const rawExerciseName = exerciseMatch[1].trim();
       
-      // 判斷重量類型與分類
-      let muscleGroup: MuscleGroup = "綜合";
-      if (currentSession.target_muscle.includes("胸")) muscleGroup = "胸部";
-      else if (currentSession.target_muscle.includes("背")) muscleGroup = "背部";
-      else if (currentSession.target_muscle.includes("腿")) muscleGroup = "腿部";
-      else if (currentSession.target_muscle.includes("肩")) muscleGroup = "肩部";
-      else if (currentSession.target_muscle.includes("三頭") || currentSession.target_muscle.includes("二頭")) muscleGroup = "手臂";
+      // 判斷重量類型與分類 (僅限: 胸、背、腿、游泳)
+      let muscleGroup: MuscleGroup = "胸";
+      if (currentSession.target_muscle.includes("胸")) muscleGroup = "胸";
+      else if (currentSession.target_muscle.includes("背")) muscleGroup = "背";
+      else if (currentSession.target_muscle.includes("腿")) muscleGroup = "腿";
       else if (currentSession.target_muscle.includes("游泳")) muscleGroup = "游泳";
 
       let weightType: WeightType = "barbell_total";
@@ -193,26 +191,23 @@ export function parseWorkoutMarkdown(markdown: string, defaultYear = 2026): Pars
       const cleanSetLine = line.replace(/^-\s*/, "");
 
       let setType: SetType = "normal";
-      if (cleanSetLine.includes("熱身")) setType = "warmup";
-      else if (cleanSetLine.includes("神經激發")) setType = "primer";
+      if (cleanSetLine.includes("熱身") || cleanSetLine.includes("神經激發")) setType = "warmup";
       else if (cleanSetLine.includes("遞減")) setType = "drop";
-      else if (cleanSetLine.includes("休 +") || cleanSetLine.includes("休息補")) setType = "rest_pause";
-      else if (cleanSetLine.includes("測試") || cleanSetLine.includes("挑戰")) setType = "test";
 
       // 提取主重量與次數
       let weight = 0;
       let reps = 0;
 
-      if (cleanSetLine.includes("自身體重")) {
-        weight = 0; // 自重動作以 0kg 標記或基礎自重
-        const repsMatch = cleanSetLine.match(/自身體重\s*x(\d+)/);
-        if (repsMatch) reps = parseInt(repsMatch[1], 10);
-      } else {
-        const weightMatch = cleanSetLine.match(/(\d+(?:\.\d+)?)\s*Kg\s*x(\d+)/i);
-        if (weightMatch) {
-          weight = parseFloat(weightMatch[1]);
-          reps = parseInt(weightMatch[2], 10);
-        }
+      const mainPart = cleanSetLine.split("+")[0];
+      const weightMatch = mainPart.match(/(\d+(?:\.\d+)?)\s*Kg(?:\([^\)]+\))?\s*x(\d+)/i);
+      const repsMatch = mainPart.match(/(?:自身體重|0Kg)?\s*x(\d+)/i);
+
+      if (weightMatch) {
+        weight = parseFloat(weightMatch[1]);
+        reps = parseInt(weightMatch[2], 10);
+      } else if (repsMatch) {
+        weight = 0;
+        reps = parseInt(repsMatch[1], 10);
       }
 
       // 提取強迫次數/補次 (如 "+ 補2" 或 "補4" 或 "輔助2")

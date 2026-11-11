@@ -7,14 +7,12 @@ let cachedUrl = "";
 let cachedKey = "";
 
 export function getSupabaseClient(): SupabaseClient | null {
-  if (typeof window === "undefined") return null;
-
   const url =
-    localStorage.getItem("workout_supabase_url") ||
+    (typeof window !== "undefined" ? localStorage.getItem("workout_supabase_url") : null) ||
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
     "";
   const key =
-    localStorage.getItem("workout_supabase_key") ||
+    (typeof window !== "undefined" ? localStorage.getItem("workout_supabase_key") : null) ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
     "";
 
@@ -54,16 +52,12 @@ export async function testSupabaseConnection(
   try {
     const url =
       customUrl ||
-      (typeof window !== "undefined"
-        ? localStorage.getItem("workout_supabase_url") || ""
-        : "") ||
+      (typeof window !== "undefined" ? localStorage.getItem("workout_supabase_url") || "" : "") ||
       process.env.NEXT_PUBLIC_SUPABASE_URL ||
       "";
     const key =
       customKey ||
-      (typeof window !== "undefined"
-        ? localStorage.getItem("workout_supabase_key") || ""
-        : "") ||
+      (typeof window !== "undefined" ? localStorage.getItem("workout_supabase_key") || "" : "") ||
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
       "";
 
@@ -72,17 +66,9 @@ export async function testSupabaseConnection(
     }
 
     const testClient = createClient(url, key, { auth: { persistSession: false } });
-    // 嘗試查詢 sessions 表 (limit 1)
-    const { error } = await testClient.from("sessions").select("id").limit(1);
+    const { error } = await testClient.from("workout_sessions").select("id").limit(1);
 
     if (error) {
-      // 若表格尚未建立，但連線認證通過
-      if (error.code === "42P01" || error.message.includes("relation") || error.message.includes("does not exist")) {
-        return {
-          ok: true,
-          message: "連線成功！但雲端資料表 (sessions) 尚未建立，可先點擊備份上傳初始化。",
-        };
-      }
       return { ok: false, message: `連線失敗: ${error.message}` };
     }
 
@@ -93,9 +79,35 @@ export async function testSupabaseConnection(
 }
 
 /**
+ * 解析 session 的場地名稱
+ */
+export function extractLocationFromSession(s: any): string | undefined {
+  if (s.location) return s.location;
+  if (s.notes) {
+    try {
+      const parsed = JSON.parse(s.notes);
+      if (parsed.location) return parsed.location;
+    } catch {}
+  }
+  const title = s.display_title || "";
+  if (title.includes("永和國民運動中心")) return "永和國民運動中心";
+  if (title.includes("四號公園")) return "四號公園";
+  if (title.includes("zyx家游泳池")) return "zyx家游泳池";
+  if (title.includes("清大游泳池")) return "清大游泳池";
+  if (title.includes("交大游泳池")) return "交大游泳池";
+  if (title.includes("交大健身房")) return "交大健身房";
+  if (title.includes("三健客") || title.includes("三劍客")) return "三健客";
+
+  const date = s.date || "";
+  if (s.target_muscle === "游泳") return "交大游泳池";
+  if (date <= "2026-08-31") return "交大健身房";
+  return "三健客";
+}
+
+/**
  * 執行雙向同步：
  * 1. 將本機 pending 或 modified 資料上傳 (Upsert) 到 Supabase
- * 2. 下載雲端較新的資料更新至本機 IndexedDB
+ * 2. 下載雲端較新的資料更新至本機 IndexedDB (包括跨裝置手機讀取)
  */
 export async function runFullSync(): Promise<SyncResult> {
   const supabase = getSupabaseClient();
@@ -119,17 +131,30 @@ export async function runFullSync(): Promise<SyncResult> {
     );
 
     if (pendingSessions.length > 0) {
+      const payload = pendingSessions.map((s) => ({
+        id: s.id,
+        date: s.date,
+        month_key: s.month_key,
+        display_title: s.display_title,
+        target_muscle: s.target_muscle,
+        monthly_index: s.monthly_index || 1,
+        notes: JSON.stringify({ note: s.notes || "", location: s.location || "" }),
+        created_at: s.created_at,
+        updated_at: s.updated_at,
+        deleted_at: s.deleted_at || null,
+      }));
+
       const { error: pushErr } = await supabase
-        .from("sessions")
-        .upsert(
-          pendingSessions.map((s) => ({ ...s, sync_status: "synced" })),
-          { onConflict: "id" }
-        );
+        .from("workout_sessions")
+        .upsert(payload, { onConflict: "id" });
+
       if (!pushErr) {
         pushed += pendingSessions.length;
         await db.sessions.bulkPut(
           pendingSessions.map((s) => ({ ...s, sync_status: "synced" }))
         );
+      } else {
+        console.error("Error pushing sessions:", pushErr);
       }
     }
 
@@ -140,12 +165,22 @@ export async function runFullSync(): Promise<SyncResult> {
     );
 
     if (pendingExercises.length > 0) {
+      const payload = pendingExercises.map((e) => ({
+        id: e.id,
+        name: e.name,
+        muscle_group: e.muscle_group,
+        weight_type: e.weight_type,
+        default_notes: e.default_notes || null,
+        is_favorite: !!e.is_favorite,
+        created_at: e.created_at,
+        updated_at: e.updated_at,
+        deleted_at: e.deleted_at || null,
+      }));
+
       const { error: pushExErr } = await supabase
         .from("exercises")
-        .upsert(
-          pendingExercises.map((e) => ({ ...e, sync_status: "synced" })),
-          { onConflict: "id" }
-        );
+        .upsert(payload, { onConflict: "id" });
+
       if (!pushExErr) {
         pushed += pendingExercises.length;
         await db.exercises.bulkPut(
@@ -161,19 +196,37 @@ export async function runFullSync(): Promise<SyncResult> {
     );
 
     if (pendingSets.length > 0) {
-      // 分批處理避免 payload 過大
-      const chunkSize = 200;
+      const chunkSize = 150;
       for (let i = 0; i < pendingSets.length; i += chunkSize) {
         const chunk = pendingSets.slice(i, i + chunkSize);
+        const payload = chunk.map((st) => ({
+          id: st.id,
+          session_id: st.session_id,
+          exercise_id: st.exercise_id,
+          set_order: st.set_order,
+          set_type: st.set_type,
+          weight_kg: st.weight_kg,
+          reps: st.reps,
+          raw_text: st.raw_text || null,
+          rest_pause_detail: st.sub_fields ? JSON.stringify(st.sub_fields) : (st.rest_pause_detail || null),
+          forced_reps: st.forced_reps || null,
+          is_failure: !!st.is_failure,
+          feedback: st.feedback || null,
+          notes: st.notes || null,
+          created_at: st.created_at,
+          updated_at: st.updated_at,
+          deleted_at: st.deleted_at || null,
+        }));
+
         const { error: pushSetErr } = await supabase
-          .from("sets")
-          .upsert(
-            chunk.map((st) => ({ ...st, sync_status: "synced" })),
-            { onConflict: "id" }
-          );
+          .from("workout_sets")
+          .upsert(payload, { onConflict: "id" });
+
         if (!pushSetErr) {
           pushed += chunk.length;
           await db.sets.bulkPut(chunk.map((st) => ({ ...st, sync_status: "synced" })));
+        } else {
+          console.error("Error pushing sets chunk:", pushSetErr);
         }
       }
     }
@@ -181,30 +234,156 @@ export async function runFullSync(): Promise<SyncResult> {
     // 4. 同步 Big Three
     const localB3 = await db.big_three.toArray();
     if (localB3.length > 0) {
+      const payload = localB3.map((b) => ({
+        id: b.id,
+        bench_press_kg: b.bench_press_kg,
+        squat_kg: b.squat_kg,
+        deadlift_kg: b.deadlift_kg,
+        total_kg: b.total_kg,
+        body_weight_kg: b.body_weight_kg || null,
+        bench_ratio: b.bench_ratio || null,
+        squat_ratio: b.squat_ratio || null,
+        deadlift_ratio: b.deadlift_ratio || null,
+        updated_at: b.updated_at,
+      }));
+
       const { error: b3Err } = await supabase
-        .from("big_three")
-        .upsert(
-          localB3.map((b) => ({ ...b, sync_status: "synced" })),
-          { onConflict: "id" }
-        );
+        .from("big_three_records")
+        .upsert(payload, { onConflict: "id" });
+
       if (!b3Err) {
         pushed += localB3.length;
       }
     }
 
-    // 5. 下載雲端更新 (Pull latest)
+    // 5. 下載雲端更新 (Pull latest for all tables)
+    // 5.1 Pull Sessions
     const { data: remoteSessions } = await supabase
-      .from("sessions")
+      .from("workout_sessions")
       .select("*")
-      .limit(500);
+      .order("date", { ascending: false })
+      .limit(1000);
 
     if (remoteSessions && remoteSessions.length > 0) {
       for (const rs of remoteSessions) {
         const local = await db.sessions.get(rs.id);
         if (!local || new Date(rs.updated_at) > new Date(local.updated_at)) {
-          await db.sessions.put({ ...rs, sync_status: "synced" });
+          const loc = extractLocationFromSession(rs);
+          let noteText = rs.notes;
+          if (rs.notes && rs.notes.startsWith("{")) {
+            try {
+              noteText = JSON.parse(rs.notes).note;
+            } catch {}
+          }
+          await db.sessions.put({
+            id: rs.id,
+            date: rs.date,
+            month_key: rs.month_key,
+            display_title: rs.display_title,
+            target_muscle: rs.target_muscle,
+            monthly_index: rs.monthly_index,
+            location: loc,
+            notes: noteText,
+            created_at: rs.created_at,
+            updated_at: rs.updated_at,
+            deleted_at: rs.deleted_at,
+            sync_status: "synced",
+          });
           pulled++;
         }
+      }
+    }
+
+    // 5.2 Pull Exercises
+    const { data: remoteExercises } = await supabase
+      .from("exercises")
+      .select("*")
+      .limit(500);
+
+    if (remoteExercises && remoteExercises.length > 0) {
+      for (const re of remoteExercises) {
+        const local = await db.exercises.get(re.id);
+        if (!local || new Date(re.updated_at) > new Date(local.updated_at)) {
+          await db.exercises.put({
+            id: re.id,
+            name: re.name,
+            muscle_group: re.muscle_group,
+            weight_type: re.weight_type,
+            default_notes: re.default_notes,
+            is_favorite: re.is_favorite,
+            created_at: re.created_at,
+            updated_at: re.updated_at,
+            deleted_at: re.deleted_at,
+            sync_status: "synced",
+          });
+          pulled++;
+        }
+      }
+    }
+
+    // 5.3 Pull Sets (in batches if needed)
+    const { data: remoteSets } = await supabase
+      .from("workout_sets")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(5000);
+
+    if (remoteSets && remoteSets.length > 0) {
+      for (const rst of remoteSets) {
+        const local = await db.sets.get(rst.id);
+        if (!local || new Date(rst.updated_at) > new Date(local.updated_at)) {
+          let subFields = undefined;
+          if (rst.rest_pause_detail && rst.rest_pause_detail.startsWith("[")) {
+            try {
+              subFields = JSON.parse(rst.rest_pause_detail);
+            } catch {}
+          }
+          await db.sets.put({
+            id: rst.id,
+            session_id: rst.session_id,
+            exercise_id: rst.exercise_id,
+            set_order: rst.set_order,
+            set_type: rst.set_type,
+            weight_kg: Number(rst.weight_kg),
+            reps: Number(rst.reps),
+            raw_text: rst.raw_text,
+            sub_fields: subFields,
+            rest_pause_detail: rst.rest_pause_detail,
+            forced_reps: rst.forced_reps,
+            is_failure: rst.is_failure,
+            feedback: rst.feedback,
+            notes: rst.notes,
+            created_at: rst.created_at,
+            updated_at: rst.updated_at,
+            deleted_at: rst.deleted_at,
+            sync_status: "synced",
+          });
+          pulled++;
+        }
+      }
+    }
+
+    // 5.4 Pull Big Three
+    const { data: remoteB3 } = await supabase
+      .from("big_three_records")
+      .select("*")
+      .limit(5);
+
+    if (remoteB3 && remoteB3.length > 0) {
+      for (const rb of remoteB3) {
+        await db.big_three.put({
+          id: rb.id,
+          bench_press_kg: Number(rb.bench_press_kg),
+          squat_kg: Number(rb.squat_kg),
+          deadlift_kg: Number(rb.deadlift_kg),
+          total_kg: Number(rb.total_kg),
+          body_weight_kg: rb.body_weight_kg ? Number(rb.body_weight_kg) : undefined,
+          bench_ratio: rb.bench_ratio ? Number(rb.bench_ratio) : undefined,
+          squat_ratio: rb.squat_ratio ? Number(rb.squat_ratio) : undefined,
+          deadlift_ratio: rb.deadlift_ratio ? Number(rb.deadlift_ratio) : undefined,
+          updated_at: rb.updated_at,
+          sync_status: "synced",
+        });
       }
     }
 

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import {
   Dumbbell,
-  TrendingUp,
   Search,
   Plus,
   X,
@@ -11,19 +10,15 @@ import {
   Star,
   Pencil,
   Trash2,
-  Calendar,
-  History,
-  Info,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
-import { estimate1RM } from "@/lib/db/crud";
 import type { Exercise, SetItem, MuscleGroup, WeightType } from "@/lib/types";
 
 interface ExerciseStat {
   exercise: Exercise;
   totalSets: number;
   maxWeight: number;
-  max1RM: number;
+  maxWeightReps: number;
   bestSet: string;
 }
 
@@ -37,32 +32,34 @@ export default function ExercisesPage() {
   // 自訂新增動作狀態
   const [showAddModal, setShowAddModal] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newMuscle, setNewMuscle] = useState<MuscleGroup>("胸部");
+  const [newMuscle, setNewMuscle] = useState<MuscleGroup>("胸");
   const [newWeightType, setNewWeightType] = useState<WeightType>("barbell_total");
   const [newNotes, setNewNotes] = useState("");
 
   // 編輯動作狀態
   const [editingEx, setEditingEx] = useState<Exercise | null>(null);
   const [editName, setEditName] = useState("");
-  const [editMuscle, setEditMuscle] = useState<MuscleGroup>("胸部");
+  const [editMuscle, setEditMuscle] = useState<MuscleGroup>("胸");
   const [editWeightType, setEditWeightType] = useState<WeightType>("barbell_total");
   const [editNotes, setEditNotes] = useState("");
 
   async function loadData() {
-    const allEx = await db.exercises.filter((e) => !e.deleted_at).toArray();
+    // 排除繩索夾胸
+    const allEx = await db.exercises
+      .filter((e) => !e.deleted_at && !e.name.includes("繩索夾胸"))
+      .toArray();
     const allSets = await db.sets.filter((s) => !s.deleted_at).toArray();
 
     const calculated: ExerciseStat[] = allEx.map((ex) => {
       const exSets = allSets.filter((s) => s.exercise_id === ex.id);
       let maxWeight = 0;
-      let max1RM = 0;
+      let maxWeightReps = 0;
       let bestSet = "";
 
       for (const s of exSets) {
-        if (s.weight_kg > maxWeight) maxWeight = s.weight_kg;
-        const e1rm = estimate1RM(s.weight_kg, s.reps);
-        if (e1rm > max1RM) {
-          max1RM = e1rm;
+        if (s.weight_kg > maxWeight) {
+          maxWeight = s.weight_kg;
+          maxWeightReps = s.reps;
           bestSet = s.raw_text || `${s.weight_kg}Kg x ${s.reps}`;
         }
       }
@@ -71,12 +68,12 @@ export default function ExercisesPage() {
         exercise: ex,
         totalSets: exSets.length,
         maxWeight,
-        max1RM,
+        maxWeightReps,
         bestSet: bestSet || "尚未開始記錄",
       };
     });
 
-    // 常用置頂，並依總組數多到少排序
+    // 常用置頂，並依總組數排序
     calculated.sort((a, b) => {
       if (a.exercise.is_favorite && !b.exercise.is_favorite) return -1;
       if (!a.exercise.is_favorite && b.exercise.is_favorite) return 1;
@@ -165,11 +162,11 @@ export default function ExercisesPage() {
   });
 
   return (
-    <div className="space-y-4 pb-20">
+    <div className="space-y-4 pb-24">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-black text-white">精選動作庫 & 1RM</h1>
-          <p className="text-xs text-gray-400">管理常用固定動作、PR 紀錄與客製備註</p>
+          <h1 className="text-xl font-black text-white">精選動作庫</h1>
+          <p className="text-xs text-gray-400">專注核心動作、實測最高重量紀錄</p>
         </div>
         <button
           onClick={() => setShowAddModal(!showAddModal)}
@@ -180,11 +177,11 @@ export default function ExercisesPage() {
         </button>
       </div>
 
-      {/* 新增動作展開卡片 */}
+      {/* 新增動作卡片 */}
       {showAddModal && (
-        <div className="bg-[#12141c] border border-emerald-500/40 rounded-2xl p-4 space-y-3 animate-in fade-in duration-200 shadow-xl">
+        <div className="bg-[#12141c] border border-emerald-500/40 rounded-2xl p-4 space-y-3 shadow-xl">
           <div className="flex items-center justify-between text-xs font-bold text-emerald-400">
-            <span>新增專屬自訂動作</span>
+            <span>新增動作</span>
             <button onClick={() => setShowAddModal(false)} className="text-gray-500 hover:text-white">
               <X className="w-4 h-4" />
             </button>
@@ -192,33 +189,30 @@ export default function ExercisesPage() {
 
           <div className="grid grid-cols-2 gap-2">
             <div className="col-span-2">
-              <label className="text-[10px] text-gray-400 block mb-1">動作名稱</label>
+              <label className="text-[10px] text-gray-400 block mb-1 font-bold">動作名稱</label>
               <input
                 type="text"
-                placeholder="例如: 雙槓臂屈伸、側平舉、啞鈴飛鳥..."
+                placeholder="例如: 雙槓臂屈伸、側平舉..."
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 outline-none focus:border-emerald-500"
               />
             </div>
             <div>
-              <label className="text-[10px] text-gray-400 block mb-1">部位</label>
+              <label className="text-[10px] text-gray-400 block mb-1 font-bold">部位</label>
               <select
                 value={newMuscle}
                 onChange={(e) => setNewMuscle(e.target.value as MuscleGroup)}
                 className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 outline-none"
               >
-                <option value="胸部">胸部</option>
-                <option value="背部">背部</option>
-                <option value="腿部">腿部</option>
-                <option value="肩部">肩部</option>
-                <option value="手臂">手臂</option>
-                <option value="核心">核心</option>
+                <option value="胸">胸</option>
+                <option value="背">背</option>
+                <option value="腿">腿</option>
                 <option value="游泳">游泳</option>
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-gray-400 block mb-1">設備型態</label>
+              <label className="text-[10px] text-gray-400 block mb-1 font-bold">設備型態</label>
               <select
                 value={newWeightType}
                 onChange={(e) => setNewWeightType(e.target.value as WeightType)}
@@ -228,18 +222,7 @@ export default function ExercisesPage() {
                 <option value="dumbbell_single">啞鈴 (單邊)</option>
                 <option value="machine_stack">訓練機 (插銷/滑輪)</option>
                 <option value="bodyweight">自重動作</option>
-                <option value="assisted_inverse">輔助機 (越重越易)</option>
               </select>
-            </div>
-            <div className="col-span-2">
-              <label className="text-[10px] text-gray-400 block mb-1">動作預設提示 (選填)</label>
-              <input
-                type="text"
-                placeholder="例如: 椅背 30 度、握把調到第 4 格..."
-                value={newNotes}
-                onChange={(e) => setNewNotes(e.target.value)}
-                className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 outline-none focus:border-emerald-500"
-              />
             </div>
           </div>
 
@@ -256,7 +239,7 @@ export default function ExercisesPage() {
 
       {/* 修改動作 Modal */}
       {editingEx && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#12141c] border border-emerald-500/40 rounded-2xl max-w-sm w-full p-5 space-y-3 shadow-2xl">
             <div className="flex items-center justify-between border-b border-[#262b3d] pb-2">
               <h3 className="text-white text-sm font-bold flex items-center gap-2">
@@ -270,7 +253,7 @@ export default function ExercisesPage() {
 
             <div className="space-y-2.5">
               <div>
-                <label className="text-[10px] text-gray-400 block mb-1">動作名稱</label>
+                <label className="text-[10px] text-gray-400 block mb-1 font-bold">動作名稱</label>
                 <input
                   type="text"
                   value={editName}
@@ -281,24 +264,21 @@ export default function ExercisesPage() {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] text-gray-400 block mb-1">部位</label>
+                  <label className="text-[10px] text-gray-400 block mb-1 font-bold">部位</label>
                   <select
                     value={editMuscle}
                     onChange={(e) => setEditMuscle(e.target.value as MuscleGroup)}
                     className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2 outline-none"
                   >
-                    <option value="胸部">胸部</option>
-                    <option value="背部">背部</option>
-                    <option value="腿部">腿部</option>
-                    <option value="肩部">肩部</option>
-                    <option value="手臂">手臂</option>
-                    <option value="核心">核心</option>
+                    <option value="胸">胸</option>
+                    <option value="背">背</option>
+                    <option value="腿">腿</option>
                     <option value="游泳">游泳</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="text-[10px] text-gray-400 block mb-1">設備型態</label>
+                  <label className="text-[10px] text-gray-400 block mb-1 font-bold">設備型態</label>
                   <select
                     value={editWeightType}
                     onChange={(e) => setEditWeightType(e.target.value as WeightType)}
@@ -308,20 +288,8 @@ export default function ExercisesPage() {
                     <option value="dumbbell_single">啞鈴 (單邊)</option>
                     <option value="machine_stack">訓練機 (插銷/滑輪)</option>
                     <option value="bodyweight">自重動作</option>
-                    <option value="assisted_inverse">輔助機 (越重越易)</option>
                   </select>
                 </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] text-gray-400 block mb-1">設定提示 (選填)</label>
-                <input
-                  type="text"
-                  placeholder="例如: 椅背斜度、握距..."
-                  value={editNotes}
-                  onChange={(e) => setEditNotes(e.target.value)}
-                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 outline-none focus:border-emerald-500"
-                />
               </div>
             </div>
 
@@ -374,22 +342,21 @@ export default function ExercisesPage() {
           className="bg-[#12141c] border border-[#262b3d] text-xs text-emerald-400 font-bold rounded-xl px-3 outline-none"
         >
           <option value="all">全部分類</option>
-          <option value="胸部">胸部</option>
-          <option value="背部">背部</option>
-          <option value="腿部">腿部</option>
-          <option value="肩部">肩部</option>
-          <option value="手臂">手臂</option>
+          <option value="胸">胸</option>
+          <option value="背">背</option>
+          <option value="腿">腿</option>
+          <option value="游泳">游泳</option>
         </select>
       </div>
 
       {loading ? (
         <div className="text-center py-10 text-gray-400 text-xs">載入動作庫中...</div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {filtered.map((item) => (
             <div
               key={item.exercise.id}
-              className="bg-[#12141c] border border-[#262b3d] hover:border-emerald-500/40 rounded-2xl p-4 space-y-2.5 transition-all shadow-sm"
+              className="bg-[#12141c] border border-[#262b3d] hover:border-emerald-500/40 rounded-2xl p-3.5 space-y-2 transition-all shadow-sm"
             >
               <div className="flex items-center justify-between">
                 <div>
@@ -415,27 +382,18 @@ export default function ExercisesPage() {
                       {item.exercise.muscle_group}
                     </span>
                     <span>•</span>
-                    <span>總累計 {item.totalSets} 組</span>
-                    {item.exercise.default_notes && (
-                      <>
-                        <span>•</span>
-                        <span className="text-gray-400 italic">
-                          {item.exercise.default_notes}
-                        </span>
-                      </>
-                    )}
+                    <span>累計 {item.totalSets} 組</span>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <div className="text-right">
-                    <span className="text-[10px] text-gray-400 block">推估 1RM</span>
-                    <span className="text-sm font-black text-amber-400">
-                      {item.max1RM > 0 ? `${item.max1RM} Kg` : "-"}
+                    <span className="text-[10px] text-gray-400 block">實測最高</span>
+                    <span className="text-sm font-black text-white">
+                      {item.maxWeight > 0 ? `${item.maxWeight} Kg` : "-"}
                     </span>
                   </div>
 
-                  {/* 編輯動作 */}
                   <button
                     onClick={() => handleStartEdit(item.exercise)}
                     className="p-1.5 text-gray-400 hover:text-white rounded-lg transition-colors ml-1"
@@ -444,12 +402,11 @@ export default function ExercisesPage() {
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
 
-                  {/* 刪除客製動作 */}
                   {item.exercise.id.startsWith("custom-") && (
                     <button
                       onClick={() => handleDeleteExercise(item.exercise)}
                       className="p-1.5 text-gray-400 hover:text-red-400 rounded-lg transition-colors"
-                      title="刪除自訂動作"
+                      title="刪除"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -458,10 +415,12 @@ export default function ExercisesPage() {
               </div>
 
               {/* 最佳紀錄 */}
-              <div className="bg-[#181b26] px-3 py-2 rounded-xl border border-[#262b3d]/60 flex items-center justify-between text-xs">
-                <span className="text-[11px] text-gray-400">歷史最佳組數：</span>
-                <span className="font-bold text-emerald-300">{item.bestSet}</span>
-              </div>
+              {item.maxWeight > 0 && (
+                <div className="bg-[#181b26] px-3 py-1.5 rounded-xl border border-[#262b3d]/60 flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-gray-400">歷史最佳做組：</span>
+                  <span className="font-bold text-emerald-300">{item.bestSet}</span>
+                </div>
+              )}
             </div>
           ))}
         </div>

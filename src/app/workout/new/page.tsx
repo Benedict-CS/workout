@@ -10,29 +10,21 @@ import {
   Dumbbell,
   MapPin,
   Copy,
-  Sparkles,
-  ChevronDown,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { getPreviousSessionTemplate } from "@/lib/db/crud";
 import type { WorkoutSession, SetItem, Exercise } from "@/lib/types";
 
 const LOCATION_PRESETS = [
+  "三健客",
   "交大健身房",
-  "三劍客",
-  "學校健身房",
-  "健身工廠",
-  "成吉思汗",
+  "交大游泳池",
 ];
 
 const MUSCLE_PRESETS = [
-  "胸部",
-  "背部",
-  "腿部",
-  "肩部",
-  "手臂",
-  "胸部 + 三頭",
-  "背部 + 二頭",
+  "胸",
+  "背",
+  "腿",
   "游泳",
 ];
 
@@ -42,11 +34,8 @@ function NewWorkoutForm() {
   const todayStr = new Date().toISOString().split("T")[0];
 
   const [date, setDate] = useState(todayStr);
-  const [targetMuscle, setTargetMuscle] = useState("胸部");
-  const [customMuscle, setCustomMuscle] = useState("");
-  const [location, setLocation] = useState("交大健身房");
-  const [customLocation, setCustomLocation] = useState("");
-  const [customTitle, setCustomTitle] = useState("");
+  const [targetMuscle, setTargetMuscle] = useState("胸");
+  const [location, setLocation] = useState("三健客");
 
   // 上次菜單複製功能
   const [prevTemplate, setPrevTemplate] = useState<{
@@ -57,20 +46,29 @@ function NewWorkoutForm() {
   const [clonePrevMenu, setClonePrevMenu] = useState(false);
   const [exercisesMap, setExercisesMap] = useState<Record<string, Exercise>>({});
 
-  // 讀取 URL 參數與預設偏好
+  // 讀取 URL 參數
   useEffect(() => {
     const urlMuscle = searchParams.get("muscle");
     if (urlMuscle) {
-      setTargetMuscle(urlMuscle);
-    }
-    const urlLoc = searchParams.get("location");
-    if (urlLoc) {
-      setLocation(urlLoc);
-    } else {
-      const storedGym = localStorage.getItem("workout_default_gym");
-      if (storedGym) setLocation(storedGym);
+      // 標準化部位至 4 大項
+      if (urlMuscle.includes("胸")) setTargetMuscle("胸");
+      else if (urlMuscle.includes("背")) setTargetMuscle("背");
+      else if (urlMuscle.includes("腿")) setTargetMuscle("腿");
+      else if (urlMuscle.includes("泳")) {
+        setTargetMuscle("游泳");
+        setLocation("交大游泳池");
+      }
     }
   }, [searchParams]);
+
+  // 當選擇部位為游泳時，自動切換至交大游泳池；反之若原本是交大游泳池切到重訓，自動切回三健客
+  useEffect(() => {
+    if (targetMuscle === "游泳" && location !== "交大游泳池") {
+      setLocation("交大游泳池");
+    } else if (targetMuscle !== "游泳" && location === "交大游泳池") {
+      setLocation("三健客");
+    }
+  }, [targetMuscle]);
 
   // 載入所有動作名稱快照
   useEffect(() => {
@@ -84,10 +82,15 @@ function NewWorkoutForm() {
   // 當部位切換時，自動尋找上次同部位菜單
   useEffect(() => {
     async function checkPrev() {
+      if (targetMuscle === "游泳") {
+        setPrevTemplate(null);
+        setClonePrevMenu(false);
+        return;
+      }
       const match = await getPreviousSessionTemplate(targetMuscle);
       setPrevTemplate(match);
       if (match && match.sets.length > 0) {
-        setClonePrevMenu(true); // 預設推薦帶入
+        setClonePrevMenu(true);
       } else {
         setClonePrevMenu(false);
       }
@@ -109,14 +112,11 @@ function NewWorkoutForm() {
       .count();
 
     const monthlyIndex = currentMonthCount + 1;
-    const finalLocation = (customLocation.trim() || location).trim();
-    const finalMuscle = (customMuscle.trim() || targetMuscle).trim();
+    const finalLocation = location.trim();
+    const finalMuscle = targetMuscle;
 
-    // 格式化為使用者的標準 Markdown 命名：如 "10/11 (胸) - 交大健身房 - 第 6 次"
-    const locationPart = finalLocation ? ` - ${finalLocation}` : "";
-    const title =
-      customTitle.trim() || `${m}/${d} (${finalMuscle})${locationPart} - 第 ${monthlyIndex} 次`;
-
+    // 格式化標準命名：如 "11/11 (胸) - 三健客 - 第 5 次"
+    const title = `${m}/${d} (${finalMuscle}) - ${finalLocation} - 第 ${monthlyIndex} 次`;
     const sessionId = `session-${date}-${Date.now()}`;
 
     const newSession: WorkoutSession = {
@@ -126,7 +126,7 @@ function NewWorkoutForm() {
       display_title: title,
       target_muscle: finalMuscle,
       monthly_index: monthlyIndex,
-      location: finalLocation || undefined,
+      location: finalLocation,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       sync_status: "pending",
@@ -134,7 +134,13 @@ function NewWorkoutForm() {
 
     await db.sessions.add(newSession);
 
-    // 若使用者勾選「複製上一次菜單結構」，自動帶入組數
+    // 若為游泳，自動建立一筆空組或直接進去點「早上游/下午游/晚上游」
+    if (finalMuscle === "游泳") {
+      router.push(`/workout/${sessionId}`);
+      return;
+    }
+
+    // 若使用者勾選「沿用上一次菜單結構」，自動帶入組數
     if (clonePrevMenu && prevTemplate && prevTemplate.sets.length > 0) {
       const newSets: SetItem[] = prevTemplate.sets.map((s, idx) => ({
         id: `set-${Date.now()}-${idx}`,
@@ -145,6 +151,7 @@ function NewWorkoutForm() {
         weight_kg: s.weight_kg,
         reps: s.reps,
         raw_text: s.raw_text,
+        sub_fields: s.sub_fields,
         is_failure: false,
         feedback: undefined,
         notes: undefined,
@@ -170,7 +177,7 @@ function NewWorkoutForm() {
         </Link>
         <div>
           <h1 className="text-lg font-black text-white">開新訓練</h1>
-          <p className="text-xs text-gray-400">建立記錄、選定場地或一鍵複製上回菜單</p>
+          <p className="text-xs text-gray-400">快速選擇部位與場地，即刻開始記錄</p>
         </div>
       </div>
 
@@ -189,79 +196,67 @@ function NewWorkoutForm() {
           />
         </div>
 
-        {/* 訓練場地 (交大 / 三劍客 / 學校 / 健身工廠) */}
-        <div>
-          <label className="text-xs font-bold text-gray-400 block mb-1.5 flex items-center gap-1.5">
-            <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-            <span>訓練場地 (健身房)</span>
-          </label>
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {LOCATION_PRESETS.map((loc) => (
-              <button
-                key={loc}
-                type="button"
-                onClick={() => {
-                  setLocation(loc);
-                  setCustomLocation("");
-                }}
-                className={`text-xs px-3 py-1.5 rounded-xl border font-bold transition-all ${
-                  location === loc && !customLocation
-                    ? "bg-emerald-500/20 border-emerald-500 text-emerald-300 shadow-sm"
-                    : "bg-[#181b26] border-[#262b3d] text-gray-300 hover:border-gray-600"
-                }`}
-              >
-                {loc}
-              </button>
-            ))}
-          </div>
-          <input
-            type="text"
-            placeholder="或輸入其他場地名稱 (如: 宿舍、戶外)..."
-            value={customLocation}
-            onChange={(e) => setCustomLocation(e.target.value)}
-            className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-3 py-2 focus:border-emerald-500 outline-none placeholder-gray-500"
-          />
-        </div>
-
-        {/* 部位預設選單 */}
+        {/* 主攻部位 (僅 4 大項：胸、背、腿、游泳) */}
         <div>
           <label className="text-xs font-bold text-gray-400 block mb-1.5 flex items-center gap-1.5">
             <Dumbbell className="w-3.5 h-3.5 text-emerald-400" />
-            <span>主攻部位 / 類型</span>
+            <span>主攻部位 (大項)</span>
           </label>
-          <div className="grid grid-cols-2 gap-2">
-            {MUSCLE_PRESETS.map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => {
-                  setTargetMuscle(p);
-                  setCustomMuscle("");
-                }}
-                className={`py-2 px-3 text-xs rounded-xl border font-bold text-left transition-all ${
-                  targetMuscle === p && !customMuscle
-                    ? "bg-emerald-500/20 border-emerald-500 text-emerald-300"
-                    : "bg-[#181b26] border-[#262b3d] text-gray-300 hover:border-gray-600"
-                }`}
-              >
-                {p}
-              </button>
-            ))}
+          <div className="grid grid-cols-4 gap-2">
+            {MUSCLE_PRESETS.map((p) => {
+              let icon = "🔥";
+              if (p === "背") icon = "⚡";
+              if (p === "腿") icon = "🦵";
+              if (p === "游泳") icon = "🏊";
+
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setTargetMuscle(p)}
+                  className={`py-3 px-2 text-xs rounded-xl border font-bold text-center transition-all flex flex-col items-center gap-1 ${
+                    targetMuscle === p
+                      ? "bg-emerald-500 text-black border-emerald-400 shadow-lg scale-[1.02] font-black"
+                      : "bg-[#181b26] border-[#262b3d] text-gray-300 hover:border-gray-600"
+                  }`}
+                >
+                  <span className="text-sm">{icon}</span>
+                  <span>{p}</span>
+                </button>
+              );
+            })}
           </div>
-          <input
-            type="text"
-            placeholder="或輸入自訂課表 (如: 胸+肩、推日、拉日)..."
-            value={customMuscle}
-            onChange={(e) => {
-              setCustomMuscle(e.target.value);
-              if (e.target.value.trim()) setTargetMuscle(e.target.value.trim());
-            }}
-            className="w-full mt-2 bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-3 py-2 focus:border-emerald-500 outline-none placeholder-gray-500"
-          />
         </div>
 
-        {/* 📋 一鍵複製上一次菜單功能 */}
-        {prevTemplate && (
+        {/* 訓練場地 (僅限：三健客 (預設)、交大健身房、交大游泳池) */}
+        <div>
+          <label className="text-xs font-bold text-gray-400 block mb-1.5 flex items-center gap-1.5">
+            <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+            <span>訓練場地</span>
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {LOCATION_PRESETS.map((loc) => {
+              const isSelected = location === loc;
+              return (
+                <button
+                  key={loc}
+                  type="button"
+                  onClick={() => setLocation(loc)}
+                  className={`py-2.5 px-2 text-xs rounded-xl border font-bold transition-all text-center ${
+                    isSelected
+                      ? "bg-emerald-500/20 border-emerald-500 text-emerald-300 shadow-sm font-black"
+                      : "bg-[#181b26] border-[#262b3d] text-gray-400 hover:text-white"
+                  }`}
+                >
+                  {loc}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 📋 沿用上一次菜單功能 */}
+        {prevTemplate && targetMuscle !== "游泳" && (
           <div className="bg-[#181b26] border border-emerald-500/30 rounded-xl p-3.5 space-y-2.5">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -298,31 +293,14 @@ function NewWorkoutForm() {
                     </span>
                   ))}
                 </div>
-                <p className="text-[10px] text-gray-400 mt-1">
-                  💡 進入後每組重量預設為上一次數據，點一下即可確認或微調！
-                </p>
               </div>
             )}
           </div>
         )}
 
-        {/* 自訂標題 (可選) */}
-        <div>
-          <label className="text-xs font-bold text-gray-400 block mb-1">
-            自訂標題 (可留空自動格式化)
-          </label>
-          <input
-            type="text"
-            placeholder="留空將自動帶入日期、部位、場地與月次數"
-            value={customTitle}
-            onChange={(e) => setCustomTitle(e.target.value)}
-            className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-3 focus:border-emerald-500 outline-none placeholder-gray-600"
-          />
-        </div>
-
         <button
           onClick={handleCreate}
-          className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-3 rounded-xl shadow-lg transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2 mt-2"
+          className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-3.5 rounded-xl shadow-lg transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2 mt-3"
         >
           <Check className="w-4 h-4 stroke-[3]" />
           <span>進入訓練並開始記組</span>

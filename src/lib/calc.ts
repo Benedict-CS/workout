@@ -114,15 +114,15 @@ export function generateWarmupPlan(
     });
   }
 
-  // 3. 70% 目標重量 (3下，神經激發)
+  // 3. 70% 目標重量 (3下)
   const w70 = Math.round((barWeightKg + diff * 0.7) / 2.5) * 2.5;
   if (w70 > w50 && w70 < workWeightKg) {
     plan.push({
       percentage: Math.round((w70 / workWeightKg) * 100),
       weightKg: w70,
       reps: 3,
-      label: "神經激發組",
-      type: "primer",
+      label: "適應組",
+      type: "warmup",
     });
   }
 
@@ -133,8 +133,8 @@ export function generateWarmupPlan(
       percentage: Math.round((w85 / workWeightKg) * 100),
       weightKg: w85,
       reps: 1,
-      label: "重量手感適應",
-      type: "primer",
+      label: "手感適應組",
+      type: "warmup",
     });
   }
 

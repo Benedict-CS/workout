@@ -1,15 +1,17 @@
 export type SyncStatus = "synced" | "pending";
 
 export type SetType =
-  | "normal"        // 正式組 (e.g. set 1: 25Kg x10)
-  | "warmup"        // 熱身組 (e.g. 20Kg x10 熱身)
-  | "primer"        // 神經激發組 (e.g. 20Kg x4 神經激發)
-  | "rest_pause"    // 休息暫停組 (e.g. 60Kg x4 + 休 + 55Kg x5)
-  | "drop"          // 遞減組 (e.g. 45Kg x8 + 40Kg x4 遞減組)
-  | "test"          // 測試組 / 挑戰組 (e.g. 25Kg x3 力量測試)
-  | "cooldown";     // 收尾力竭組
+  | "normal"        // 正式組
+  | "warmup"        // 熱身組
+  | "drop";         // 遞減組
 
-export type MuscleGroup = "胸部" | "背部" | "腿部" | "肩部" | "手臂" | "核心" | "游泳" | "綜合";
+export interface SetSubField {
+  mode: "休" | "補" | "遞減"; // 休 = 休息暫停, 補 = 輔助/強迫次數, 遞減 = 降重組
+  weight_kg?: number;
+  reps: number;
+}
+
+export type MuscleGroup = "胸" | "背" | "腿" | "游泳";
 
 export type WeightType =
   | "barbell_total"     // 槓鈴總重 (含空槓)
@@ -42,11 +44,12 @@ export interface SetItem {
   weight_kg: number;
   reps: number;
   raw_text?: string;
-  // 進階記錄
-  rest_pause_detail?: string; // 如 "休 + 55Kg x5" 或 "休後補 3 下"
-  forced_reps?: number;       // 如 "補2", "補4" (強迫次數/輔助次數)
-  is_failure?: boolean;       // 是否力竭
-  feedback?: string;          // 體感 (e.g. "感受度不錯", "首度突破雙位數", "動作不標準")
+  sub_fields?: SetSubField[];
+  // 進階記錄 / 相容
+  rest_pause_detail?: string;
+  forced_reps?: number;
+  is_failure?: boolean;
+  feedback?: string;
   notes?: string;
   created_at: string;
   updated_at: string;
@@ -58,10 +61,10 @@ export interface WorkoutSession {
   id: string;
   date: string;               // ISO 格式 YYYY-MM-DD
   month_key: string;          // e.g. "2026-06", "2026-11"
-  display_title: string;      // e.g. "11/5 (背部) - 交大健身房 - 第 4 次"
-  target_muscle: string;      // e.g. "胸部", "背部", "胸部 + 三頭", "腿部", "游泳"
+  display_title: string;      // e.g. "11/5 (背) - 三健客 - 第 4 次"
+  target_muscle: string;      // e.g. "胸", "背", "腿", "游泳"
   monthly_index: number;      // 當月第幾次
-  location?: string;          // 訓練場地 e.g. "交大健身房", "三劍客", "學校健身房"
+  location?: string;          // 訓練場地 e.g. "三健客", "交大健身房", "交大游泳池"
   notes?: string;
   user_id?: string;
   created_at: string;
@@ -88,3 +91,4 @@ export interface MonthSummaryStats {
   month_name: string;
   counts: Record<string, number>;
 }
+

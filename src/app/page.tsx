@@ -3,111 +3,169 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Trophy,
-  Flame,
+  Dumbbell,
   ChevronRight,
   Plus,
   Calendar,
-  Sparkles,
-  Zap,
   MapPin,
   Copy,
   Check,
+  Trophy,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
 import { formatSessionToMarkdown } from "@/lib/markdown-generator";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
-import type { BigThreeRecord, WorkoutSession, SetItem, Exercise } from "@/lib/types";
+import type { WorkoutSession, SetItem, Exercise } from "@/lib/types";
+
+interface MonthGroupData {
+  monthKey: string;
+  monthTitle: string;
+  sessions: WorkoutSession[];
+  stats: {
+    胸: number;
+    背: number;
+    腿: number;
+    游泳: number;
+    total: number;
+  };
+  bigThreeMax: {
+    bench: number;
+    squat: number;
+    deadlift: number;
+    total: number;
+  };
+}
 
 export default function HomePage() {
   const [loading, setLoading] = useState(true);
-  const [bigThree, setBigThree] = useState<BigThreeRecord | null>(null);
-  const [recentSessions, setRecentSessions] = useState<WorkoutSession[]>([]);
-  const [monthStats, setMonthStats] = useState<Record<string, number>>({});
+  const [monthGroups, setMonthGroups] = useState<MonthGroupData[]>([]);
+  const [allTimeStats, setAllTimeStats] = useState({
+    胸: 0,
+    背: 0,
+    腿: 0,
+    游泳: 0,
+    total: 0,
+  });
   const [sessionSetsMap, setSessionSetsMap] = useState<Record<string, SetItem[]>>({});
   const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [lastMuscleMap, setLastMuscleMap] = useState<Record<string, string>>({});
   const [copyToast, setCopyToast] = useState<string | null>(null);
+
+  // 目前週期課表計畫 (單數月 vs 雙數月)
+  const now = new Date();
+  const currentMonthNum = now.getMonth() + 1;
+  const isCurrentOdd = currentMonthNum % 2 !== 0;
+  const [planMonthView, setPlanMonthView] = useState<"odd" | "even">(isCurrentOdd ? "odd" : "even");
+  const dayOfWeek = now.getDay(); // 0 是週日, 1-6 是週一至週六
 
   useEffect(() => {
     async function loadData() {
       try {
         await ensureDatabaseSeeded();
 
-        // 讀取三項
-        const b3 = await db.big_three.toArray();
-        if (b3.length > 0) setBigThree(b3[0]);
-
         const allEx = await db.exercises.toArray();
         setExercises(allEx);
 
-        // 讀取最近訓練
-        const sessions = await db.sessions
+        const allSessions = await db.sessions
           .filter((s) => !s.deleted_at)
           .reverse()
-          .sortBy("date")
-          .then((l) => l.slice(0, 15));
-        setRecentSessions(sessions);
+          .sortBy("date");
 
-        // 計算各部位最後一次訓練距今日期
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        function formatDaysAgo(dateStr: string): string {
-          const parts = dateStr.split("-").map(Number);
-          const target = new Date(parts[0], parts[1] - 1, parts[2]);
-          target.setHours(0, 0, 0, 0);
-          const diffDays = Math.round((today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
-          if (diffDays === 0) return "今天";
-          if (diffDays === 1) return "昨天";
-          if (diffDays === 2) return "前天";
-          if (diffDays < 0) return `${Math.abs(diffDays)}天後`;
-          return `${diffDays}天前`;
-        }
-
-        const muscleDaysMap: Record<string, string> = {};
-        for (const s of sessions) {
-          if (s.target_muscle.includes("胸") && !muscleDaysMap["胸"]) muscleDaysMap["胸"] = formatDaysAgo(s.date);
-          if (s.target_muscle.includes("背") && !muscleDaysMap["背"]) muscleDaysMap["背"] = formatDaysAgo(s.date);
-          if (s.target_muscle.includes("腿") && !muscleDaysMap["腿"]) muscleDaysMap["腿"] = formatDaysAgo(s.date);
-          if (s.target_muscle.includes("游泳") && !muscleDaysMap["游泳"]) muscleDaysMap["游泳"] = formatDaysAgo(s.date);
-        }
-        setLastMuscleMap(muscleDaysMap);
-
-        // 讀取最近 sessions 的組數預覽
-        const sessionIds = sessions.map((s) => s.id);
-        const sets = await db.sets
-          .where("session_id")
-          .anyOf(sessionIds)
+        const allSets = await db.sets
           .filter((s) => !s.deleted_at)
           .toArray();
 
-        const map: Record<string, SetItem[]> = {};
-        for (const s of sets) {
-          if (!map[s.session_id]) map[s.session_id] = [];
-          map[s.session_id].push(s);
+        // 整理組數 Map
+        const setsMap: Record<string, SetItem[]> = {};
+        for (const s of allSets) {
+          if (!setsMap[s.session_id]) setsMap[s.session_id] = [];
+          setsMap[s.session_id].push(s);
         }
-        setSessionSetsMap(map);
+        setSessionSetsMap(setsMap);
 
-        // 計算當前最新月份統計
-        if (sessions.length > 0) {
-          const latestMonthKey = sessions[0].month_key;
-          const monthSessions = await db.sessions
-            .where("month_key")
-            .equals(latestMonthKey)
-            .filter((s) => !s.deleted_at)
-            .toArray();
+        // 1. 計算全歷史累計次數 (胸、背、腿、游泳)
+        const totalCounts = { 胸: 0, 背: 0, 腿: 0, 游泳: 0, total: allSessions.length };
+        for (const sess of allSessions) {
+          if (sess.target_muscle.includes("胸")) totalCounts["胸"]++;
+          else if (sess.target_muscle.includes("背")) totalCounts["背"]++;
+          else if (sess.target_muscle.includes("腿")) totalCounts["腿"]++;
+          else if (sess.target_muscle.includes("泳")) totalCounts["游泳"]++;
+        }
+        setAllTimeStats(totalCounts);
 
-          const stats: Record<string, number> = { 胸: 0, 背: 0, 腿: 0, 游泳: 0 };
-          for (const s of monthSessions) {
-            if (s.target_muscle.includes("胸")) stats["胸"] = (stats["胸"] || 0) + 1;
-            if (s.target_muscle.includes("背")) stats["背"] = (stats["背"] || 0) + 1;
-            if (s.target_muscle.includes("腿")) stats["腿"] = (stats["腿"] || 0) + 1;
-            if (s.target_muscle.includes("游泳")) stats["游泳"] = (stats["游泳"] || 0) + 1;
+        // 2. 依月份分組 (11月, 10月, 9月, 8月...)
+        const monthMap = new Map<string, WorkoutSession[]>();
+        for (const sess of allSessions) {
+          if (!monthMap.has(sess.month_key)) {
+            monthMap.set(sess.month_key, []);
           }
-          setMonthStats(stats);
+          monthMap.get(sess.month_key)!.push(sess);
         }
+
+        const sortedMonthKeys = Array.from(monthMap.keys()).sort().reverse();
+        const groups: MonthGroupData[] = [];
+
+        // 辨認傳統三大項動作 ID (純槓鈴臥推、深蹲、硬舉)
+        const benchExIds = allEx
+          .filter((e) => e.id === "ex-bench-press" || (e.name.includes("臥推") && !e.name.includes("啞鈴") && !e.name.includes("機器") && !e.name.includes("上斜") && !e.name.includes("下斜") && !e.name.includes("史密斯")))
+          .map((e) => e.id);
+        const squatExIds = allEx
+          .filter((e) => e.id === "ex-squat" || (e.name.includes("深蹲") && !e.name.includes("分腿") && !e.name.includes("哈克")))
+          .map((e) => e.id);
+        const deadliftExIds = allEx
+          .filter((e) => e.id === "ex-deadlift" || (e.name.includes("硬舉") && !e.name.includes("六角")))
+          .map((e) => e.id);
+
+        for (const mk of sortedMonthKeys) {
+          const sessList = monthMap.get(mk) || [];
+          const mStats = { 胸: 0, 背: 0, 腿: 0, 游泳: 0, total: sessList.length };
+
+          // 計算該月部位頻率
+          for (const s of sessList) {
+            if (s.target_muscle.includes("胸")) mStats["胸"]++;
+            else if (s.target_muscle.includes("背")) mStats["背"]++;
+            else if (s.target_muscle.includes("腿")) mStats["腿"]++;
+            else if (s.target_muscle.includes("泳")) mStats["游泳"]++;
+          }
+
+          // 計算該月三項實測最高重量
+          let maxBench = 0;
+          let maxSquat = 0;
+          let maxDeadlift = 0;
+
+          const sessIds = new Set(sessList.map((s) => s.id));
+          const monthSets = allSets.filter((st) => sessIds.has(st.session_id) && st.weight_kg > 0);
+
+          for (const st of monthSets) {
+            if (benchExIds.includes(st.exercise_id) && st.weight_kg > maxBench) {
+              maxBench = st.weight_kg;
+            }
+            if (squatExIds.includes(st.exercise_id) && st.weight_kg > maxSquat) {
+              maxSquat = st.weight_kg;
+            }
+            if (deadliftExIds.includes(st.exercise_id) && st.weight_kg > maxDeadlift) {
+              maxDeadlift = st.weight_kg;
+            }
+          }
+
+          const parts = mk.split("-");
+          const monthTitle = `${parts[0]} 年 ${parseInt(parts[1], 10)} 月`;
+
+          groups.push({
+            monthKey: mk,
+            monthTitle,
+            sessions: sessList,
+            stats: mStats,
+            bigThreeMax: {
+              bench: maxBench,
+              squat: maxSquat,
+              deadlift: maxDeadlift,
+              total: maxBench + maxSquat + maxDeadlift,
+            },
+          });
+        }
+
+        setMonthGroups(groups);
       } catch (err) {
         console.error("Failed to load dashboard data:", err);
       } finally {
@@ -125,7 +183,7 @@ export default function HomePage() {
     const md = formatSessionToMarkdown(session, sets, exercises);
     navigator.clipboard.writeText(md);
     setCopyToast(`已複製【${session.display_title}】Markdown！`);
-    setTimeout(() => setCopyToast(null), 2500);
+    setTimeout(() => setCopyToast(null), 2000);
   }
 
   if (loading) {
@@ -138,7 +196,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="space-y-5 pb-6">
+    <div className="space-y-5 pb-24">
       {/* 複製提示 Toast */}
       {copyToast && (
         <div className="bg-emerald-500 text-black px-4 py-2 rounded-xl text-xs font-black shadow-2xl flex items-center gap-2 animate-in fade-in duration-150">
@@ -150,229 +208,281 @@ export default function HomePage() {
       {/* PWA 加入主畫面提示 Banner */}
       <PWAInstallBanner />
 
-      {/* 頂部三項數據卡片 */}
-      <section className="bg-gradient-to-br from-[#181b26] to-[#12141c] border border-[#262b3d] rounded-2xl p-4 shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 -mr-6 -mt-6 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl pointer-events-none"></div>
-
-        <div className="flex items-center justify-between mb-3">
+      {/* 頂部：歷史累計總次數 (從有紀錄到現在總量) */}
+      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 shadow-lg">
+        <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-2">
-            <Trophy className="w-5 h-5 text-amber-400" />
-            <h2 className="text-sm font-bold text-gray-200 uppercase tracking-wider">
-              基本三項總和紀錄
-            </h2>
+            <Trophy className="w-4 h-4 text-emerald-400" />
+            <h2 className="text-sm font-black text-white">累計訓練總次數</h2>
           </div>
-          <Link
-            href="/analytics"
-            className="text-xs bg-amber-500/20 text-amber-300 font-semibold px-2 py-0.5 rounded-full border border-amber-500/30 flex items-center gap-0.5 hover:bg-amber-500/30 transition-colors"
-          >
-            <span>PR 走勢</span>
-            <ChevronRight className="w-3 h-3" />
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-4 gap-2 text-center">
-          <div className="bg-[#090a0f]/60 p-2.5 rounded-xl border border-[#262b3d]/50">
-            <span className="text-[11px] text-gray-400 block mb-0.5">臥推</span>
-            <span className="text-lg font-black text-white">{bigThree?.bench_press_kg ?? 60}</span>
-            <span className="text-[10px] text-emerald-400 block mt-0.5 font-medium">
-              {bigThree?.bench_ratio ? `${bigThree.bench_ratio}x` : "1.0x"}
-            </span>
-          </div>
-          <div className="bg-[#090a0f]/60 p-2.5 rounded-xl border border-[#262b3d]/50">
-            <span className="text-[11px] text-gray-400 block mb-0.5">深蹲</span>
-            <span className="text-lg font-black text-white">{bigThree?.squat_kg ?? 85}</span>
-            <span className="text-[10px] text-emerald-400 block mt-0.5 font-medium">
-              {bigThree?.squat_ratio ? `${bigThree.squat_ratio}x` : "1.41x"}
-            </span>
-          </div>
-          <div className="bg-[#090a0f]/60 p-2.5 rounded-xl border border-[#262b3d]/50">
-            <span className="text-[11px] text-gray-400 block mb-0.5">硬舉</span>
-            <span className="text-lg font-black text-white">{bigThree?.deadlift_kg ?? 90}</span>
-            <span className="text-[10px] text-emerald-400 block mt-0.5 font-medium">
-              {bigThree?.deadlift_ratio ? `${bigThree.deadlift_ratio}x` : "1.5x"}
-            </span>
-          </div>
-          <div className="bg-emerald-950/40 p-2.5 rounded-xl border border-emerald-500/30">
-            <span className="text-[11px] text-emerald-300 block mb-0.5">總和</span>
-            <span className="text-lg font-black text-emerald-400">{bigThree?.total_kg ?? 235}</span>
-            <span className="text-[10px] text-emerald-200/80 block mt-0.5 font-medium">Kg</span>
-          </div>
-        </div>
-      </section>
-
-      {/* 當月訓練分佈 */}
-      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Flame className="w-5 h-5 text-red-400" />
-            <h2 className="text-sm font-bold text-gray-200">最新月份部位頻率</h2>
-          </div>
-          <span className="text-xs text-gray-400">
-            總計 {Object.values(monthStats).reduce((a, b) => a + b, 0)} 次
+          <span className="text-xs text-emerald-400 font-bold">
+            總共 {allTimeStats.total} 場訓練
           </span>
         </div>
 
-        <div className="grid grid-cols-4 gap-2">
-          {Object.entries(monthStats).map(([part, count]) => (
-            <div
-              key={part}
-              className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/60 text-center"
-            >
-              <div className="text-xs text-gray-400 mb-1">{part}</div>
-              <div className="text-base font-bold text-gray-100">
-                {count} <span className="text-[10px] font-normal text-gray-400">次</span>
-              </div>
-            </div>
-          ))}
+        <div className="grid grid-cols-4 gap-2 text-center">
+          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
+            <span className="text-[11px] text-gray-400 block mb-0.5">練胸</span>
+            <span className="text-lg font-black text-white">{allTimeStats["胸"]}</span>
+            <span className="text-[10px] text-gray-500 block">次</span>
+          </div>
+          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
+            <span className="text-[11px] text-gray-400 block mb-0.5">練背</span>
+            <span className="text-lg font-black text-white">{allTimeStats["背"]}</span>
+            <span className="text-[10px] text-gray-500 block">次</span>
+          </div>
+          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
+            <span className="text-[11px] text-gray-400 block mb-0.5">練腿</span>
+            <span className="text-lg font-black text-white">{allTimeStats["腿"]}</span>
+            <span className="text-[10px] text-gray-500 block">次</span>
+          </div>
+          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
+            <span className="text-[11px] text-gray-400 block mb-0.5">游泳</span>
+            <span className="text-lg font-black text-white">{allTimeStats["游泳"]}</span>
+            <span className="text-[10px] text-gray-500 block">次</span>
+          </div>
         </div>
       </section>
 
-      {/* 快速開始記錄按鈕與一鍵部位捷徑 */}
-      <div className="space-y-2">
+      {/* 快捷開新訓練按鈕：點進去鎖定該項目 (胸、背、腿、游泳) */}
+      <div className="grid grid-cols-4 gap-2">
         <Link
-          href="/workout/new"
-          className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-3.5 px-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+          href="/workout/new?muscle=胸"
+          className="p-3 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-red-500/50 rounded-2xl text-center transition-all active:scale-95 flex flex-col items-center gap-1 shadow-sm"
         >
-          <Zap className="w-5 h-5 fill-black" />
-          <span>開新訓練 (選場地 / 複製菜單)</span>
+          <span className="text-lg">🔥</span>
+          <span className="text-xs font-black text-white">練胸</span>
         </Link>
-
-        <div className="grid grid-cols-4 gap-2">
-          <Link
-            href="/workout/new?muscle=胸部"
-            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-red-500/40 rounded-xl text-center text-xs font-bold text-gray-200 transition-all active:scale-95 flex flex-col items-center gap-0.5"
-          >
-            <span className="text-red-400 text-sm">🔥</span>
-            <span>練胸日</span>
-            <span className="text-[9px] text-gray-400 font-normal">
-              {lastMuscleMap["胸"] || "未記錄"}
-            </span>
-          </Link>
-          <Link
-            href="/workout/new?muscle=背部"
-            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-blue-500/40 rounded-xl text-center text-xs font-bold text-gray-200 transition-all active:scale-95 flex flex-col items-center gap-0.5"
-          >
-            <span className="text-blue-400 text-sm">⚡</span>
-            <span>練背日</span>
-            <span className="text-[9px] text-gray-400 font-normal">
-              {lastMuscleMap["背"] || "未記錄"}
-            </span>
-          </Link>
-          <Link
-            href="/workout/new?muscle=腿部"
-            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-emerald-500/40 rounded-xl text-center text-xs font-bold text-gray-200 transition-all active:scale-95 flex flex-col items-center gap-0.5"
-          >
-            <span className="text-emerald-400 text-sm">🦵</span>
-            <span>練腿日</span>
-            <span className="text-[9px] text-gray-400 font-normal">
-              {lastMuscleMap["腿"] || "未記錄"}
-            </span>
-          </Link>
-          <Link
-            href="/workout/new?muscle=游泳"
-            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-cyan-500/40 rounded-xl text-center text-xs font-bold text-gray-200 transition-all active:scale-95 flex flex-col items-center gap-0.5"
-          >
-            <span className="text-cyan-400 text-sm">🏊</span>
-            <span>游泳/有氧</span>
-            <span className="text-[9px] text-gray-400 font-normal">
-              {lastMuscleMap["游泳"] || "未記錄"}
-            </span>
-          </Link>
-        </div>
+        <Link
+          href="/workout/new?muscle=背"
+          className="p-3 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-blue-500/50 rounded-2xl text-center transition-all active:scale-95 flex flex-col items-center gap-1 shadow-sm"
+        >
+          <span className="text-lg">⚡</span>
+          <span className="text-xs font-black text-white">練背</span>
+        </Link>
+        <Link
+          href="/workout/new?muscle=腿"
+          className="p-3 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-emerald-500/50 rounded-2xl text-center transition-all active:scale-95 flex flex-col items-center gap-1 shadow-sm"
+        >
+          <span className="text-lg">🦵</span>
+          <span className="text-xs font-black text-white">練腿</span>
+        </Link>
+        <Link
+          href="/workout/new?muscle=游泳"
+          className="p-3 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-cyan-500/50 rounded-2xl text-center transition-all active:scale-95 flex flex-col items-center gap-1 shadow-sm"
+        >
+          <span className="text-lg">🏊</span>
+          <span className="text-xs font-black text-white">游泳</span>
+        </Link>
       </div>
 
-      {/* 最近訓練日誌流 */}
-      <section className="space-y-3">
+      {/* 目前週期課表計畫 (單數月 vs 雙數月，自動高亮今日) */}
+      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-3.5 shadow-md space-y-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-emerald-400" />
-            <h2 className="text-sm font-bold text-gray-200">最近訓練紀錄</h2>
+            <span className="text-sm">📅</span>
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-xs font-black text-white">目前週期課表</h3>
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/40 font-bold">
+                {planMonthView === "odd" ? "單數月課表" : "雙數月課表"}
+              </span>
+            </div>
           </div>
-          <Link
-            href="/history"
-            className="text-xs text-emerald-400 flex items-center gap-0.5 hover:underline"
+          <button
+            onClick={() => setPlanMonthView(planMonthView === "odd" ? "even" : "odd")}
+            className="text-[10px] text-gray-400 hover:text-emerald-400 border border-[#262b3d] px-2 py-0.5 rounded-lg transition-colors"
           >
-            查看全部
-            <ChevronRight className="w-3.5 h-3.5" />
-          </Link>
+            切換至{planMonthView === "odd" ? "雙數月" : "單數月"}
+          </button>
         </div>
 
-        <div className="space-y-3">
-          {recentSessions.map((session) => {
-            const sets = sessionSetsMap[session.id] || [];
-            const exerciseCount = new Set(sets.map((s) => s.exercise_id)).size;
+        {/* 7 天網格 */}
+        <div className="grid grid-cols-7 gap-1 text-center">
+          {[
+            { dayName: "一", dIdx: 1, target: planMonthView === "odd" ? "胸" : "背", muscle: planMonthView === "odd" ? "胸" : "背" },
+            { dayName: "二", dIdx: 2, target: planMonthView === "odd" ? "背" : "胸", muscle: planMonthView === "odd" ? "背" : "胸" },
+            { dayName: "三", dIdx: 3, target: "肩+臂", muscle: planMonthView === "odd" ? "胸" : "背" },
+            { dayName: "四", dIdx: 4, target: planMonthView === "odd" ? "胸(彈)" : "背(彈)", muscle: planMonthView === "odd" ? "胸" : "背" },
+            { dayName: "五", dIdx: 5, target: "休", isRest: true },
+            { dayName: "六", dIdx: 6, target: "腿", muscle: "腿" },
+            { dayName: "日", dIdx: 0, target: "游泳", muscle: "游泳" },
+          ].map((item) => {
+            const isToday = dayOfWeek === item.dIdx;
+
+            if (item.isRest) {
+              return (
+                <div
+                  key={item.dayName}
+                  className={`py-1.5 px-0.5 rounded-xl border text-[10px] flex flex-col justify-between h-14 ${
+                    isToday
+                      ? "bg-amber-500/10 border-amber-500/50 text-amber-300 ring-1 ring-amber-500/50"
+                      : "bg-[#090a0f]/60 border-[#262b3d]/60 text-gray-500"
+                  }`}
+                >
+                  <span className={`font-bold ${isToday ? "text-amber-400" : "text-gray-500"}`}>
+                    週{item.dayName}
+                  </span>
+                  <span className="font-medium text-[11px]">休</span>
+                </div>
+              );
+            }
 
             return (
-              <div
-                key={session.id}
-                className="bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] hover:border-emerald-500/40 rounded-2xl p-4 transition-all"
+              <Link
+                key={item.dayName}
+                href={`/workout/new?muscle=${item.muscle}`}
+                className={`py-1.5 px-0.5 rounded-xl border text-[10px] flex flex-col justify-between h-14 transition-all active:scale-95 ${
+                  isToday
+                    ? "bg-emerald-500/20 border-emerald-500 text-emerald-300 ring-2 ring-emerald-500/40"
+                    : "bg-[#181b26] border-[#262b3d] text-gray-300 hover:border-emerald-500/40"
+                }`}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <Link
-                    href={`/workout/${session.id}`}
-                    className="font-bold text-gray-100 text-sm hover:text-emerald-400 transition-colors flex items-center gap-2"
-                  >
-                    <span>{session.display_title}</span>
-                  </Link>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={(e) => handleCopyMarkdown(e, session)}
-                      className="p-1.5 bg-[#181b26] hover:bg-emerald-950/40 text-gray-400 hover:text-emerald-400 rounded-lg border border-[#262b3d] transition-all text-xs"
-                      title="一鍵複製 Markdown"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                    </button>
-                    <span className="text-[11px] bg-[#181b26] text-gray-400 px-2 py-0.5 rounded-md border border-[#262b3d]">
-                      {session.date}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 text-xs text-gray-400 mb-2 flex-wrap">
-                  <span className="text-emerald-400 font-medium">{session.target_muscle}</span>
-                  <span>•</span>
-                  <span>{exerciseCount} 個動作</span>
-                  <span>•</span>
-                  <span>{sets.length} 組</span>
-                  {session.location && (
-                    <>
-                      <span>•</span>
-                      <span className="text-blue-400 flex items-center gap-0.5">
-                        <MapPin className="w-3 h-3" />
-                        {session.location}
-                      </span>
-                    </>
-                  )}
-                </div>
-
-                {/* 預覽第一至三組重點 */}
-                <Link href={`/workout/${session.id}`} className="block space-y-1">
-                  {sets.slice(0, 3).map((s, idx) => (
-                    <div
-                      key={s.id || idx}
-                      className="text-xs text-gray-300 bg-[#090a0f]/60 px-2.5 py-1 rounded-lg flex items-center justify-between hover:bg-[#090a0f]"
-                    >
-                      <span className="truncate pr-2">
-                        {s.raw_text || `${s.weight_kg}Kg x ${s.reps}`}
-                      </span>
-                      {s.is_failure && (
-                        <span className="text-[10px] text-red-400 flex-shrink-0">力竭</span>
-                      )}
-                    </div>
-                  ))}
-                  {sets.length > 3 && (
-                    <div className="text-[10px] text-gray-500 pl-1">
-                      還有 +{sets.length - 3} 組...
-                    </div>
-                  )}
-                </Link>
-              </div>
+                <span className={`font-bold ${isToday ? "text-emerald-400" : "text-gray-400"}`}>
+                  週{item.dayName}
+                </span>
+                <span className="font-black text-[11px] truncate">
+                  {item.target}
+                </span>
+              </Link>
             );
           })}
         </div>
       </section>
+
+      {/* 每月分組清單 (10月、9月、8月... 如同記帳本，一開始不展開，點進去才看詳情) */}
+      <div className="space-y-6 pt-2">
+        {monthGroups.map((group) => (
+          <section
+            key={group.monthKey}
+            className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3.5 shadow-md"
+          >
+            {/* 月份標題 */}
+            <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-emerald-400" />
+                <h3 className="text-base font-black text-white">{group.monthTitle}</h3>
+              </div>
+              <span className="text-xs text-emerald-400 font-bold">
+                共 {group.stats.total} 場
+              </span>
+            </div>
+
+            {/* 該月統計：部位頻率 + 該月 3 項最高重量 (直觀看每個月力量有沒有進步！) */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              {/* 部位頻率 */}
+              <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70 space-y-1">
+                <span className="text-[10px] text-gray-400 font-bold block mb-1">
+                  該月訓練部位頻率
+                </span>
+                <div className="grid grid-cols-4 gap-1 text-center">
+                  <div>
+                    <span className="text-[10px] text-gray-400 block">胸</span>
+                    <span className="font-black text-white">{group.stats["胸"]}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-400 block">背</span>
+                    <span className="font-black text-white">{group.stats["背"]}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-400 block">腿</span>
+                    <span className="font-black text-white">{group.stats["腿"]}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-400 block">游</span>
+                    <span className="font-black text-white">{group.stats["游泳"]}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 該月 3 項最高重量 */}
+              <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70 space-y-1">
+                <span className="text-[10px] text-emerald-400 font-bold block mb-1">
+                  該月 3 項最高實測
+                </span>
+                <div className="grid grid-cols-3 gap-1 text-center">
+                  <div>
+                    <span className="text-[10px] text-gray-400 block">臥推</span>
+                    <span className="font-black text-white">
+                      {group.bigThreeMax.bench > 0 ? `${group.bigThreeMax.bench}k` : "-"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-400 block">深蹲</span>
+                    <span className="font-black text-white">
+                      {group.bigThreeMax.squat > 0 ? `${group.bigThreeMax.squat}k` : "-"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-400 block">硬舉</span>
+                    <span className="font-black text-white">
+                      {group.bigThreeMax.deadlift > 0 ? `${group.bigThreeMax.deadlift}k` : "-"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 該月份日誌清單 (一開始不要展開，純單行條目，點進去才看詳情) */}
+            <div className="space-y-1.5 pt-1">
+              {group.sessions.map((sess) => {
+                const sessSets = sessionSetsMap[sess.id] || [];
+
+                let badgeColor = "bg-red-500/20 text-red-300 border-red-500/40";
+                if (sess.target_muscle.includes("背")) {
+                  badgeColor = "bg-blue-500/20 text-blue-300 border-blue-500/40";
+                } else if (sess.target_muscle.includes("腿")) {
+                  badgeColor = "bg-emerald-500/20 text-emerald-300 border-emerald-500/40";
+                } else if (sess.target_muscle.includes("泳")) {
+                  badgeColor = "bg-cyan-500/20 text-cyan-300 border-cyan-500/40";
+                }
+
+                return (
+                  <Link
+                    key={sess.id}
+                    href={`/workout/${sess.id}`}
+                    className="bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] hover:border-emerald-500/40 rounded-xl px-3 py-2.5 flex items-center justify-between text-xs transition-all active:scale-[0.99] group block"
+                  >
+                    <div className="flex items-center gap-2.5 truncate pr-2">
+                      <span className={`px-2 py-0.5 rounded font-black text-[11px] border shrink-0 ${badgeColor}`}>
+                        {sess.target_muscle}
+                      </span>
+
+                      <div className="truncate">
+                        <span className="font-bold text-gray-100 group-hover:text-emerald-400 transition-colors">
+                          {sess.display_title}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {sess.location && (
+                        <span className="text-[10px] text-gray-400 hidden sm:inline-block">
+                          {sess.location}
+                        </span>
+                      )}
+
+                      <span className="text-[11px] bg-[#090a0f] text-gray-400 px-2 py-0.5 rounded border border-[#262b3d]">
+                        {sessSets.length} 組
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={(e) => handleCopyMarkdown(e, sess)}
+                        className="p-1 text-gray-500 hover:text-emerald-400 rounded transition-colors"
+                        title="複製 Markdown"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+
+                      <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-emerald-400 transition-colors" />
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
     </div>
   );
 }

@@ -322,7 +322,7 @@ export default function HistoryPage() {
         </button>
       </div>
 
-      {/* 依訓練場地快速過濾 (交大健身房、三劍客...) */}
+      {/* 依訓練場地快速過濾 */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-xs no-scrollbar">
         <button
           onClick={() => setSelectedLocation("all")}
@@ -334,7 +334,7 @@ export default function HistoryPage() {
         >
           全部場館 ({sessions.length})
         </button>
-        {["交大健身房", "三劍客", "學校健身房", "健身工廠", "成吉思汗"].map((loc) => {
+        {["三健客", "交大健身房", "交大游泳池"].map((loc) => {
           const count = sessions.filter((s) => s.location && s.location.includes(loc)).length;
           if (count === 0 && selectedLocation !== loc) return null;
           return (
@@ -564,7 +564,7 @@ export default function HistoryPage() {
               <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
               <input
                 type="text"
-                placeholder="搜尋部位、動作、場地(交大/三劍客)..."
+                placeholder="搜尋部位、動作、場地(交大/三健客)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-[#12141c] border border-[#262b3d] text-white text-xs rounded-xl pl-9 pr-3 py-2.5 focus:border-emerald-500 outline-none placeholder-gray-500"
