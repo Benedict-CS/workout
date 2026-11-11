@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Dumbbell,
   ChevronRight,
+  ChevronLeft,
   Plus,
   Calendar,
   MapPin,
@@ -57,6 +58,30 @@ export default function HomePage() {
   const isCurrentOdd = currentMonthNum % 2 !== 0;
   const [planMonthView, setPlanMonthView] = useState<"odd" | "even">(isCurrentOdd ? "odd" : "even");
   const dayOfWeek = now.getDay(); // 0 是週日, 1-6 是週一至週六
+
+  // 單月分頁檢視 (左右切換如月曆，解決過長 scroll 問題)
+  const [selectedMonthIndex, setSelectedMonthIndex] = useState(0);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const currentGroup = monthGroups[selectedMonthIndex] || monthGroups[0];
+
+  function handleTouchStart(e: React.TouchEvent) {
+    setTouchStartX(e.touches[0].clientX);
+  }
+
+  function handleTouchEnd(e: React.TouchEvent) {
+    if (touchStartX === null) return;
+    const touchEndX = e.changedTouches[0].clientX;
+    const diff = touchEndX - touchStartX;
+    // 右滑：看上個月 (較舊月)
+    if (diff > 50 && selectedMonthIndex < monthGroups.length - 1) {
+      setSelectedMonthIndex((prev) => prev + 1);
+    }
+    // 左滑：看下個月 (較新月)
+    else if (diff < -50 && selectedMonthIndex > 0) {
+      setSelectedMonthIndex((prev) => prev - 1);
+    }
+    setTouchStartX(null);
+  }
 
   useEffect(() => {
     async function loadData() {
@@ -349,24 +374,77 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 每月分組清單 (10月、9月、8月... 如同記帳本，一開始不展開，點進去才看詳情) */}
-      <div className="space-y-6 pt-2">
-        {monthGroups.map((group) => (
-          <section
-            key={group.monthKey}
-            className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3.5 shadow-md"
+      {/* 月份分頁導航列 (一個月一頁，左右切換如同日曆，亦可直接點選月份 Tab 或在卡片左右滑動) */}
+      <div className="space-y-3 pt-2">
+        {/* 月曆切換頂 Bar */}
+        <div className="flex items-center justify-between bg-[#12141c] border border-[#262b3d] rounded-2xl p-2.5 shadow-md">
+          <button
+            type="button"
+            disabled={selectedMonthIndex >= monthGroups.length - 1}
+            onClick={() => setSelectedMonthIndex((prev) => Math.min(monthGroups.length - 1, prev + 1))}
+            className="p-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 disabled:opacity-30 disabled:pointer-events-none rounded-xl text-xs font-bold flex items-center gap-1 active:scale-95 transition-all"
+            title="查看上個月 (更早歷史)"
           >
-            {/* 月份標題 */}
-            <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-emerald-400" />
-                <h3 className="text-base font-black text-white">{group.monthTitle}</h3>
-              </div>
-              <span className="text-xs text-emerald-400 font-bold">
-                共 {group.stats.total} 場
+            <ChevronLeft className="w-4 h-4 text-emerald-400" />
+            <span className="hidden sm:inline">上個月</span>
+          </button>
+
+          <div className="flex flex-col items-center">
+            <div className="flex items-center gap-1.5">
+              <Calendar className="w-4 h-4 text-emerald-400" />
+              <span className="text-sm font-black text-white">
+                {currentGroup?.monthTitle || "訓練月份"}
               </span>
             </div>
+            <span className="text-[11px] text-gray-400">
+              當月共 {currentGroup?.stats.total || 0} 場訓練 • 可左右切換
+            </span>
+          </div>
 
+          <button
+            type="button"
+            disabled={selectedMonthIndex <= 0}
+            onClick={() => setSelectedMonthIndex((prev) => Math.max(0, prev - 1))}
+            className="p-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 disabled:opacity-30 disabled:pointer-events-none rounded-xl text-xs font-bold flex items-center gap-1 active:scale-95 transition-all"
+            title="查看下個月 (較新記錄)"
+          >
+            <span className="hidden sm:inline">下個月</span>
+            <ChevronRight className="w-4 h-4 text-emerald-400" />
+          </button>
+        </div>
+
+        {/* 橫向快速月份膠囊選擇列 (11月, 10月, 9月, 8月, 7月, 6月) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          {monthGroups.map((g, idx) => {
+            const isSelected = selectedMonthIndex === idx;
+            const parts = g.monthKey.split("-");
+            const mNum = parseInt(parts[1], 10);
+            return (
+              <button
+                key={g.monthKey}
+                onClick={() => setSelectedMonthIndex(idx)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border flex items-center gap-1 ${
+                  isSelected
+                    ? "bg-emerald-500 text-black border-emerald-400 shadow-md font-black"
+                    : "bg-[#12141c] text-gray-400 border-[#262b3d] hover:text-white"
+                }`}
+              >
+                <span>{mNum} 月</span>
+                <span className={`text-[10px] ${isSelected ? "text-black/80 font-bold" : "opacity-75"}`}>
+                  ({g.stats.total})
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 當前月份的獨立卡片 (支援手機觸控向左/向右滑動換月) */}
+        {currentGroup && (
+          <section
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3.5 shadow-md transition-all"
+          >
             {/* 該月統計：部位頻率 + 該月 3 項最高重量 (直觀看每個月力量有沒有進步！) */}
             <div className="grid grid-cols-2 gap-2 text-xs">
               {/* 部位頻率 */}
@@ -377,19 +455,19 @@ export default function HomePage() {
                 <div className="grid grid-cols-4 gap-1 text-center">
                   <div>
                     <span className="text-[10px] text-gray-400 block">胸</span>
-                    <span className="font-black text-white">{group.stats["胸"]}</span>
+                    <span className="font-black text-white">{currentGroup.stats["胸"]}</span>
                   </div>
                   <div>
                     <span className="text-[10px] text-gray-400 block">背</span>
-                    <span className="font-black text-white">{group.stats["背"]}</span>
+                    <span className="font-black text-white">{currentGroup.stats["背"]}</span>
                   </div>
                   <div>
                     <span className="text-[10px] text-gray-400 block">腿</span>
-                    <span className="font-black text-white">{group.stats["腿"]}</span>
+                    <span className="font-black text-white">{currentGroup.stats["腿"]}</span>
                   </div>
                   <div>
                     <span className="text-[10px] text-gray-400 block">游</span>
-                    <span className="font-black text-white">{group.stats["游泳"]}</span>
+                    <span className="font-black text-white">{currentGroup.stats["游泳"]}</span>
                   </div>
                 </div>
               </div>
@@ -403,28 +481,28 @@ export default function HomePage() {
                   <div>
                     <span className="text-[10px] text-gray-400 block">臥推</span>
                     <span className="font-black text-white">
-                      {group.bigThreeMax.bench > 0 ? `${group.bigThreeMax.bench}k` : "-"}
+                      {currentGroup.bigThreeMax.bench > 0 ? `${currentGroup.bigThreeMax.bench}k` : "-"}
                     </span>
                   </div>
                   <div>
                     <span className="text-[10px] text-gray-400 block">深蹲</span>
                     <span className="font-black text-white">
-                      {group.bigThreeMax.squat > 0 ? `${group.bigThreeMax.squat}k` : "-"}
+                      {currentGroup.bigThreeMax.squat > 0 ? `${currentGroup.bigThreeMax.squat}k` : "-"}
                     </span>
                   </div>
                   <div>
                     <span className="text-[10px] text-gray-400 block">硬舉</span>
                     <span className="font-black text-white">
-                      {group.bigThreeMax.deadlift > 0 ? `${group.bigThreeMax.deadlift}k` : "-"}
+                      {currentGroup.bigThreeMax.deadlift > 0 ? `${currentGroup.bigThreeMax.deadlift}k` : "-"}
                     </span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* 該月份日誌清單 (一開始不要展開，純單行條目，點進去才看詳情) */}
+            {/* 該月份日誌清單 (純單行條目，點進去才看詳情) */}
             <div className="space-y-1.5 pt-1">
-              {group.sessions.map((sess) => {
+              {currentGroup.sessions.map((sess) => {
                 const sessSets = sessionSetsMap[sess.id] || [];
 
                 let badgeColor = "bg-red-500/20 text-red-300 border-red-500/40";
@@ -481,7 +559,7 @@ export default function HomePage() {
               })}
             </div>
           </section>
-        ))}
+        )}
       </div>
     </div>
   );

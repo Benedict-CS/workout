@@ -34,6 +34,7 @@ import {
   getExerciseHistorySessions,
 } from "@/lib/db/crud";
 import { formatSessionToMarkdown } from "@/lib/markdown-generator";
+import { runFullSync } from "@/lib/db/sync";
 import type { Exercise, SetItem, WorkoutSession, WeightType, SetType, SetSubField } from "@/lib/types";
 
 const LOCATION_OPTIONS = [
@@ -329,6 +330,7 @@ export default function WorkoutDetailPage({
 
     await db.sets.add(newSet);
     setSets((prev) => [...prev, newSet]);
+    runFullSync().catch(() => {});
 
     // 重設子欄位
     setInputSubFields([]);
@@ -375,6 +377,7 @@ export default function WorkoutDetailPage({
     await db.sets.add(newSet);
     setSets((prev) => [...prev, newSet]);
     startRestTimer(defaultRestDuration);
+    runFullSync().catch(() => {});
   }
 
   // 記錄游泳 (3 個快選：早上游、下午游、晚上游)
@@ -401,6 +404,7 @@ export default function WorkoutDetailPage({
 
     await db.sets.add(newSet);
     setSets((prev) => [...prev, newSet]);
+    runFullSync().catch(() => {});
   }
 
   // 刪除組數
@@ -408,6 +412,7 @@ export default function WorkoutDetailPage({
     if (!confirm("確定刪除此組？")) return;
     await db.sets.delete(setId);
     setSets((prev) => prev.filter((s) => s.id !== setId));
+    runFullSync().catch(() => {});
   }
 
   // 開啟修改單組
@@ -450,6 +455,7 @@ export default function WorkoutDetailPage({
     await db.sets.put(updated);
     setSets((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
     setEditingSet(null);
+    runFullSync().catch(() => {});
   }
 
   // 快速切換場地
@@ -478,6 +484,7 @@ export default function WorkoutDetailPage({
     await db.sessions.put(updated);
     setSession(updated);
     setShowLocationQuickPicker(false);
+    runFullSync().catch(() => {});
   }
 
   // 一鍵複製 Markdown
@@ -496,6 +503,7 @@ export default function WorkoutDetailPage({
       await db.sets.where("session_id").equals(id).delete();
       await db.sessions.delete(id);
     });
+    runFullSync().catch(() => {});
     router.push("/");
   }
 

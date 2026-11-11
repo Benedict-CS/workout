@@ -2,26 +2,21 @@
 
 import { useState, useEffect, useRef } from "react";
 import {
-  Cloud,
   Download,
   Upload,
   RefreshCw,
   CheckCircle,
-  AlertCircle,
   Database,
   Trophy,
   MapPin,
-  Clock,
-  User,
   FileText,
   Trash2,
-  Check,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
 import { exportAllSessionsToMarkdown } from "@/lib/markdown-generator";
 import { parseWorkoutMarkdown } from "@/lib/parser/markdown-parser";
-import { testSupabaseConnection, runFullSync } from "@/lib/db/sync";
+import { runFullSync } from "@/lib/db/sync";
 import type { BigThreeRecord, WorkoutSession, SetItem, Exercise } from "@/lib/types";
 
 const LOCATION_OPTIONS = [
@@ -31,9 +26,6 @@ const LOCATION_OPTIONS = [
 ];
 
 export default function SettingsPage() {
-  const [supabaseUrl, setSupabaseUrl] = useState("");
-  const [supabaseKey, setSupabaseKey] = useState("");
-  const [saved, setSaved] = useState(false);
   const [reseeded, setReseeded] = useState(false);
 
   // 雲端同步狀態
@@ -75,11 +67,6 @@ export default function SettingsPage() {
     const storedRest = localStorage.getItem("workout_default_rest");
     if (storedRest) setDefaultRestTime(parseInt(storedRest, 10));
 
-    const storedUrl = localStorage.getItem("workout_supabase_url");
-    if (storedUrl) setSupabaseUrl(storedUrl);
-    const storedKey = localStorage.getItem("workout_supabase_key");
-    if (storedKey) setSupabaseKey(storedKey);
-
     const storedLastSync = localStorage.getItem("workout_last_sync_time");
     if (storedLastSync) {
       setLastSyncTime(new Date(storedLastSync).toLocaleString("zh-TW", { hour12: false }));
@@ -114,6 +101,7 @@ export default function SettingsPage() {
     await db.big_three.put(rec);
     setB3Saved(true);
     setTimeout(() => setB3Saved(false), 2000);
+    runFullSync().catch((err) => console.log("Sync error:", err));
   }
 
   function handleSavePreferences() {
@@ -121,22 +109,6 @@ export default function SettingsPage() {
     localStorage.setItem("workout_default_rest", defaultRestTime.toString());
     setPrefSaved(true);
     setTimeout(() => setPrefSaved(false), 2000);
-  }
-
-  function handleSaveSupabase() {
-    localStorage.setItem("workout_supabase_url", supabaseUrl);
-    localStorage.setItem("workout_supabase_key", supabaseKey);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  }
-
-  // 測試 Supabase 連線
-  async function handleTestSupabase() {
-    setIsSyncing(true);
-    setSyncStatusMsg("正在連線至雲端 Supabase 資料庫...");
-    const res = await testSupabaseConnection(supabaseUrl, supabaseKey);
-    setSyncStatusMsg(res.message);
-    setIsSyncing(false);
   }
 
   // 立即雙向同步
@@ -446,7 +418,23 @@ export default function SettingsPage() {
           </button>
         </div>
 
-        <div className="pt-2 border-t border-[#262b3d]/40">
+        <div className="pt-2 border-t border-[#262b3d]/40 space-y-2">
+          <button
+            onClick={handleTriggerSync}
+            disabled={isSyncing}
+            className="w-full bg-[#181b26] hover:bg-[#202533] border border-blue-500/40 text-blue-300 font-bold py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
+            <span>{isSyncing ? "正在雙向同步資料..." : "⚡ 立即雙向同步雲端 (Sync Now)"}</span>
+          </button>
+
+          {syncStatusMsg && (
+            <div className="p-2.5 rounded-xl text-xs bg-[#181b26] border border-blue-500/30 text-blue-300 flex items-center justify-between">
+              <span>{syncStatusMsg}</span>
+              {lastSyncTime && <span className="text-[10px] text-gray-400">上次: {lastSyncTime}</span>}
+            </div>
+          )}
+
           <button
             onClick={handleClearAll}
             className="w-full py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5"
@@ -455,79 +443,6 @@ export default function SettingsPage() {
             <span>清空所有本機資料 (危險操作)</span>
           </button>
         </div>
-      </section>
-
-      {/* Supabase 雲端跨裝置連線 & 即時雙向同步 */}
-      <section className="bg-[#12141c] border border-blue-500/30 rounded-2xl p-4 space-y-3">
-        <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
-          <div className="flex items-center gap-2">
-            <Cloud className="w-4 h-4 text-blue-400" />
-            <h2 className="text-sm font-bold text-gray-100">Supabase 雲端資料庫雙向同步</h2>
-          </div>
-          {lastSyncTime ? (
-            <span className="text-[10px] text-gray-400">上次同步: {lastSyncTime}</span>
-          ) : (
-            <span className="text-[10px] text-gray-500">尚未同步</span>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <div>
-            <label className="text-[11px] text-gray-400 block mb-1">Project URL</label>
-            <input
-              type="text"
-              placeholder="https://xxxxxxxx.supabase.co"
-              value={supabaseUrl}
-              onChange={(e) => setSupabaseUrl(e.target.value)}
-              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 outline-none focus:border-blue-500 font-mono"
-            />
-          </div>
-          <div>
-            <label className="text-[11px] text-gray-400 block mb-1">Anon Public Key</label>
-            <input
-              type="password"
-              placeholder="eyJhbGciOi..."
-              value={supabaseKey}
-              onChange={(e) => setSupabaseKey(e.target.value)}
-              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 outline-none focus:border-blue-500 font-mono"
-            />
-          </div>
-        </div>
-
-        {/* 同步反饋訊息 */}
-        {syncStatusMsg && (
-          <div className="p-2.5 rounded-xl text-xs bg-[#181b26] border border-blue-500/30 text-blue-300 flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-blue-400" />
-            <span>{syncStatusMsg}</span>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={handleSaveSupabase}
-            className="bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 font-bold py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5"
-          >
-            {saved ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : null}
-            <span>{saved ? "已儲存憑證" : "儲存憑證"}</span>
-          </button>
-
-          <button
-            onClick={handleTestSupabase}
-            disabled={isSyncing}
-            className="bg-[#181b26] hover:bg-[#202533] border border-blue-500/40 text-blue-300 font-bold py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5"
-          >
-            <span>測試雲端連線</span>
-          </button>
-        </div>
-
-        <button
-          onClick={handleTriggerSync}
-          disabled={isSyncing}
-          className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-black py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg"
-        >
-          <RefreshCw className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`} />
-          <span>{isSyncing ? "正在雙向同步中..." : "⚡ 立即雙向同步 (Sync Now)"}</span>
-        </button>
       </section>
     </div>
   );

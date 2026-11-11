@@ -23,7 +23,6 @@ body {
   padding-top: var(--safe-top);
   padding-bottom: calc(var(--safe-bottom) + 4.5rem);
   -webkit-tap-highlight-color: transparent;
-  user-select: none;
 }
 
 input, textarea {
