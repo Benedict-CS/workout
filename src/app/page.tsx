@@ -10,7 +10,6 @@ import {
   Copy,
   Check,
   Pencil,
-  FileText,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
@@ -47,10 +46,46 @@ export default function HomePage() {
   // 展開的訓練場次 ID 集合 (點擊 title 展開/收合，不跳轉新頁面)
   const [expandedSessionIds, setExpandedSessionIds] = useState<Set<string>>(new Set());
 
-  // 單月分頁檢視 (左右切換如月曆，可手勢滑動或點擊月份標籤)
+  // 單月分頁檢視 (順序排列：6月 -> 11月，支援鍵盤 ← → 鍵與左右滑動切換)
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const currentGroup = monthGroups[selectedMonthIndex] || monthGroups[0];
+
+  // 鍵盤 ← / → 鍵左右切換月份 (防在輸入框中誤觸)
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.getAttribute("contenteditable") === "true")
+      ) {
+        return;
+      }
+
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setSelectedMonthIndex((prev) => Math.max(0, prev - 1));
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setSelectedMonthIndex((prev) =>
+          Math.min(monthGroups.length > 0 ? monthGroups.length - 1 : 0, prev + 1)
+        );
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [monthGroups.length]);
+
+  // 切換月份時，讓對應的月份膠囊按鈕自動滾動至視圖中央
+  useEffect(() => {
+    const el = document.getElementById(`month-pill-${selectedMonthIndex}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }
+  }, [selectedMonthIndex]);
 
   function handleTouchStart(e: React.TouchEvent) {
     setTouchStartX(e.touches[0].clientX);
@@ -60,13 +95,13 @@ export default function HomePage() {
     if (touchStartX === null) return;
     const touchEndX = e.changedTouches[0].clientX;
     const diff = touchEndX - touchStartX;
-    // 右滑：看上個月 (較舊月)
-    if (diff > 50 && selectedMonthIndex < monthGroups.length - 1) {
-      setSelectedMonthIndex((prev) => prev + 1);
-    }
-    // 左滑：看下個月 (較新月)
-    else if (diff < -50 && selectedMonthIndex > 0) {
+    // 右滑：看上個月 (較舊月，向左切換)
+    if (diff > 50 && selectedMonthIndex > 0) {
       setSelectedMonthIndex((prev) => prev - 1);
+    }
+    // 左滑：看下個月 (較新月，向右切換)
+    else if (diff < -50 && selectedMonthIndex < monthGroups.length - 1) {
+      setSelectedMonthIndex((prev) => prev + 1);
     }
     setTouchStartX(null);
   }
@@ -104,7 +139,6 @@ export default function HomePage() {
 
         const allSessions = await db.sessions
           .filter((s) => !s.deleted_at)
-          .reverse()
           .sortBy("date");
 
         const allSets = await db.sets
@@ -119,7 +153,7 @@ export default function HomePage() {
         }
         setSessionSetsMap(setsMap);
 
-        // 依月份分組 (11月, 10月, 9月, 8月...)
+        // 依月份分組
         const monthMap = new Map<string, WorkoutSession[]>();
         for (const sess of allSessions) {
           if (!monthMap.has(sess.month_key)) {
@@ -128,7 +162,8 @@ export default function HomePage() {
           monthMap.get(sess.month_key)!.push(sess);
         }
 
-        const sortedMonthKeys = Array.from(monthMap.keys()).sort().reverse();
+        // 順序排列：6月 -> 7月 -> 8月 -> 9月 -> 10月 -> 11月
+        const sortedMonthKeys = Array.from(monthMap.keys()).sort();
         const groups: MonthGroupData[] = [];
 
         // 辨認傳統三大項動作 ID (純槓鈴臥推、深蹲、硬舉)
@@ -143,7 +178,9 @@ export default function HomePage() {
           .map((e) => e.id);
 
         for (const mk of sortedMonthKeys) {
-          const sessList = monthMap.get(mk) || [];
+          const rawSessList = monthMap.get(mk) || [];
+          // 該月內訓練按日期由先至後順序排列
+          const sessList = [...rawSessList].sort((a, b) => a.date.localeCompare(b.date));
           const mStats = { 胸: 0, 背: 0, 腿: 0, 游泳: 0, total: sessList.length };
 
           // 計算該月部位頻率
@@ -192,6 +229,10 @@ export default function HomePage() {
         }
 
         setMonthGroups(groups);
+        // 預設進入最新月份 (最後一個月：11月)
+        if (groups.length > 0) {
+          setSelectedMonthIndex(groups.length - 1);
+        }
       } catch (err) {
         console.error("Failed to load dashboard data:", err);
       } finally {
@@ -238,16 +279,16 @@ export default function HomePage() {
       {/* PWA 加入主畫面提示 Banner */}
       <PWAInstallBanner />
 
-      {/* 月份分頁導航列 (一個月一頁，左右切換如同日曆，亦可直接點選月份 Tab 或手勢左右滑動) */}
+      {/* 月份分頁導航列 (順序排列，支援鍵盤左右鍵 ← → 與點選切換) */}
       <div className="space-y-2.5">
         {/* 月曆切換頂 Bar */}
         <div className="flex items-center justify-between bg-[#12141c] border border-[#262b3d] rounded-2xl p-2.5 shadow-md">
           <button
             type="button"
-            disabled={selectedMonthIndex >= monthGroups.length - 1}
-            onClick={() => setSelectedMonthIndex((prev) => Math.min(monthGroups.length - 1, prev + 1))}
-            className="p-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 disabled:opacity-30 disabled:pointer-events-none rounded-xl text-xs font-bold flex items-center gap-1 active:scale-95 transition-all"
-            title="查看上個月 (更早歷史)"
+            disabled={selectedMonthIndex <= 0}
+            onClick={() => setSelectedMonthIndex((prev) => Math.max(0, prev - 1))}
+            className="p-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 disabled:opacity-30 disabled:pointer-events-none rounded-xl text-xs font-bold flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+            title="查看上個月 (可按鍵盤 ← 鍵)"
           >
             <ChevronLeft className="w-4 h-4 text-emerald-400" />
             <span className="hidden sm:inline">上個月</span>
@@ -261,24 +302,24 @@ export default function HomePage() {
               </span>
             </div>
             <span className="text-[11px] text-gray-400">
-              當月共 {currentGroup?.stats.total || 0} 場訓練 • 可左右滑動切換
+              當月共 {currentGroup?.stats.total || 0} 場訓練 • 可按鍵盤左右鍵 ← → 切換
             </span>
           </div>
 
           <button
             type="button"
-            disabled={selectedMonthIndex <= 0}
-            onClick={() => setSelectedMonthIndex((prev) => Math.max(0, prev - 1))}
-            className="p-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 disabled:opacity-30 disabled:pointer-events-none rounded-xl text-xs font-bold flex items-center gap-1 active:scale-95 transition-all"
-            title="查看下個月 (較新記錄)"
+            disabled={selectedMonthIndex >= monthGroups.length - 1}
+            onClick={() => setSelectedMonthIndex((prev) => Math.min(monthGroups.length - 1, prev + 1))}
+            className="p-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 disabled:opacity-30 disabled:pointer-events-none rounded-xl text-xs font-bold flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+            title="查看下個月 (可按鍵盤 → 鍵)"
           >
             <span className="hidden sm:inline">下個月</span>
             <ChevronRight className="w-4 h-4 text-emerald-400" />
           </button>
         </div>
 
-        {/* 橫向快速月份膠囊選擇列 (11月, 10月, 9月, 8月, 7月, 6月) */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+        {/* 橫向快速月份膠囊選擇列 (順序排列：6月, 7月, 8月, 9月, 10月, 11月) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 px-0.5">
           {monthGroups.map((g, idx) => {
             const isSelected = selectedMonthIndex === idx;
             const parts = g.monthKey.split("-");
@@ -286,15 +327,16 @@ export default function HomePage() {
             return (
               <button
                 key={g.monthKey}
+                id={`month-pill-${idx}`}
                 onClick={() => setSelectedMonthIndex(idx)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border flex items-center gap-1 ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border whitespace-nowrap inline-flex items-center gap-1 cursor-pointer select-none ${
                   isSelected
                     ? "bg-emerald-500 text-black border-emerald-400 shadow-md font-black"
                     : "bg-[#12141c] text-gray-400 border-[#262b3d] hover:text-white"
                 }`}
               >
                 <span>{mNum} 月</span>
-                <span className={`text-[10px] ${isSelected ? "text-black/80 font-bold" : "opacity-75"}`}>
+                <span className={`text-[10px] ${isSelected ? "text-black/80 font-bold" : "text-gray-400"}`}>
                   ({g.stats.total})
                 </span>
               </button>
@@ -373,7 +415,7 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => toggleExpandAll(currentGroup.sessions)}
-                  className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium"
+                  className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium cursor-pointer"
                 >
                   {allCurrentExpanded ? "全部收合" : "全部展開"}
                 </button>
@@ -491,7 +533,7 @@ export default function HomePage() {
                           <button
                             type="button"
                             onClick={(e) => handleCopyMarkdown(e, sess)}
-                            className="flex items-center gap-1.5 text-gray-400 hover:text-emerald-400 py-1 px-2.5 rounded-lg bg-[#181b26] border border-[#262b3d] transition-colors"
+                            className="flex items-center gap-1.5 text-gray-400 hover:text-emerald-400 py-1 px-2.5 rounded-lg bg-[#181b26] border border-[#262b3d] transition-colors cursor-pointer"
                           >
                             <Copy className="w-3.5 h-3.5" />
                             <span>複製 Markdown</span>
