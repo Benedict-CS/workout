@@ -58,12 +58,6 @@ export default function RootLayout({
           </Link>
           <div className="flex items-center gap-2">
             <Link
-              href="/exercises"
-              className="text-xs bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] text-gray-300 font-bold px-2.5 py-1.5 rounded-xl transition-all"
-            >
-              動作庫
-            </Link>
-            <Link
               href="/workout/new"
               className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black px-3 py-1.5 rounded-full shadow-md transition-all active:scale-95"
             >

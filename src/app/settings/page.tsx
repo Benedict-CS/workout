@@ -379,7 +379,7 @@ export default function SettingsPage() {
             className="bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow"
           >
             <Download className="w-4 h-4 stroke-[3]" />
-            <span>匯出完整 Markdown 日誌</span>
+            <span>匯出 Markdown 日誌</span>
           </button>
 
           <button
@@ -400,21 +400,13 @@ export default function SettingsPage() {
           className="hidden"
         />
 
-        <div className="grid grid-cols-2 gap-2 pt-1">
+        <div className="pt-1">
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="bg-[#181b26] hover:bg-[#202533] border border-cyan-500/40 text-cyan-300 text-xs font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all"
+            className="w-full bg-[#181b26] hover:bg-[#202533] border border-cyan-500/40 text-cyan-300 text-xs font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all"
           >
             <Upload className="w-4 h-4 text-cyan-400" />
-            <span>從檔案還原 (.json / .md)</span>
-          </button>
-
-          <button
-            onClick={handleReseed}
-            className="bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-amber-400 text-xs font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>{reseeded ? "已重新載入歷史數據" : "重新載入種子數據"}</span>
+            <span>從檔案還原備份 (.json / .md)</span>
           </button>
         </div>
 
@@ -422,10 +414,10 @@ export default function SettingsPage() {
           <button
             onClick={handleTriggerSync}
             disabled={isSyncing}
-            className="w-full bg-[#181b26] hover:bg-[#202533] border border-blue-500/40 text-blue-300 font-bold py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow"
+            className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-black py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
-            <span>{isSyncing ? "正在雙向同步資料..." : "⚡ 立即雙向同步雲端 (Sync Now)"}</span>
+            <span>{isSyncing ? "正在雙向同步雲端資料..." : "⚡ 立即雙向同步雲端 (Sync Now)"}</span>
           </button>
 
           {syncStatusMsg && (
@@ -434,14 +426,6 @@ export default function SettingsPage() {
               {lastSyncTime && <span className="text-[10px] text-gray-400">上次: {lastSyncTime}</span>}
             </div>
           )}
-
-          <button
-            onClick={handleClearAll}
-            className="w-full py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>清空所有本機資料 (危險操作)</span>
-          </button>
         </div>
       </section>
     </div>

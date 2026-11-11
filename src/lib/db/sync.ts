@@ -6,15 +6,19 @@ let cachedClient: SupabaseClient | null = null;
 let cachedUrl = "";
 let cachedKey = "";
 
+const DEFAULT_SUPABASE_URL = "https://sbvcbkvnvhwalypmzbvt.supabase.co";
+const DEFAULT_SUPABASE_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNidmNia3Zudmh3YWx5cG16YnZ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQyNTkzODksImV4cCI6MjEwOTgzNTM4OX0.flhfWoAIdfpp-5cQ98R_H1Hs6y5xTnCKD16eG6-VP_8";
+
 export function getSupabaseClient(): SupabaseClient | null {
   const url =
     (typeof window !== "undefined" ? localStorage.getItem("workout_supabase_url") : null) ||
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    "";
+    DEFAULT_SUPABASE_URL;
   const key =
     (typeof window !== "undefined" ? localStorage.getItem("workout_supabase_key") : null) ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    "";
+    DEFAULT_SUPABASE_KEY;
 
   if (!url || !key) return null;
 
@@ -54,12 +58,12 @@ export async function testSupabaseConnection(
       customUrl ||
       (typeof window !== "undefined" ? localStorage.getItem("workout_supabase_url") || "" : "") ||
       process.env.NEXT_PUBLIC_SUPABASE_URL ||
-      "";
+      DEFAULT_SUPABASE_URL;
     const key =
       customKey ||
       (typeof window !== "undefined" ? localStorage.getItem("workout_supabase_key") || "" : "") ||
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-      "";
+      DEFAULT_SUPABASE_KEY;
 
     if (!url || !key) {
       return { ok: false, message: "請先輸入 Project URL 與 Public Anon Key" };

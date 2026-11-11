@@ -79,14 +79,6 @@ export default function HomePage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [monthGroups.length]);
 
-  // 切換月份時，讓對應的月份膠囊按鈕自動滾動至視圖中央
-  useEffect(() => {
-    const el = document.getElementById(`month-pill-${selectedMonthIndex}`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-    }
-  }, [selectedMonthIndex]);
-
   function handleTouchStart(e: React.TouchEvent) {
     setTouchStartX(e.touches[0].clientX);
   }
@@ -318,33 +310,7 @@ export default function HomePage() {
           </button>
         </div>
 
-        {/* 橫向快速月份膠囊選擇列 (順序排列：6月, 7月, 8月, 9月, 10月, 11月) */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 px-0.5">
-          {monthGroups.map((g, idx) => {
-            const isSelected = selectedMonthIndex === idx;
-            const parts = g.monthKey.split("-");
-            const mNum = parseInt(parts[1], 10);
-            return (
-              <button
-                key={g.monthKey}
-                id={`month-pill-${idx}`}
-                onClick={() => setSelectedMonthIndex(idx)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border whitespace-nowrap inline-flex items-center gap-1 cursor-pointer select-none ${
-                  isSelected
-                    ? "bg-emerald-500 text-black border-emerald-400 shadow-md font-black"
-                    : "bg-[#12141c] text-gray-400 border-[#262b3d] hover:text-white"
-                }`}
-              >
-                <span>{mNum} 月</span>
-                <span className={`text-[10px] ${isSelected ? "text-black/80 font-bold" : "text-gray-400"}`}>
-                  ({g.stats.total})
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* 當前月份的獨立卡片 (支援手機觸控向左/向右滑動換月) */}
+        {/* 當前月份的獨立卡片 (支援手機觸控向左/向右滑動換月，或鍵盤 ← → 鍵) */}
         {currentGroup && (
           <section
             onTouchStart={handleTouchStart}
