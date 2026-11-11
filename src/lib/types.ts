@@ -87,6 +87,16 @@ export interface BigThreeRecord {
   sync_status: SyncStatus;
 }
 
+export interface BodyWeightRecord {
+  id: string;
+  date: string;       // YYYY-MM-DD
+  weight_kg: number;
+  note?: string;
+  created_at: string;
+  updated_at: string;
+  sync_status: SyncStatus;
+}
+
 export interface MonthSummaryStats {
   month_name: string;
   counts: Record<string, number>;

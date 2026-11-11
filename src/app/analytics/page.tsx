@@ -7,6 +7,9 @@ import {
   TrendingUp,
   Dumbbell,
   Calendar,
+  Scale,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import {
   LineChart,
@@ -18,7 +21,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { db } from "@/lib/db/schema";
-import type { WorkoutSession, SetItem, Exercise, BigThreeRecord } from "@/lib/types";
+import type { WorkoutSession, SetItem, Exercise, BigThreeRecord, BodyWeightRecord } from "@/lib/types";
 
 interface MonthBigThreeData {
   monthKey: string;
@@ -52,12 +55,23 @@ export default function AnalyticsPage() {
   const [monthlyTrend, setMonthlyTrend] = useState<MonthBigThreeData[]>([]);
   const [prList, setPrList] = useState<PRItem[]>([]);
 
+  // 體重數據狀態 (晨起空腹量測)
+  const [bodyWeights, setBodyWeights] = useState<BodyWeightRecord[]>([]);
+  const [newWeightDate, setNewWeightDate] = useState(new Date().toISOString().split("T")[0]);
+  const [newWeightValue, setNewWeightValue] = useState("");
+  const [bwSaving, setBwSaving] = useState(false);
+  const [showBwList, setShowBwList] = useState(false);
+
   useEffect(() => {
     setMounted(true);
     async function loadData() {
       try {
         const b3 = await db.big_three.toArray();
         if (b3.length > 0) setBigThree(b3[0]);
+
+        // 讀取歷史體重數據
+        const bwList = await db.body_weight.orderBy("date").toArray();
+        setBodyWeights(bwList);
 
         const sessions = await db.sessions
           .filter((s) => !s.deleted_at)
@@ -169,6 +183,51 @@ export default function AnalyticsPage() {
     loadData();
   }, []);
 
+  async function handleAddBodyWeight() {
+    const w = parseFloat(newWeightValue);
+    if (!w || w <= 0 || !newWeightDate) return;
+
+    setBwSaving(true);
+    const newRec: BodyWeightRecord = {
+      id: `bw-${newWeightDate}`,
+      date: newWeightDate,
+      weight_kg: w,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    };
+
+    await db.body_weight.put(newRec);
+
+    // 同步更新三項中的個人體重與體重倍數比
+    const b3List = await db.big_three.toArray();
+    if (b3List.length > 0) {
+      const curB3 = b3List[0];
+      const b = curB3.bench_press_kg;
+      const s = curB3.squat_kg;
+      const d = curB3.deadlift_kg;
+      await db.big_three.update(curB3.id, {
+        body_weight_kg: w,
+        bench_ratio: b > 0 ? Math.round((b / w) * 100) / 100 : undefined,
+        squat_ratio: s > 0 ? Math.round((s / w) * 100) / 100 : undefined,
+        deadlift_ratio: d > 0 ? Math.round((d / w) * 100) / 100 : undefined,
+        updated_at: new Date().toISOString(),
+      });
+    }
+
+    const updatedList = await db.body_weight.orderBy("date").toArray();
+    setBodyWeights(updatedList);
+    setNewWeightValue("");
+    setBwSaving(false);
+  }
+
+  async function handleDeleteBodyWeight(id: string) {
+    if (!confirm("確定刪除此筆體重紀錄？")) return;
+    await db.body_weight.delete(id);
+    const updatedList = await db.body_weight.orderBy("date").toArray();
+    setBodyWeights(updatedList);
+  }
+
   if (!mounted || loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] text-gray-400 gap-3">
@@ -177,6 +236,16 @@ export default function AnalyticsPage() {
       </div>
     );
   }
+
+  const startBw = bodyWeights.length > 0 ? bodyWeights[0].weight_kg : 56.9;
+  const latestBw = bodyWeights.length > 0 ? bodyWeights[bodyWeights.length - 1].weight_kg : 62.6;
+  const netDiff = Math.round((latestBw - startBw) * 10) / 10;
+
+  const bwChartData = bodyWeights.map((b) => ({
+    date: b.date.slice(5),
+    fullDate: b.date,
+    weight: b.weight_kg,
+  }));
 
   return (
     <div className="space-y-5 pb-24">
@@ -221,6 +290,139 @@ export default function AnalyticsPage() {
             <span className="text-[10px] text-gray-500 block">次</span>
           </div>
         </div>
+      </section>
+
+      {/* 體重追蹤與成長趨勢 (固定晨起空腹量測基準) */}
+      <section className="bg-[#12141c] border border-cyan-500/30 rounded-2xl p-4 space-y-3.5 shadow-md">
+        <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2.5">
+          <div className="flex items-center gap-2">
+            <Scale className="w-4 h-4 text-cyan-400" />
+            <h2 className="text-sm font-bold text-gray-100">體重追蹤與成長趨勢</h2>
+          </div>
+          <span className="text-[10px] text-gray-400 bg-[#181b26] px-2 py-0.5 rounded border border-[#262b3d]">
+            晨起空腹未穿衣基準
+          </span>
+        </div>
+
+        {/* 3 大指標卡 */}
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
+            <span className="text-[10px] text-gray-400 block mb-0.5">起始體重</span>
+            <span className="text-base font-black text-gray-200">{startBw}</span>
+            <span className="text-[10px] text-gray-500 block">kg</span>
+          </div>
+
+          <div className="bg-[#181b26] p-2.5 rounded-xl border border-cyan-500/30">
+            <span className="text-[10px] text-cyan-400 block mb-0.5">最新體重</span>
+            <span className="text-base font-black text-white">{latestBw}</span>
+            <span className="text-[10px] text-cyan-400/80 block">kg</span>
+          </div>
+
+          <div className="bg-[#181b26] p-2.5 rounded-xl border border-emerald-500/30">
+            <span className="text-[10px] text-emerald-400 block mb-0.5">體重淨增減</span>
+            <span className="text-base font-black text-emerald-300">
+              {netDiff > 0 ? `+${netDiff}` : netDiff}
+            </span>
+            <span className="text-[10px] text-emerald-400/80 block">kg 增肌</span>
+          </div>
+        </div>
+
+        {/* 體重歷史折線圖 */}
+        <div className="h-44 w-full pt-1">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={bwChartData} margin={{ top: 5, right: 10, left: -25, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#262b3d" />
+              <XAxis dataKey="date" stroke="#6b7280" fontSize={10} tickLine={false} interval="preserveStartEnd" />
+              <YAxis stroke="#6b7280" fontSize={10} domain={["dataMin - 1", "dataMax + 1"]} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#181b26",
+                  borderColor: "#374151",
+                  borderRadius: "0.75rem",
+                  fontSize: "11px",
+                  color: "#fff",
+                }}
+                formatter={(val: any) => [`${val} kg`, "晨起體重"]}
+                labelFormatter={(lbl, items) => {
+                  const item = items[0]?.payload;
+                  return item ? item.fullDate : lbl;
+                }}
+              />
+              <Line
+                type="monotone"
+                dataKey="weight"
+                stroke="#06b6d4"
+                strokeWidth={2.5}
+                dot={false}
+                activeDot={{ r: 5, fill: "#06b6d4" }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* 快速記錄體重輸入列 */}
+        <div className="flex items-center gap-2 pt-1 border-t border-[#262b3d]/40">
+          <input
+            type="date"
+            value={newWeightDate}
+            onChange={(e) => setNewWeightDate(e.target.value)}
+            className="bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-2.5 py-2 outline-none focus:border-cyan-500"
+          />
+          <div className="relative flex-1">
+            <input
+              type="number"
+              step="0.1"
+              placeholder="輸入體重 (如 62.6)"
+              value={newWeightValue}
+              onChange={(e) => setNewWeightValue(e.target.value)}
+              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-cyan-500 font-bold"
+            />
+            <span className="absolute right-3 top-2 text-xs text-gray-500">kg</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleAddBodyWeight}
+            disabled={!newWeightValue || bwSaving}
+            className="bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 text-black font-black px-3.5 py-2 rounded-xl text-xs transition-all flex items-center gap-1 shadow cursor-pointer shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5 stroke-[3]" />
+            <span>記錄</span>
+          </button>
+        </div>
+
+        {/* 查看全部歷史紀錄 */}
+        <div className="pt-0.5 text-right">
+          <button
+            type="button"
+            onClick={() => setShowBwList(!showBwList)}
+            className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium cursor-pointer"
+          >
+            {showBwList ? "收合歷史紀錄" : `查看全部 ${bodyWeights.length} 筆量測紀錄`}
+          </button>
+        </div>
+
+        {showBwList && (
+          <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 border-t border-[#262b3d]/40 pt-2">
+            {bodyWeights.slice().reverse().map((b) => (
+              <div
+                key={b.id}
+                className="bg-[#181b26] px-3 py-1.5 rounded-lg flex items-center justify-between text-xs border border-[#262b3d]/60"
+              >
+                <span className="font-mono text-gray-300 text-[11px]">{b.date}</span>
+                <div className="flex items-center gap-3">
+                  <span className="font-bold text-white">{b.weight_kg} kg</span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteBodyWeight(b.id)}
+                    className="text-gray-500 hover:text-red-400 transition-colors"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* 每月三項實測最高重量走勢圖 */}

@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from "dexie";
 import type {
   BigThreeRecord,
+  BodyWeightRecord,
   Exercise,
   SetItem,
   WorkoutSession,
@@ -11,6 +12,7 @@ export class WorkoutDB extends Dexie {
   exercises!: EntityTable<Exercise, "id">;
   sets!: EntityTable<SetItem, "id">;
   big_three!: EntityTable<BigThreeRecord, "id">;
+  body_weight!: EntityTable<BodyWeightRecord, "id">;
 
   constructor() {
     super("workout_db");
@@ -19,6 +21,9 @@ export class WorkoutDB extends Dexie {
       exercises: "id, name, muscle_group, weight_type, sync_status, updated_at, deleted_at",
       sets: "id, session_id, exercise_id, set_order, set_type, sync_status, updated_at, deleted_at",
       big_three: "id, updated_at, sync_status",
+    });
+    this.version(2).stores({
+      body_weight: "id, date, weight_kg, updated_at, sync_status",
     });
   }
 }
