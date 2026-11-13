@@ -21,6 +21,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { db } from "@/lib/db/schema";
+import { runFullSync, deleteRemoteBodyWeight } from "@/lib/db/sync";
 import type { WorkoutSession, SetItem, Exercise, BigThreeRecord, BodyWeightRecord } from "@/lib/types";
 
 interface MonthBigThreeData {
@@ -30,15 +31,6 @@ interface MonthBigThreeData {
   squat: number;
   deadlift: number;
   total: number;
-}
-
-interface PRItem {
-  exerciseId: string;
-  exerciseName: string;
-  muscleGroup: string;
-  maxWeight: number;
-  maxWeightReps: number;
-  achievedDate: string;
 }
 
 export default function AnalyticsPage() {
@@ -54,7 +46,6 @@ export default function AnalyticsPage() {
     total: 0,
   });
   const [monthlyTrend, setMonthlyTrend] = useState<MonthBigThreeData[]>([]);
-  const [prList, setPrList] = useState<PRItem[]>([]);
 
   // 體重與身體成分數據狀態 (晨起空腹量測)
   const [bodyWeights, setBodyWeights] = useState<BodyWeightRecord[]>([]);
@@ -136,49 +127,6 @@ export default function AnalyticsPage() {
           });
         }
         setMonthlyTrend(trendList);
-
-        // 2. 各動作歷史實測最高重量排行榜
-        const prMap = new Map<
-          string,
-          { maxWeight: number; reps: number; date: string }
-        >();
-
-        for (const setItem of allSets) {
-          const sess = sessionMap.get(setItem.session_id);
-          const dateStr = sess ? sess.date : "";
-
-          const existing = prMap.get(setItem.exercise_id);
-          if (!existing) {
-            prMap.set(setItem.exercise_id, {
-              maxWeight: setItem.weight_kg,
-              reps: setItem.reps,
-              date: dateStr,
-            });
-          } else {
-            if (setItem.weight_kg > existing.maxWeight) {
-              existing.maxWeight = setItem.weight_kg;
-              existing.reps = setItem.reps;
-              existing.date = dateStr;
-            }
-          }
-        }
-
-        const calculatedPrs: PRItem[] = [];
-        for (const [exId, data] of prMap.entries()) {
-          const ex = exMap.get(exId);
-          if (ex && data.maxWeight > 0) {
-            calculatedPrs.push({
-              exerciseId: exId,
-              exerciseName: ex.name,
-              muscleGroup: ex.muscle_group,
-              maxWeight: data.maxWeight,
-              maxWeightReps: data.reps,
-              achievedDate: data.date,
-            });
-          }
-        }
-        calculatedPrs.sort((a, b) => b.maxWeight - a.maxWeight);
-        setPrList(calculatedPrs);
       } catch (err) {
         console.error("Failed to load analytics:", err);
       } finally {
@@ -231,11 +179,14 @@ export default function AnalyticsPage() {
     setNewFatValue("");
     setNewMuscleValue("");
     setBwSaving(false);
+    runFullSync().catch(() => {});
   }
 
   async function handleDeleteBodyWeight(id: string) {
     if (!confirm("確定刪除此筆體重紀錄？")) return;
     await db.body_weight.delete(id);
+    deleteRemoteBodyWeight(id).catch(() => {});
+    runFullSync().catch(() => {});
     const updatedList = await db.body_weight.orderBy("date").toArray();
     setBodyWeights(updatedList);
   }
@@ -662,45 +613,6 @@ export default function AnalyticsPage() {
                   <span className="text-[10px] text-gray-400 block">三項總和</span>
                   <span className="font-black text-amber-400">{m.total > 0 ? `${m.total}k` : "-"}</span>
                 </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* 動作實測最高榜 (不含 1RM) */}
-      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3">
-        <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
-          <div className="flex items-center gap-2">
-            <Trophy className="w-4 h-4 text-amber-400" />
-            <h2 className="text-sm font-bold text-gray-100">各動作歷史實測最高重量</h2>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          {prList.map((pr, idx) => (
-            <div
-              key={pr.exerciseId}
-              className="bg-[#181b26] p-3 rounded-xl border border-[#262b3d] flex items-center justify-between text-xs"
-            >
-              <div>
-                <div className="font-bold text-gray-100 flex items-center gap-1.5">
-                  <span className="text-gray-500 text-[10px]">#{idx + 1}</span>
-                  <span>{pr.exerciseName}</span>
-                  <span className="text-[10px] bg-[#090a0f] text-emerald-400 px-1.5 py-0.5 rounded border border-[#262b3d]">
-                    {pr.muscleGroup}
-                  </span>
-                </div>
-                {pr.achievedDate && (
-                  <span className="text-[10px] text-gray-500 mt-0.5 block">{pr.achievedDate}</span>
-                )}
-              </div>
-
-              <div className="text-right">
-                <span className="text-sm font-black text-white">
-                  {pr.maxWeight} <span className="text-[10px] font-normal text-gray-400">Kg</span>
-                </span>
-                <span className="text-[10px] text-gray-400 block">× {pr.maxWeightReps} 下</span>
               </div>
             </div>
           ))}

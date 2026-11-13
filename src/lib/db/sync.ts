@@ -508,3 +508,44 @@ export async function runFullSync(): Promise<SyncResult> {
     };
   }
 }
+
+/**
+ * 遠端刪除訓練場次（連同其下的所有組數）
+ */
+export async function deleteRemoteSession(sessionId: string): Promise<void> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  try {
+    await supabase.from("workout_sets").delete().eq("session_id", sessionId);
+    await supabase.from("workout_sessions").delete().eq("id", sessionId);
+  } catch (err) {
+    console.error("Failed to delete remote session:", err);
+  }
+}
+
+/**
+ * 遠端刪除單一組數
+ */
+export async function deleteRemoteSet(setId: string): Promise<void> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  try {
+    await supabase.from("workout_sets").delete().eq("id", setId);
+  } catch (err) {
+    console.error("Failed to delete remote set:", err);
+  }
+}
+
+/**
+ * 遠端刪除體重紀錄
+ */
+export async function deleteRemoteBodyWeight(id: string): Promise<void> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  try {
+    await supabase.from("body_weights").delete().eq("id", id);
+  } catch (err) {
+    console.error("Failed to delete remote body weight:", err);
+  }
+}
+

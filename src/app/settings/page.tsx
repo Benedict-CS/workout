@@ -410,15 +410,31 @@ export default function SettingsPage() {
           </button>
         </div>
 
-        <div className="pt-2 border-t border-[#262b3d]/40 space-y-2">
-          <button
-            onClick={handleTriggerSync}
-            disabled={isSyncing}
-            className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-black py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
-            <span>{isSyncing ? "正在雙向同步雲端資料..." : "⚡ 立即雙向同步雲端 (Sync Now)"}</span>
-          </button>
+        <div className="pt-2 border-t border-[#262b3d]/40 space-y-3">
+          {/* 自動即時同步說明提示 */}
+          <div className="bg-[#181b26] border border-emerald-500/30 rounded-xl p-3 text-xs space-y-1.5">
+            <div className="flex items-center gap-2 text-emerald-400 font-bold">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>雲端全自動雙向同步中（免手動點擊）</span>
+            </div>
+            <p className="text-[11px] text-gray-400 leading-relaxed">
+              系統在每次新增或修改組數、開啟 App、切換分頁或網路重連時，均會<strong className="text-gray-200">全自動於背景雙向同步</strong>至 Supabase 雲端，平時記錄訓練完全無需手動操作。
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <button
+              onClick={handleTriggerSync}
+              disabled={isSyncing}
+              className="w-full bg-[#1e2333] hover:bg-[#282f45] border border-blue-500/40 text-blue-300 font-bold py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 active:scale-98"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin text-blue-400" : "text-blue-400"}`} />
+              <span>{isSyncing ? "正在雙向同步雲端資料..." : "手動強制同步雲端 (備用刷新)"}</span>
+            </button>
+            <p className="text-[10px] text-gray-500 text-center">
+              僅供更換新裝置或離線剛恢復時，若想立刻強制同步比對雲端可點擊。
+            </p>
+          </div>
 
           {syncStatusMsg && (
             <div className="p-2.5 rounded-xl text-xs bg-[#181b26] border border-blue-500/30 text-blue-300 flex items-center justify-between">

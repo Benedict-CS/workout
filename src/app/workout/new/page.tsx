@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { getPreviousSessionTemplate } from "@/lib/db/crud";
+import { runFullSync } from "@/lib/db/sync";
 import type { WorkoutSession, SetItem, Exercise } from "@/lib/types";
 
 const LOCATION_PRESETS = [
@@ -136,6 +137,7 @@ function NewWorkoutForm() {
 
     // 若為游泳，自動建立一筆空組或直接進去點「早上游/下午游/晚上游」
     if (finalMuscle === "游泳") {
+      runFullSync().catch(() => {});
       router.push(`/workout/${sessionId}`);
       return;
     }
@@ -163,6 +165,7 @@ function NewWorkoutForm() {
       await db.sets.bulkAdd(newSets);
     }
 
+    runFullSync().catch(() => {});
     router.push(`/workout/${sessionId}`);
   }
 

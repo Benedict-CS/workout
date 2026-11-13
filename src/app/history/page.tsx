@@ -27,6 +27,7 @@ import {
   exportAllSessionsToMarkdown,
 } from "@/lib/markdown-generator";
 import { parseWorkoutMarkdown } from "@/lib/parser/markdown-parser";
+import { runFullSync, deleteRemoteSession } from "@/lib/db/sync";
 import type { WorkoutSession, SetItem, Exercise, BigThreeRecord } from "@/lib/types";
 
 const WEEK_DAYS = ["日", "一", "二", "三", "四", "五", "六"];
@@ -99,6 +100,9 @@ export default function HistoryPage() {
       await db.sets.where("session_id").equals(sessionId).delete();
       await db.sessions.delete(sessionId);
     });
+
+    deleteRemoteSession(sessionId).catch(() => {});
+    runFullSync().catch(() => {});
 
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     setSets((prev) => prev.filter((s) => s.session_id !== sessionId));

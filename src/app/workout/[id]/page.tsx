@@ -34,7 +34,7 @@ import {
   getExerciseHistorySessions,
 } from "@/lib/db/crud";
 import { formatSessionToMarkdown } from "@/lib/markdown-generator";
-import { runFullSync } from "@/lib/db/sync";
+import { runFullSync, deleteRemoteSession, deleteRemoteSet } from "@/lib/db/sync";
 import type { Exercise, SetItem, WorkoutSession, WeightType, SetType, SetSubField } from "@/lib/types";
 
 const LOCATION_OPTIONS = [
@@ -412,6 +412,7 @@ export default function WorkoutDetailPage({
     if (!confirm("確定刪除此組？")) return;
     await db.sets.delete(setId);
     setSets((prev) => prev.filter((s) => s.id !== setId));
+    deleteRemoteSet(setId).catch(() => {});
     runFullSync().catch(() => {});
   }
 
@@ -503,6 +504,7 @@ export default function WorkoutDetailPage({
       await db.sets.where("session_id").equals(id).delete();
       await db.sessions.delete(id);
     });
+    deleteRemoteSession(id).catch(() => {});
     runFullSync().catch(() => {});
     router.push("/");
   }

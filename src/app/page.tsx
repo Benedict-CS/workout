@@ -426,20 +426,43 @@ export default function HomePage() {
                   >
                     {/* 標題欄：點一下就展開/收合，完全不跳轉其他頁面 */}
                     <div
-                      onClick={() => toggleExpand(sess.id)}
-                      className="px-3 py-2.5 flex items-center justify-between text-xs cursor-pointer select-none active:bg-[#202533]"
+                      onClick={(e) => {
+                        // 若使用者正在用滑鼠選取反白標題文字，不觸發展開/收合
+                        const sel = typeof window !== "undefined" ? window.getSelection()?.toString() : "";
+                        if (sel && sel.trim().length > 0) return;
+                        toggleExpand(sess.id);
+                      }}
+                      className="px-3 py-2.5 flex items-center justify-between text-xs cursor-pointer active:bg-[#202533]"
                     >
-                      <div className="flex items-center gap-2 truncate pr-2">
+                      <div className="flex items-center gap-2 truncate pr-2 min-w-0">
                         <span className={`px-2 py-0.5 rounded font-black text-[11px] border shrink-0 ${badgeColor}`}>
                           {sess.target_muscle}
                         </span>
 
-                        <span className="font-bold text-gray-100 hover:text-emerald-400 transition-colors truncate">
+                        <span
+                          className="font-bold text-gray-100 hover:text-emerald-400 transition-colors truncate select-text cursor-text"
+                          title="可直接選取複製文字"
+                        >
                           {sess.display_title}
                         </span>
+
+                        {/* 一鍵複製標題文字按鈕 */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(sess.display_title);
+                            setCopyToast(`已複製標題：${sess.display_title}`);
+                            setTimeout(() => setCopyToast(null), 2000);
+                          }}
+                          className="p-1 text-gray-500 hover:text-emerald-400 hover:bg-[#262b3d] rounded transition-all cursor-pointer shrink-0"
+                          title="一鍵複製此場訓練標題文字"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0 select-none">
                         {sess.location && (
                           <span className="text-[10px] text-gray-400 hidden sm:inline-block">
                             {sess.location}
