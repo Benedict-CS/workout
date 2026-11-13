@@ -106,6 +106,44 @@ export default function WorkoutDetailPage({
   const [swapSourceExercise, setSwapSourceExercise] = useState<Exercise | null>(null);
   const [swapSearchQuery, setSwapSearchQuery] = useState("");
 
+  // 保持螢幕常亮 (Screen Wake Lock) - 訓練進行中手機不自動休眠黑屏
+  const wakeLockRef = useRef<any>(null);
+  const [wakeLockActive, setWakeLockActive] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function requestWakeLock() {
+      if (typeof window !== "undefined" && "wakeLock" in navigator) {
+        try {
+          wakeLockRef.current = await (navigator as any).wakeLock.request("screen");
+          if (isMounted) setWakeLockActive(true);
+          wakeLockRef.current.addEventListener("release", () => {
+            if (isMounted) setWakeLockActive(false);
+          });
+        } catch {}
+      }
+    }
+    requestWakeLock();
+
+    function handleVisibility() {
+      if (document.visibilityState === "visible") {
+        requestWakeLock();
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      isMounted = false;
+      document.removeEventListener("visibilitychange", handleVisibility);
+      if (wakeLockRef.current) {
+        try {
+          wakeLockRef.current.release();
+        } catch {}
+        wakeLockRef.current = null;
+      }
+    };
+  }, []);
+
   // 計時器倒數邏輯 (手動觸發，結束時輕微震動提醒)
   useEffect(() => {
     function checkTimer() {
@@ -289,6 +327,82 @@ export default function WorkoutDetailPage({
     if (text.includes("神經激發") || text.includes("激發")) return "激發";
     if (text.includes("試重")) return "試重";
     return "熱身";
+  }
+
+  // 取得單組對應的上次做組紀錄 (Ghost Set 緊密對比)
+  function getMatchingGhostSet(
+    targetSet: SetItem,
+    exSets: SetItem[],
+    ghostSets?: SetItem[]
+  ): SetItem | null {
+    if (!ghostSets || ghostSets.length === 0) return null;
+    const isWarmup = isWarmupOrActivation(targetSet);
+
+    if (isWarmup) {
+      const warmupSets = exSets.filter((s) => isWarmupOrActivation(s));
+      const wIdx = warmupSets.findIndex((s) => s.id === targetSet.id);
+      const ghostWarmups = ghostSets.filter((s) => isWarmupOrActivation(s));
+      return ghostWarmups[wIdx] || null;
+    } else {
+      const formalSets = exSets.filter((s) => !isWarmupOrActivation(s));
+      const fIdx = formalSets.findIndex((s) => s.id === targetSet.id);
+      const ghostFormals = ghostSets.filter((s) => !isWarmupOrActivation(s));
+      return ghostFormals[fIdx] || null;
+    }
+  }
+
+  // 開啟替換動作 Modal (現場器材有人用時一鍵替換)
+  function handleOpenSwapModal(ex?: Exercise) {
+    if (!ex) return;
+    setSwapSourceExercise(ex);
+    setSwapSearchQuery("");
+    setShowSwapModal(true);
+  }
+
+  // 確認替換動作：將原動作所有組數直接移轉至新動作
+  async function handleConfirmSwapExercise(newEx: Exercise) {
+    if (!swapSourceExercise || swapSourceExercise.id === newEx.id) {
+      setShowSwapModal(false);
+      return;
+    }
+
+    const oldExId = swapSourceExercise.id;
+    const targetSets = sets.filter((s) => s.exercise_id === oldExId);
+    if (targetSets.length === 0) {
+      setShowSwapModal(false);
+      return;
+    }
+
+    const updatedSets: SetItem[] = targetSets.map((s) => ({
+      ...s,
+      exercise_id: newEx.id,
+      updated_at: new Date().toISOString(),
+      sync_status: "pending" as const,
+    }));
+
+    await db.sets.bulkPut(updatedSets);
+    setSets((prev) =>
+      prev.map((s) =>
+        s.exercise_id === oldExId
+          ? { ...s, exercise_id: newEx.id, updated_at: new Date().toISOString(), sync_status: "pending" }
+          : s
+      )
+    );
+
+    // 載入新動作上次做組歷史
+    getLastExerciseSets(newEx.id, id).then((res) => {
+      if (res && res.sets.length > 0) {
+        setGhostMap((prev) => ({ ...prev, [newEx.id]: res.sets }));
+      }
+    });
+
+    if (!exercises.some((e) => e.id === newEx.id)) {
+      setExercises((prev) => [...prev, newEx]);
+    }
+
+    runFullSync().catch(() => {});
+    setShowSwapModal(false);
+    setSwapSourceExercise(null);
   }
 
   // 格式化組數 raw_text
@@ -736,6 +850,31 @@ export default function WorkoutDetailPage({
   const nextUpSet = sets.find((s) => !isSetCompleted(s, session.date));
   const nextUpExercise = nextUpSet ? exercises.find((e) => e.id === nextUpSet.exercise_id) : null;
 
+  // 當前進行中組數之歷史對照
+  const nextUpGhost = nextUpSet
+    ? getMatchingGhostSet(
+        nextUpSet,
+        sets.filter((s) => s.exercise_id === nextUpSet.exercise_id),
+        ghostMap[nextUpSet.exercise_id]
+      )
+    : null;
+
+  // 計算當日訓練總容量 (Total Volume，已排組數或進行中所有有重量之組數累積)
+  const totalVolume = sets.reduce((sum, s) => {
+    if (s.weight_kg <= 0 || s.reps <= 0) return sum;
+    const ex = exercises.find((e) => e.id === s.exercise_id);
+    const multiplier = ex?.weight_type === "dumbbell_single" ? 2 : 1;
+    let setVol = s.weight_kg * s.reps;
+    if (s.sub_fields && s.sub_fields.length > 0) {
+      for (const sf of s.sub_fields) {
+        if (sf.weight_kg && sf.reps) {
+          setVol += sf.weight_kg * sf.reps;
+        }
+      }
+    }
+    return sum + setVol * multiplier;
+  }, 0);
+
   // 動作過濾（排除繩索夾胸，只顯示對應部位或搜尋，並依動作名稱去重）
   const seenExNames = new Set<string>();
   const displayExercises = exercises.filter((e) => {
@@ -775,6 +914,17 @@ export default function WorkoutDetailPage({
                 <span>{session.location || "三健客"}</span>
                 <ChevronDown className="w-3 h-3 opacity-60" />
               </button>
+
+              {/* 螢幕常亮標記 */}
+              {wakeLockActive && (
+                <span
+                  className="text-[10px] text-amber-300 font-bold bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded-md flex items-center gap-1 shrink-0"
+                  title="訓練期間螢幕保持常亮，不自動休眠黑屏"
+                >
+                  <span>🔆</span>
+                  <span className="hidden sm:inline">螢幕常亮</span>
+                </span>
+              )}
 
               {/* 切換場地下拉 (只可切換三健客、交大健身房、交大游泳池) */}
               {showLocationQuickPicker && (
@@ -965,6 +1115,15 @@ export default function WorkoutDetailPage({
                     {cleanSetDisplay(nextUpSet)}
                   </span>
                 </div>
+
+                {nextUpGhost && (
+                  <div className="text-[11px] text-amber-300 font-medium flex items-center gap-1.5 mt-1">
+                    <span className="text-gray-400">上次此組成績：</span>
+                    <span className="bg-[#090a0f] text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30 font-mono font-bold">
+                      {cleanSetDisplay(nextUpGhost)}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
@@ -1067,6 +1226,16 @@ export default function WorkoutDetailPage({
                       </button>
                     </div>
 
+                    {/* 替換動作按鈕 (現場器材有人用時直接一鍵更換器材/動作，保留組數) */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenSwapModal(exercise)}
+                      className="p-1.5 bg-[#181b26] hover:bg-[#202533] text-gray-400 hover:text-amber-400 rounded-lg border border-[#262b3d] hover:border-amber-500/40 transition-all cursor-pointer"
+                      title={`替換動作【${exercise?.name || "此動作"}】(保留已排組數)`}
+                    >
+                      <Repeat className="w-3.5 h-3.5" />
+                    </button>
+
                     {/* 刪除整個動作組按鈕 (一鍵移除此動作與所有組數) */}
                     <button
                       type="button"
@@ -1104,6 +1273,7 @@ export default function WorkoutDetailPage({
                     const formalIndex = !isWarmup
                       ? exSets.slice(0, sIdx + 1).filter((x) => !isWarmupOrActivation(x)).length
                       : 0;
+                    const matchingGhost = getMatchingGhostSet(s, exSets, ghostSets);
 
                     return (
                       <div
@@ -1153,6 +1323,18 @@ export default function WorkoutDetailPage({
                           <span className={`font-bold truncate ${isDone ? "text-gray-400 line-through decoration-emerald-500/50" : isCurrent ? "text-white font-black" : "text-gray-100"}`}>
                             {cleanSetDisplay(s)}
                           </span>
+
+                          {/* 緊貼顯示上次做組紀錄 */}
+                          {matchingGhost && (
+                            <span
+                              className={`text-[10px] shrink-0 font-medium ${
+                                isCurrent ? "text-amber-300 font-bold" : "text-gray-500"
+                              }`}
+                              title={`上次此組實測：${cleanSetDisplay(matchingGhost)}`}
+                            >
+                              (上次: {cleanSetDisplay(matchingGhost)})
+                            </span>
+                          )}
 
                           {isCurrent && (
                             <span className="bg-emerald-500 text-black text-[10px] font-black px-1.5 py-0.5 rounded-md shrink-0 animate-pulse">
@@ -1482,6 +1664,39 @@ export default function WorkoutDetailPage({
         </div>
       )}
 
+      {/* 當日訓練總容量 (Total Volume 噸數統計) */}
+      {session.target_muscle !== "游泳" && totalSetsCount > 0 && (
+        <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 shadow-sm space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-gray-300 flex items-center gap-1.5">
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              <span>本日累積訓練量 (Total Volume)</span>
+            </span>
+            <span className="text-emerald-400 font-bold text-[11px]">
+              {completedSetsCount} / {totalSetsCount} 組完成 ({progressPct}%)
+            </span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 text-center pt-1">
+            <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/60">
+              <span className="text-[10px] text-gray-400 block">動作數</span>
+              <span className="text-sm sm:text-base font-black text-white">{setsByExercise.length} 項</span>
+            </div>
+            <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/60">
+              <span className="text-[10px] text-gray-400 block">完成組數</span>
+              <span className="text-sm sm:text-base font-black text-emerald-400">{completedSetsCount} 組</span>
+            </div>
+            <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/60">
+              <span className="text-[10px] text-gray-400 block">總訓練噸數</span>
+              <span className="text-sm sm:text-base font-black text-amber-400">
+                {totalVolume >= 1000 ? `${(totalVolume / 1000).toFixed(1)}t` : `${totalVolume}kg`}
+              </span>
+              <span className="text-[9px] text-gray-500 block">({totalVolume.toLocaleString()} Kg)</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 完成本次訓練主要按鈕 */}
       <div className="pt-2 pb-8 space-y-2">
         <button
@@ -1711,6 +1926,114 @@ export default function WorkoutDetailPage({
               >
                 <Copy className="w-3.5 h-3.5" />
                 <span>複製全文</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 替換動作 Modal (現場器材有人在用時一鍵替換) */}
+      {showSwapModal && swapSourceExercise && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12141c] border border-amber-500/40 rounded-2xl max-w-md w-full p-5 space-y-3.5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#262b3d] pb-2.5">
+              <div>
+                <h3 className="font-bold text-white text-sm flex items-center gap-1.5">
+                  <Repeat className="w-4 h-4 text-amber-400" />
+                  <span>替換動作</span>
+                </h3>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  將【<span className="text-amber-300 font-bold">{swapSourceExercise.name}</span>】替換為其他動作，保留已排組數
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSwapModal(false);
+                  setSwapSourceExercise(null);
+                }}
+                className="text-gray-400 hover:text-white p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 搜尋欄位 */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-gray-500 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="搜尋欲替換之動作名稱..."
+                value={swapSearchQuery}
+                onChange={(e) => setSwapSearchQuery(e.target.value)}
+                className="w-full bg-[#181b26] border border-[#262b3d] rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-gray-500 outline-none focus:border-amber-400"
+              />
+            </div>
+
+            {/* 動作清單 */}
+            <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+              {(() => {
+                const query = swapSearchQuery.trim().toLowerCase();
+                const available = exercises.filter((e) => {
+                  if (e.id === swapSourceExercise.id) return false;
+                  if (e.name.includes("繩索夾胸")) return false;
+                  if (query) {
+                    return e.name.toLowerCase().includes(query) || e.muscle_group.toLowerCase().includes(query);
+                  }
+                  return e.muscle_group === session.target_muscle;
+                });
+
+                if (available.length === 0) {
+                  return (
+                    <div className="text-center py-6 text-xs text-gray-500">
+                      查無可替換之動作，請輸入關鍵字搜尋
+                    </div>
+                  );
+                }
+
+                // 依動作名稱去重
+                const seen = new Set<string>();
+                const deduped = available.filter((e) => {
+                  if (seen.has(e.name)) return false;
+                  seen.add(e.name);
+                  return true;
+                });
+
+                return deduped.map((newEx) => (
+                  <button
+                    key={newEx.id}
+                    type="button"
+                    onClick={() => handleConfirmSwapExercise(newEx)}
+                    className="w-full text-left p-2.5 rounded-xl bg-[#181b26] hover:bg-amber-500 hover:text-black border border-[#262b3d] hover:border-amber-400 transition-all group flex items-center justify-between cursor-pointer"
+                  >
+                    <div>
+                      <span className="font-bold text-xs text-gray-100 group-hover:text-black block">
+                        {newEx.name}
+                      </span>
+                      <span className="text-[10px] text-gray-400 group-hover:text-black/80">
+                        {newEx.muscle_group}
+                        {newEx.weight_type === "dumbbell_single" && " • 單邊啞鈴"}
+                        {newEx.weight_type === "bodyweight" && " • 自重"}
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-bold text-amber-400 group-hover:text-black shrink-0">
+                      選擇 ➔
+                    </span>
+                  </button>
+                ));
+              })()}
+            </div>
+
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSwapModal(false);
+                  setSwapSourceExercise(null);
+                }}
+                className="w-full bg-[#181b26] text-gray-300 py-2.5 rounded-xl text-xs font-bold hover:bg-[#202533] cursor-pointer"
+              >
+                取消
               </button>
             </div>
           </div>
