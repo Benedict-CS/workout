@@ -551,18 +551,42 @@ export default function HomePage() {
                                   </div>
                                   <div className="pl-4 space-y-0.5">
                                     {exSets.map((st, sIdx) => {
-                                      const text =
-                                        st.raw_text ||
-                                        (st.weight_kg > 0
-                                          ? `set ${st.set_order}: ${st.weight_kg}Kg x${st.reps}`
-                                          : `set ${st.set_order}: x${st.reps}`);
+                                      // 乾淨移除 raw_text 內可能殘留的舊 set 編號，依動作內順序重新格式化
+                                      const cleanBody = st.raw_text
+                                        ? st.raw_text.replace(/^set\s*\d+:\s*/i, "").trim()
+                                        : (st.weight_kg > 0 ? `${st.weight_kg}Kg x${st.reps}` : `x${st.reps}`);
+
+                                      let displayText = "";
+                                      const isWarmupOrTest =
+                                        st.set_type === "warmup" ||
+                                        cleanBody.includes("熱身") ||
+                                        cleanBody.includes("激發") ||
+                                        cleanBody.includes("試重");
+
+                                      if (isWarmupOrTest) {
+                                        displayText = cleanBody.includes("熱身") || cleanBody.includes("激發") || cleanBody.includes("試重")
+                                          ? cleanBody
+                                          : `${cleanBody} 熱身`;
+                                      } else {
+                                        // 正式組：依據在該動作中的位置重新順序編號 (set 1, set 2, set 3...)
+                                        const formalIndex = exSets
+                                          .slice(0, sIdx + 1)
+                                          .filter(
+                                            (s) =>
+                                              s.set_type !== "warmup" &&
+                                              !s.raw_text?.includes("熱身") &&
+                                              !s.raw_text?.includes("激發") &&
+                                              !s.raw_text?.includes("試重")
+                                          ).length;
+                                        displayText = `set ${formalIndex}: ${cleanBody}`;
+                                      }
 
                                       return (
                                         <div
                                           key={st.id || sIdx}
                                           className="text-[11px] text-gray-300 font-mono tracking-tight"
                                         >
-                                          - {text}
+                                          - {displayText}
                                         </div>
                                       );
                                     })}

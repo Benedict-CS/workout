@@ -295,10 +295,11 @@ export default function WorkoutDetailPage({
   // 快速新增單組
   async function handleAddSet() {
     if (!selectedExId || !inputReps) return;
+    const repsNum = parseInt(inputReps, 10) || 0;
+    if (repsNum <= 0) return;
 
     const newOrder = sets.length + 1;
     const weightNum = parseFloat(inputWeight) || 0;
-    const repsNum = parseInt(inputReps, 10) || 0;
 
     const exSets = sets.filter((s) => s.exercise_id === selectedExId);
     const formalIndex = exSets.filter((s) => s.set_type === "normal" || s.set_type === "drop").length + 1;
@@ -461,6 +462,33 @@ export default function WorkoutDetailPage({
     await db.sets.bulkPut(newSetsList);
     setSets(newSetsList);
     runFullSync().catch(() => {});
+  }
+
+  // 乾淨格式化組數文字（過濾掉殘留的舊 set X: 字樣）
+  function cleanSetDisplay(s: SetItem): string {
+    if (s.raw_text) {
+      const cleaned = s.raw_text.replace(/^set\s*\d+:\s*/i, "").trim();
+      if (cleaned) return cleaned;
+    }
+    return `${s.weight_kg}Kg x ${s.reps}`;
+  }
+
+  // 結束 / 完成本次訓練並返回首頁
+  async function handleFinishWorkout() {
+    // 1. 自動清除任何誤加的空組數 (0Kg x 0下)
+    const emptySets = sets.filter(
+      (s) => s.weight_kg === 0 && s.reps === 0 && !s.sub_fields?.length && session?.target_muscle !== "游泳"
+    );
+    if (emptySets.length > 0) {
+      await db.sets.bulkDelete(emptySets.map((s) => s.id));
+      setSets((prev) => prev.filter((s) => !emptySets.some((e) => e.id === s.id)));
+    }
+
+    // 2. 觸發完整同步
+    runFullSync().catch(() => {});
+
+    // 3. 返回首頁
+    router.push("/");
   }
 
   // 記錄游泳 (3 個快選：早上游、下午游、晚上游)
@@ -635,13 +663,18 @@ export default function WorkoutDetailPage({
   const nextUpSet = sets.find((s) => !isSetCompleted(s, session.date));
   const nextUpExercise = nextUpSet ? exercises.find((e) => e.id === nextUpSet.exercise_id) : null;
 
-  // 動作過濾（排除繩索夾胸，只顯示對應部位或搜尋）
+  // 動作過濾（排除繩索夾胸，只顯示對應部位或搜尋，並依動作名稱去重）
+  const seenExNames = new Set<string>();
   const displayExercises = exercises.filter((e) => {
     if (e.name.includes("繩索夾胸")) return false;
     if (dockExerciseSearch.trim()) {
-      return e.name.toLowerCase().includes(dockExerciseSearch.trim().toLowerCase());
+      if (!e.name.toLowerCase().includes(dockExerciseSearch.trim().toLowerCase())) return false;
+    } else if (e.muscle_group !== session.target_muscle) {
+      return false;
     }
-    return e.muscle_group === session.target_muscle;
+    if (seenExNames.has(e.name)) return false;
+    seenExNames.add(e.name);
+    return true;
   });
 
   return (
@@ -694,6 +727,16 @@ export default function WorkoutDetailPage({
         </div>
 
         <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleFinishWorkout}
+            className="px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-black rounded-xl text-xs font-black flex items-center gap-1.5 shadow active:scale-95 cursor-pointer"
+            title="完成本次訓練並返回首頁"
+          >
+            <Check className="w-4 h-4 stroke-[3]" />
+            <span>完成訓練</span>
+          </button>
+
           <button
             onClick={handleCopyMarkdown}
             className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] text-emerald-400 rounded-xl text-xs font-bold flex items-center gap-1"
@@ -813,7 +856,7 @@ export default function WorkoutDetailPage({
                 <div className="text-sm font-black text-white truncate">
                   【{nextUpExercise?.name || "動作"}】
                   <span className="text-gray-300 font-bold ml-1.5">
-                    {nextUpSet.raw_text || `${nextUpSet.weight_kg}Kg × ${nextUpSet.reps}下`}
+                    {cleanSetDisplay(nextUpSet)}
                   </span>
                 </div>
               </div>
@@ -944,7 +987,7 @@ export default function WorkoutDetailPage({
                           </span>
 
                           <span className={`font-bold truncate ${isDone ? "text-gray-400 line-through decoration-emerald-500/50" : isCurrent ? "text-white font-black" : "text-gray-100"}`}>
-                            {s.raw_text || `${s.weight_kg}Kg x ${s.reps}`}
+                            {cleanSetDisplay(s)}
                           </span>
 
                           {isCurrent && (
@@ -1042,12 +1085,12 @@ export default function WorkoutDetailPage({
           </div>
         </div>
       ) : (
-        /* 重訓記組面板 (支援一個 set 內新增多個欄位：休 / 補 / 遞減) */
-        <div className="bg-[#12141c] border border-emerald-500/40 rounded-2xl p-4 space-y-3 shadow-2xl">
+        /* 額外組數新增面板 (如加碼動作或臨時加組) */
+        <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3 shadow-lg">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-black text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>記組</span>
+            <h4 className="text-xs font-black text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
+              <Plus className="w-4 h-4 text-emerald-400 stroke-[3]" />
+              <span>＋ 新增組數 (加碼動作或臨時加組)</span>
             </h4>
 
             <button
@@ -1271,14 +1314,29 @@ export default function WorkoutDetailPage({
           <button
             type="button"
             onClick={handleAddSet}
-            disabled={!inputReps}
-            className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-black py-3.5 rounded-xl shadow-lg transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2 mt-2"
+            disabled={!inputReps || parseInt(inputReps, 10) <= 0}
+            className="w-full bg-[#181b26] hover:bg-[#202533] border border-emerald-500/40 text-emerald-300 disabled:opacity-40 font-bold py-3 rounded-xl transition-all active:scale-[0.98] text-xs flex items-center justify-center gap-2 mt-2 cursor-pointer disabled:cursor-not-allowed"
           >
-            <Check className="w-4 h-4 stroke-[3]" />
-            <span>記錄此組完成</span>
+            <Plus className="w-4 h-4 stroke-[3]" />
+            <span>＋ 加入此組至紀錄</span>
           </button>
         </div>
       )}
+
+      {/* 完成本次訓練主要按鈕 */}
+      <div className="pt-2 pb-8 space-y-2">
+        <button
+          type="button"
+          onClick={handleFinishWorkout}
+          className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-4 rounded-2xl shadow-2xl transition-all active:scale-[0.98] text-base flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <Check className="w-5 h-5 stroke-[3]" />
+          <span>完成本次訓練並儲存 (返回日誌)</span>
+        </button>
+        <p className="text-center text-[11px] text-gray-500 font-medium">
+          點擊後自動儲存所有組數進度並同步雲端，返回訓練日誌首頁
+        </p>
+      </div>
 
       {/* 修改單組 Modal (包含多欄位編輯) */}
       {editingSet && (
