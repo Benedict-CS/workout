@@ -874,21 +874,10 @@ export default function WorkoutDetailPage({
     setsByExercise.push({ exercise: ex, sets: exSets });
   }
 
-  // 訓練整體進度與當前進行中組數 (一組一組往下做)
+  // 訓練整體進度與當前進行中組數
   const totalSetsCount = sets.length;
   const completedSetsCount = sets.filter((s) => isSetCompleted(s, session.date)).length;
-  const progressPct = totalSetsCount > 0 ? Math.round((completedSetsCount / totalSetsCount) * 100) : 0;
   const nextUpSet = sets.find((s) => !isSetCompleted(s, session.date));
-  const nextUpExercise = nextUpSet ? exercises.find((e) => e.id === nextUpSet.exercise_id) : null;
-
-  // 當前進行中組數之歷史對照
-  const nextUpGhost = nextUpSet
-    ? getMatchingGhostSet(
-        nextUpSet,
-        sets.filter((s) => s.exercise_id === nextUpSet.exercise_id),
-        ghostMap[nextUpSet.exercise_id]
-      )
-    : null;
 
   // 動作過濾（排除繩索夾胸，只顯示對應部位或搜尋，並依動作名稱去重）
   const seenExNames = new Set<string>();
@@ -1069,100 +1058,6 @@ export default function WorkoutDetailPage({
               </>
             )}
           </div>
-        </div>
-      )}
-
-      {/* 訓練進度看板 & 當前進行中組數 (重訓專用，一組一組往下做) */}
-      {session.target_muscle !== "游泳" && totalSetsCount > 0 && (
-        <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3 shadow-md">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-black text-gray-200 flex items-center gap-1.5">
-              <Zap className="w-4 h-4 text-emerald-400" />
-              <span>訓練進度</span>
-            </span>
-            <span className="font-mono font-black text-emerald-400 text-xs">
-              {completedSetsCount} / {totalSetsCount} 組 ({progressPct}%)
-            </span>
-          </div>
-
-          {/* 進度條 */}
-          <div className="w-full bg-[#181b26] h-2.5 rounded-full overflow-hidden border border-[#262b3d]/60">
-            <div
-              className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-300 shadow"
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
-
-          {/* 當前進行中組數提醒 */}
-          {nextUpSet ? (
-            <div className="bg-[#181b26] border border-emerald-500/50 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 shadow-sm">
-              <div className="min-w-0">
-                <div className="text-[10px] font-black text-emerald-400 uppercase tracking-wider flex items-center gap-1.5 mb-0.5">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
-                  <span>當前進行中組數 ({(() => {
-                    if (isWarmupOrActivation(nextUpSet)) {
-                      return `${getWarmupLabel(nextUpSet)}組`;
-                    }
-                    const nextUpExSets = sets.filter((s) => s.exercise_id === nextUpSet.exercise_id);
-                    const formalIdx = nextUpExSets
-                      .slice(0, nextUpExSets.findIndex((s) => s.id === nextUpSet.id) + 1)
-                      .filter((s) => !isWarmupOrActivation(s)).length;
-                    return `第 #${formalIdx} 正式組`;
-                  })()})</span>
-                </div>
-                <div className="text-sm font-black text-white truncate flex items-center gap-1.5">
-                  <span>【{nextUpExercise?.name || "動作"}】</span>
-                  <span className="text-gray-300 font-bold">
-                    {cleanSetDisplay(nextUpSet)}
-                  </span>
-                  {isSetNewPR(nextUpSet) && (
-                    <span className="bg-gradient-to-r from-amber-500 to-red-500 text-black text-[10px] font-black px-1.5 py-0.5 rounded shadow shrink-0 animate-pulse">
-                      🔥 挑戰新 PR
-                    </span>
-                  )}
-                </div>
-
-                {nextUpGhost && (
-                  <div className="text-[11px] text-amber-300 font-medium flex items-center gap-1.5 mt-1">
-                    <span className="text-gray-400">上次此組成績：</span>
-                    <span className="bg-[#090a0f] text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30 font-mono font-bold">
-                      {cleanSetDisplay(nextUpGhost)}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                {!timerActive && (
-                  <button
-                    type="button"
-                    onClick={() => startRestTimer(150)}
-                    className="px-3 py-2.5 bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow active:scale-95 transition-all cursor-pointer"
-                    title="手動啟動 2 分半休息"
-                  >
-                    <Timer className="w-3.5 h-3.5 text-amber-400" />
-                    <span>休息 2:30</span>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => handleToggleSetCompleted(nextUpSet.id)}
-                  className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-lg active:scale-95 transition-all shrink-0 cursor-pointer"
-                >
-                  <Check className="w-4 h-4 stroke-[3]" />
-                  <span>完成此組</span>
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-emerald-950/30 border border-emerald-500/40 rounded-xl p-3 text-center text-xs font-black text-emerald-300">
-              🎉 太棒了！本次訓練預排組數已全數完成！
-            </div>
-          )}
         </div>
       )}
 
