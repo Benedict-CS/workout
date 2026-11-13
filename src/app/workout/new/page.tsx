@@ -38,6 +38,10 @@ function NewWorkoutForm() {
   const [targetMuscle, setTargetMuscle] = useState("胸");
   const [location, setLocation] = useState("三健客");
 
+  // 游泳專用時段與備註
+  const [swimTimeSlot, setSwimTimeSlot] = useState<"早上" | "下午" | "晚上" | "全天">("下午");
+  const [swimNotes, setSwimNotes] = useState("");
+
   // 上次菜單複製功能
   const [prevTemplate, setPrevTemplate] = useState<{
     session: WorkoutSession;
@@ -115,10 +119,19 @@ function NewWorkoutForm() {
     const monthlyIndex = currentMonthCount + 1;
     const finalLocation = location.trim();
     const finalMuscle = targetMuscle;
-
-    // 格式化標準命名：如 "11/11 (胸) - 三健客 - 第 5 次"
-    const title = `${m}/${d} (${finalMuscle}) - ${finalLocation} - 第 ${monthlyIndex} 次`;
     const sessionId = `session-${date}-${Date.now()}`;
+
+    // 格式化標準命名：
+    // 若為游泳，如 "11/13 (游泳) - 交大游泳池 (下午)" 或 "11/13 (游泳) - 清大游泳池 [清大 alvaro 請]"
+    // 若為重訓，如 "11/13 (胸) - 三健客 - 第 5 次"
+    let title = "";
+    if (finalMuscle === "游泳") {
+      const timeTag = swimTimeSlot !== "全天" ? ` (${swimTimeSlot})` : "";
+      const noteTag = swimNotes.trim() ? ` [${swimNotes.trim()}]` : "";
+      title = `${m}/${d} (游泳) - ${finalLocation}${timeTag}${noteTag}`;
+    } else {
+      title = `${m}/${d} (${finalMuscle}) - ${finalLocation} - 第 ${monthlyIndex} 次`;
+    }
 
     const newSession: WorkoutSession = {
       id: sessionId,
@@ -128,6 +141,7 @@ function NewWorkoutForm() {
       target_muscle: finalMuscle,
       monthly_index: monthlyIndex,
       location: finalLocation,
+      notes: swimNotes.trim() || undefined,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       sync_status: "pending",
@@ -135,10 +149,42 @@ function NewWorkoutForm() {
 
     await db.sessions.add(newSession);
 
-    // 若為游泳，自動建立一筆空組或直接進去點「早上游/下午游/晚上游」
+    // 若為游泳，自動建立動作與對應 set，並直接返回首頁完成記錄
     if (finalMuscle === "游泳") {
+      let swimEx = await db.exercises.get("ex-swim");
+      if (!swimEx) {
+        swimEx = {
+          id: "ex-swim",
+          name: "游泳",
+          muscle_group: "游泳",
+          weight_type: "bodyweight",
+          is_favorite: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          sync_status: "pending",
+        };
+        await db.exercises.put(swimEx);
+      }
+
+      const rawText = swimTimeSlot !== "全天" ? `${swimTimeSlot}游泳` : `游泳 (${finalLocation})`;
+      const swimSet: SetItem = {
+        id: `set-${Date.now()}-1`,
+        session_id: sessionId,
+        exercise_id: "ex-swim",
+        set_order: 1,
+        set_type: "normal",
+        weight_kg: 0,
+        reps: 1,
+        raw_text: swimNotes.trim() ? `${rawText} - ${swimNotes.trim()}` : rawText,
+        notes: swimNotes.trim() || rawText,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        sync_status: "pending",
+      };
+
+      await db.sets.add(swimSet);
       runFullSync().catch(() => {});
-      router.push(`/workout/${sessionId}`);
+      router.push("/");
       return;
     }
 
@@ -231,14 +277,14 @@ function NewWorkoutForm() {
           </div>
         </div>
 
-        {/* 訓練場地 (僅限：三健客 (預設)、交大健身房、交大游泳池) */}
+        {/* 訓練場地 */}
         <div>
           <label className="text-xs font-bold text-gray-400 block mb-1.5 flex items-center gap-1.5">
             <MapPin className="w-3.5 h-3.5 text-emerald-400" />
             <span>訓練場地</span>
           </label>
-          <div className="grid grid-cols-3 gap-2">
-            {LOCATION_PRESETS.map((loc) => {
+          <div className="grid grid-cols-2 gap-2">
+            {(targetMuscle === "游泳" ? ["交大游泳池", "清大游泳池"] : ["三健客", "交大健身房"]).map((loc) => {
               const isSelected = location === loc;
               return (
                 <button
@@ -247,7 +293,9 @@ function NewWorkoutForm() {
                   onClick={() => setLocation(loc)}
                   className={`py-2.5 px-2 text-xs rounded-xl border font-bold transition-all text-center ${
                     isSelected
-                      ? "bg-emerald-500/20 border-emerald-500 text-emerald-300 shadow-sm font-black"
+                      ? targetMuscle === "游泳"
+                        ? "bg-cyan-500/20 border-cyan-500 text-cyan-300 shadow-sm font-black"
+                        : "bg-emerald-500/20 border-emerald-500 text-emerald-300 shadow-sm font-black"
                       : "bg-[#181b26] border-[#262b3d] text-gray-400 hover:text-white"
                   }`}
                 >
@@ -257,6 +305,47 @@ function NewWorkoutForm() {
             })}
           </div>
         </div>
+
+        {/* 游泳專用：時段選擇與備註 */}
+        {targetMuscle === "游泳" && (
+          <div className="bg-[#181b26] border border-cyan-500/30 rounded-xl p-3.5 space-y-3">
+            <div>
+              <label className="text-xs font-bold text-cyan-400 block mb-1.5 flex items-center gap-1.5">
+                <span>🏊</span>
+                <span>游泳時段</span>
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {(["早上", "下午", "晚上", "全天"] as const).map((slot) => (
+                  <button
+                    key={slot}
+                    type="button"
+                    onClick={() => setSwimTimeSlot(slot)}
+                    className={`py-2 px-1 text-xs rounded-xl border font-bold text-center transition-all ${
+                      swimTimeSlot === slot
+                        ? "bg-cyan-500 text-black border-cyan-400 shadow-md font-black"
+                        : "bg-[#090a0f] border-[#262b3d] text-gray-300 hover:border-gray-600"
+                    }`}
+                  >
+                    {slot}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-400 block mb-1">
+                備註說明 (選填，如：清大朋友請客 / 潤榮同行)
+              </label>
+              <input
+                type="text"
+                placeholder="例如：潤榮 游泳 / 清大 alvaro 請..."
+                value={swimNotes}
+                onChange={(e) => setSwimNotes(e.target.value)}
+                className="w-full bg-[#090a0f] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 outline-none focus:border-cyan-400 placeholder-gray-600"
+              />
+            </div>
+          </div>
+        )}
 
         {/* 📋 沿用上一次菜單功能 */}
         {prevTemplate && targetMuscle !== "游泳" && (
@@ -303,10 +392,14 @@ function NewWorkoutForm() {
 
         <button
           onClick={handleCreate}
-          className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-3.5 rounded-xl shadow-lg transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2 mt-3"
+          className={`w-full font-black py-3.5 rounded-xl shadow-lg transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2 mt-3 ${
+            targetMuscle === "游泳"
+              ? "bg-cyan-500 hover:bg-cyan-400 text-black shadow-cyan-500/20"
+              : "bg-emerald-500 hover:bg-emerald-400 text-black"
+          }`}
         >
           <Check className="w-4 h-4 stroke-[3]" />
-          <span>進入訓練並開始記組</span>
+          <span>{targetMuscle === "游泳" ? "🏊 完成記錄游泳（直接儲存）" : "進入訓練並開始記組"}</span>
         </button>
       </div>
     </div>

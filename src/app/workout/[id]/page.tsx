@@ -384,7 +384,21 @@ export default function WorkoutDetailPage({
   async function handleLogSwim(swimTimeLabel: string) {
     let swimEx = exercises.find((e) => e.id === "ex-swim" || e.name === "游泳");
     if (!swimEx) {
-      swimEx = exercises[0];
+      swimEx = await db.exercises.get("ex-swim");
+      if (!swimEx) {
+        swimEx = {
+          id: "ex-swim",
+          name: "游泳",
+          muscle_group: "游泳",
+          weight_type: "bodyweight",
+          is_favorite: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          sync_status: "pending",
+        };
+        await db.exercises.put(swimEx);
+      }
+      setExercises((prev) => [...prev, swimEx!]);
     }
     const newOrder = sets.length + 1;
     const newSet: SetItem = {
@@ -624,59 +638,63 @@ export default function WorkoutDetailPage({
         </div>
       )}
 
-      {/* 靜音休息計時器控制列 */}
-      <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-3 flex items-center justify-between text-xs">
-        <div className="flex items-center gap-2">
-          <Timer className="w-4 h-4 text-amber-400" />
-          <span className="font-bold text-gray-200">休息計時：</span>
-          {timerSeconds !== null && timerSeconds > 0 ? (
-            <span className="text-amber-400 font-mono font-black text-sm">
-              {Math.floor(timerSeconds / 60)}:{(timerSeconds % 60).toString().padStart(2, "0")}
-            </span>
-          ) : (
-            <span className="text-gray-500">已結束</span>
-          )}
-        </div>
+      {/* 靜音休息計時器控制列 (重訓專用，游泳不顯示) */}
+      {session.target_muscle !== "游泳" && (
+        <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-3 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <Timer className="w-4 h-4 text-amber-400" />
+            <span className="font-bold text-gray-200">休息計時：</span>
+            {timerSeconds !== null && timerSeconds > 0 ? (
+              <span className="text-amber-400 font-mono font-black text-sm">
+                {Math.floor(timerSeconds / 60)}:{(timerSeconds % 60).toString().padStart(2, "0")}
+              </span>
+            ) : (
+              <span className="text-gray-500">已結束</span>
+            )}
+          </div>
 
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => startRestTimer(120)}
-            className="px-2 py-1 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-lg text-[11px] font-bold"
-          >
-            2分
-          </button>
-          <button
-            type="button"
-            onClick={() => startRestTimer(150)}
-            className="px-2 py-1 bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 rounded-lg text-[11px] font-black"
-          >
-            2分半
-          </button>
-          <button
-            type="button"
-            onClick={() => startRestTimer(180)}
-            className="px-2 py-1 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-lg text-[11px] font-bold"
-          >
-            3分
-          </button>
-          {timerActive && (
+          <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={stopRestTimer}
-              className="p-1 text-gray-500 hover:text-white ml-1"
+              onClick={() => startRestTimer(120)}
+              className="px-2 py-1 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-lg text-[11px] font-bold"
             >
-              <X className="w-3.5 h-3.5" />
+              2分
             </button>
-          )}
+            <button
+              type="button"
+              onClick={() => startRestTimer(150)}
+              className="px-2 py-1 bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 rounded-lg text-[11px] font-black"
+            >
+              2分半
+            </button>
+            <button
+              type="button"
+              onClick={() => startRestTimer(180)}
+              className="px-2 py-1 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-lg text-[11px] font-bold"
+            >
+              3分
+            </button>
+            {timerActive && (
+              <button
+                type="button"
+                onClick={stopRestTimer}
+                className="p-1 text-gray-500 hover:text-white ml-1"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 已記錄組數區塊 */}
       <div className="space-y-3">
         {setsByExercise.length === 0 ? (
           <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-6 text-center text-xs text-gray-500">
-            尚未記錄任何組數，請在下方輸入重量次數並按「＋記錄完成」！
+            {session.target_muscle === "游泳"
+              ? "目前已記錄為游泳訓練，可點擊下方時段補充記錄！"
+              : "尚未記錄任何組數，請在下方輸入重量次數並按「＋記錄完成」！"}
           </div>
         ) : (
           setsByExercise.map(({ exercise, sets: exSets }) => {
@@ -784,6 +802,16 @@ export default function WorkoutDetailPage({
                 {timeLabel}
               </button>
             ))}
+          </div>
+
+          <div className="pt-2">
+            <Link
+              href="/"
+              className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-black py-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow transition-all active:scale-98"
+            >
+              <Check className="w-4 h-4 stroke-[3]" />
+              <span>完成並返回訓練日誌</span>
+            </Link>
           </div>
         </div>
       ) : (

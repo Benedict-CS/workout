@@ -57,15 +57,6 @@ export default function RootLayout({
             <Dumbbell className="w-6 h-6" />
             <span>WORKOUT</span>
           </Link>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/workout/new"
-              className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black px-3 py-1.5 rounded-full shadow-md transition-all active:scale-95"
-            >
-              <PlusCircle className="w-4 h-4 stroke-[2.5]" />
-              <span>記訓練</span>
-            </Link>
-          </div>
         </header>
 
         {/* 主要內容區 (含底部預留高度防遮擋) */}
