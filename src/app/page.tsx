@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
   ChevronRight,
@@ -10,10 +10,12 @@ import {
   Copy,
   Check,
   Pencil,
+  Trash2,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
 import { formatSessionToMarkdown } from "@/lib/markdown-generator";
+import { deleteRemoteSession, runFullSync } from "@/lib/db/sync";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 import type { WorkoutSession, SetItem, Exercise } from "@/lib/types";
 
@@ -122,118 +124,118 @@ export default function HomePage() {
     }
   }
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        await ensureDatabaseSeeded();
+  const loadData = useCallback(async () => {
+    try {
+      await ensureDatabaseSeeded();
 
-        const allEx = await db.exercises.toArray();
-        setExercises(allEx);
+      const allEx = await db.exercises.toArray();
+      setExercises(allEx);
 
-        const allSessions = await db.sessions
-          .filter((s) => !s.deleted_at)
-          .sortBy("date");
+      const allSessions = await db.sessions
+        .filter((s) => !s.deleted_at)
+        .sortBy("date");
 
-        const allSets = await db.sets
-          .filter((s) => !s.deleted_at)
-          .toArray();
+      const allSets = await db.sets
+        .filter((s) => !s.deleted_at)
+        .toArray();
 
-        // 整理組數 Map
-        const setsMap: Record<string, SetItem[]> = {};
-        for (const s of allSets) {
-          if (!setsMap[s.session_id]) setsMap[s.session_id] = [];
-          setsMap[s.session_id].push(s);
-        }
-        setSessionSetsMap(setsMap);
-
-        // 依月份分組
-        const monthMap = new Map<string, WorkoutSession[]>();
-        for (const sess of allSessions) {
-          if (!monthMap.has(sess.month_key)) {
-            monthMap.set(sess.month_key, []);
-          }
-          monthMap.get(sess.month_key)!.push(sess);
-        }
-
-        // 順序排列：6月 -> 7月 -> 8月 -> 9月 -> 10月 -> 11月
-        const sortedMonthKeys = Array.from(monthMap.keys()).sort();
-        const groups: MonthGroupData[] = [];
-
-        // 辨認傳統三大項動作 ID (純槓鈴臥推、深蹲、硬舉)
-        const benchExIds = allEx
-          .filter((e) => e.id === "ex-bench-press" || (e.name.includes("臥推") && !e.name.includes("啞鈴") && !e.name.includes("機器") && !e.name.includes("上斜") && !e.name.includes("下斜") && !e.name.includes("史密斯")))
-          .map((e) => e.id);
-        const squatExIds = allEx
-          .filter((e) => e.id === "ex-squat" || (e.name.includes("深蹲") && !e.name.includes("分腿") && !e.name.includes("哈克")))
-          .map((e) => e.id);
-        const deadliftExIds = allEx
-          .filter((e) => e.id === "ex-deadlift" || (e.name.includes("硬舉") && !e.name.includes("六角")))
-          .map((e) => e.id);
-
-        for (const mk of sortedMonthKeys) {
-          const rawSessList = monthMap.get(mk) || [];
-          // 該月內訓練按日期由先至後順序排列
-          const sessList = [...rawSessList].sort((a, b) => a.date.localeCompare(b.date));
-          const mStats = { 胸: 0, 背: 0, 腿: 0, 肩: 0, 游泳: 0, total: sessList.length };
-
-          // 計算該月部位頻率
-          for (const s of sessList) {
-            if (s.target_muscle.includes("胸")) mStats["胸"]++;
-            else if (s.target_muscle.includes("背")) mStats["背"]++;
-            else if (s.target_muscle.includes("腿")) mStats["腿"]++;
-            else if (s.target_muscle.includes("肩")) mStats["肩"]++;
-            else if (s.target_muscle.includes("泳")) mStats["游泳"]++;
-          }
-
-          // 計算該月三項實測最高重量
-          let maxBench = 0;
-          let maxSquat = 0;
-          let maxDeadlift = 0;
-
-          const sessIds = new Set(sessList.map((s) => s.id));
-          const monthSets = allSets.filter((st) => sessIds.has(st.session_id) && st.weight_kg > 0);
-
-          for (const st of monthSets) {
-            if (benchExIds.includes(st.exercise_id) && st.weight_kg > maxBench) {
-              maxBench = st.weight_kg;
-            }
-            if (squatExIds.includes(st.exercise_id) && st.weight_kg > maxSquat) {
-              maxSquat = st.weight_kg;
-            }
-            if (deadliftExIds.includes(st.exercise_id) && st.weight_kg > maxDeadlift) {
-              maxDeadlift = st.weight_kg;
-            }
-          }
-
-          const parts = mk.split("-");
-          const monthTitle = `${parts[0]} 年 ${parseInt(parts[1], 10)} 月`;
-
-          groups.push({
-            monthKey: mk,
-            monthTitle,
-            sessions: sessList,
-            stats: mStats,
-            bigThreeMax: {
-              bench: maxBench,
-              squat: maxSquat,
-              deadlift: maxDeadlift,
-              total: maxBench + maxSquat + maxDeadlift,
-            },
-          });
-        }
-
-        setMonthGroups(groups);
-        // 預設進入最新月份 (最後一個月：11月)
-        if (groups.length > 0) {
-          setSelectedMonthIndex(groups.length - 1);
-        }
-      } catch (err) {
-        console.error("Failed to load dashboard data:", err);
-      } finally {
-        setLoading(false);
+      // 整理組數 Map
+      const setsMap: Record<string, SetItem[]> = {};
+      for (const s of allSets) {
+        if (!setsMap[s.session_id]) setsMap[s.session_id] = [];
+        setsMap[s.session_id].push(s);
       }
-    }
+      setSessionSetsMap(setsMap);
 
+      // 依月份分組
+      const monthMap = new Map<string, WorkoutSession[]>();
+      for (const sess of allSessions) {
+        if (!monthMap.has(sess.month_key)) {
+          monthMap.set(sess.month_key, []);
+        }
+        monthMap.get(sess.month_key)!.push(sess);
+      }
+
+      // 順序排列：6月 -> 7月 -> 8月 -> 9月 -> 10月 -> 11月
+      const sortedMonthKeys = Array.from(monthMap.keys()).sort();
+      const groups: MonthGroupData[] = [];
+
+      // 辨認傳統三大項動作 ID (純槓鈴臥推、深蹲、硬舉)
+      const benchExIds = allEx
+        .filter((e) => e.id === "ex-bench-press" || (e.name.includes("臥推") && !e.name.includes("啞鈴") && !e.name.includes("機器") && !e.name.includes("上斜") && !e.name.includes("下斜") && !e.name.includes("史密斯")))
+        .map((e) => e.id);
+      const squatExIds = allEx
+        .filter((e) => e.id === "ex-squat" || (e.name.includes("深蹲") && !e.name.includes("分腿") && !e.name.includes("哈克")))
+        .map((e) => e.id);
+      const deadliftExIds = allEx
+        .filter((e) => e.id === "ex-deadlift" || (e.name.includes("硬舉") && !e.name.includes("六角")))
+        .map((e) => e.id);
+
+      for (const mk of sortedMonthKeys) {
+        const rawSessList = monthMap.get(mk) || [];
+        // 該月內訓練按日期由先至後順序排列
+        const sessList = [...rawSessList].sort((a, b) => a.date.localeCompare(b.date));
+        const mStats = { 胸: 0, 背: 0, 腿: 0, 肩: 0, 游泳: 0, total: sessList.length };
+
+        // 計算該月部位頻率
+        for (const s of sessList) {
+          if (s.target_muscle.includes("胸")) mStats["胸"]++;
+          else if (s.target_muscle.includes("背")) mStats["背"]++;
+          else if (s.target_muscle.includes("腿")) mStats["腿"]++;
+          else if (s.target_muscle.includes("肩")) mStats["肩"]++;
+          else if (s.target_muscle.includes("泳")) mStats["游泳"]++;
+        }
+
+        // 計算該月三項實測最高重量
+        let maxBench = 0;
+        let maxSquat = 0;
+        let maxDeadlift = 0;
+
+        const sessIds = new Set(sessList.map((s) => s.id));
+        const monthSets = allSets.filter((st) => sessIds.has(st.session_id) && st.weight_kg > 0);
+
+        for (const st of monthSets) {
+          if (benchExIds.includes(st.exercise_id) && st.weight_kg > maxBench) {
+            maxBench = st.weight_kg;
+          }
+          if (squatExIds.includes(st.exercise_id) && st.weight_kg > maxSquat) {
+            maxSquat = st.weight_kg;
+          }
+          if (deadliftExIds.includes(st.exercise_id) && st.weight_kg > maxDeadlift) {
+            maxDeadlift = st.weight_kg;
+          }
+        }
+
+        const parts = mk.split("-");
+        const monthTitle = `${parts[0]} 年 ${parseInt(parts[1], 10)} 月`;
+
+        groups.push({
+          monthKey: mk,
+          monthTitle,
+          sessions: sessList,
+          stats: mStats,
+          bigThreeMax: {
+            bench: maxBench,
+            squat: maxSquat,
+            deadlift: maxDeadlift,
+            total: maxBench + maxSquat + maxDeadlift,
+          },
+        });
+      }
+
+      setMonthGroups(groups);
+      // 預設進入最新月份 (最後一個月：11月)
+      if (groups.length > 0) {
+        setSelectedMonthIndex((prev) => (prev > 0 ? Math.min(prev, groups.length - 1) : groups.length - 1));
+      }
+    } catch (err) {
+      console.error("Failed to load dashboard data:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
     loadData();
 
     const handleDataChanged = () => {
@@ -243,7 +245,35 @@ export default function HomePage() {
     return () => {
       window.removeEventListener("workout:data_changed", handleDataChanged);
     };
-  }, []);
+  }, [loadData]);
+
+  // 首頁直接刪除訓練場次
+  async function handleDeleteSession(e: React.MouseEvent, sess: WorkoutSession) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!confirm(`確定要刪除這場訓練【${sess.display_title}】嗎？\n此操作將同時刪除該場次的所有組數記錄。`)) {
+      return;
+    }
+
+    try {
+      await db.transaction("rw", [db.sessions, db.sets], async () => {
+        await db.sets.where("session_id").equals(sess.id).delete();
+        await db.sessions.delete(sess.id);
+      });
+
+      deleteRemoteSession(sess.id).catch(() => {});
+      runFullSync().catch(() => {});
+
+      setCopyToast(`已刪除【${sess.display_title}】！`);
+      setTimeout(() => setCopyToast(null), 2500);
+
+      await loadData();
+    } catch (err) {
+      console.error("Failed to delete session:", err);
+      alert("刪除失敗，請再試一次。");
+    }
+  }
 
   function handleCopyMarkdown(e: React.MouseEvent, session: WorkoutSession) {
     e.preventDefault();
@@ -481,6 +511,16 @@ export default function HomePage() {
                           {sessSets.length} 組
                         </span>
 
+                        {/* 首頁 title 列直接刪除按鈕 */}
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteSession(e, sess)}
+                          className="p-1 text-gray-500 hover:text-red-400 hover:bg-red-950/40 rounded transition-all cursor-pointer shrink-0"
+                          title="刪除此場訓練"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+
                         <ChevronDown
                           className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${
                             isExpanded ? "rotate-180 text-emerald-400" : ""
@@ -535,14 +575,25 @@ export default function HomePage() {
 
                         {/* 底部操作工具列 */}
                         <div className="flex items-center justify-between pt-2 border-t border-[#262b3d]/40 text-xs mt-2">
-                          <button
-                            type="button"
-                            onClick={(e) => handleCopyMarkdown(e, sess)}
-                            className="flex items-center gap-1.5 text-gray-400 hover:text-emerald-400 py-1 px-2.5 rounded-lg bg-[#181b26] border border-[#262b3d] transition-colors cursor-pointer"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                            <span>複製 Markdown</span>
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(e) => handleCopyMarkdown(e, sess)}
+                              className="flex items-center gap-1.5 text-gray-400 hover:text-emerald-400 py-1 px-2.5 rounded-lg bg-[#181b26] border border-[#262b3d] transition-colors cursor-pointer"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>複製 Markdown</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteSession(e, sess)}
+                              className="flex items-center gap-1.5 text-gray-400 hover:text-red-400 py-1 px-2.5 rounded-lg bg-[#181b26] border border-[#262b3d] hover:border-red-500/40 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>刪除此場</span>
+                            </button>
+                          </div>
 
                           <Link
                             href={`/workout/${sess.id}`}
