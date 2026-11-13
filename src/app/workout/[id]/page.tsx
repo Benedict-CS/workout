@@ -106,43 +106,8 @@ export default function WorkoutDetailPage({
   const [swapSourceExercise, setSwapSourceExercise] = useState<Exercise | null>(null);
   const [swapSearchQuery, setSwapSearchQuery] = useState("");
 
-  // 保持螢幕常亮 (Screen Wake Lock) - 訓練進行中手機不自動休眠黑屏
-  const wakeLockRef = useRef<any>(null);
-  const [wakeLockActive, setWakeLockActive] = useState(false);
-
-  useEffect(() => {
-    let isMounted = true;
-    async function requestWakeLock() {
-      if (typeof window !== "undefined" && "wakeLock" in navigator) {
-        try {
-          wakeLockRef.current = await (navigator as any).wakeLock.request("screen");
-          if (isMounted) setWakeLockActive(true);
-          wakeLockRef.current.addEventListener("release", () => {
-            if (isMounted) setWakeLockActive(false);
-          });
-        } catch {}
-      }
-    }
-    requestWakeLock();
-
-    function handleVisibility() {
-      if (document.visibilityState === "visible") {
-        requestWakeLock();
-      }
-    }
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    return () => {
-      isMounted = false;
-      document.removeEventListener("visibilitychange", handleVisibility);
-      if (wakeLockRef.current) {
-        try {
-          wakeLockRef.current.release();
-        } catch {}
-        wakeLockRef.current = null;
-      }
-    };
-  }, []);
+  // 歷史各動作 PR (最高重量與次數) 對照表
+  const [prMap, setPrMap] = useState<Record<string, { maxWeight: number; maxReps: number }>>({});
 
   // 計時器倒數邏輯 (手動觸發，結束時輕微震動提醒)
   useEffect(() => {
@@ -252,14 +217,40 @@ export default function WorkoutDetailPage({
           .sortBy("set_order");
         setSets(currentSets);
 
-        // 讀取上次對照 ghost
+        // 讀取上次對照 ghost 與歷史 PR (排除本次 session)
         const distinctExIds = Array.from(new Set(currentSets.map((s) => s.exercise_id)));
         const ghostRecord: Record<string, SetItem[]> = {};
+        const prRecord: Record<string, { maxWeight: number; maxReps: number }> = {};
+
         for (const exId of distinctExIds) {
           const res = await getLastExerciseSets(exId, id);
           if (res) ghostRecord[exId] = res.sets;
+
+          const exObj = allEx.find((e) => e.id === exId);
+          const historySets = await db.sets
+            .filter(
+              (s) =>
+                !s.deleted_at &&
+                s.session_id !== id &&
+                s.weight_kg > 0 &&
+                Boolean(s.exercise_id === exId || (exObj && allEx.find((e) => e.id === s.exercise_id)?.name === exObj.name))
+            )
+            .toArray();
+
+          let maxW = 0;
+          let maxR = 0;
+          for (const s of historySets) {
+            if (s.weight_kg > maxW || (s.weight_kg === maxW && s.reps > maxR)) {
+              maxW = s.weight_kg;
+              maxR = s.reps;
+            }
+          }
+          if (maxW > 0) {
+            prRecord[exId] = { maxWeight: maxW, maxReps: maxR };
+          }
         }
         setGhostMap(ghostRecord);
+        setPrMap(prRecord);
 
         // 初始化選取的動作
         if (distinctExIds.length > 0) {
@@ -389,12 +380,35 @@ export default function WorkoutDetailPage({
       )
     );
 
-    // 載入新動作上次做組歷史
+    // 載入新動作上次做組歷史與歷史 PR
     getLastExerciseSets(newEx.id, id).then((res) => {
       if (res && res.sets.length > 0) {
         setGhostMap((prev) => ({ ...prev, [newEx.id]: res.sets }));
       }
     });
+
+    db.sets
+      .filter(
+        (s) =>
+          !s.deleted_at &&
+          s.session_id !== id &&
+          s.weight_kg > 0 &&
+          Boolean(s.exercise_id === newEx.id || exercises.find((e) => e.id === s.exercise_id)?.name === newEx.name)
+      )
+      .toArray()
+      .then((historySets) => {
+        let maxW = 0;
+        let maxR = 0;
+        for (const s of historySets) {
+          if (s.weight_kg > maxW || (s.weight_kg === maxW && s.reps > maxR)) {
+            maxW = s.weight_kg;
+            maxR = s.reps;
+          }
+        }
+        if (maxW > 0) {
+          setPrMap((prev) => ({ ...prev, [newEx.id]: { maxWeight: maxW, maxReps: maxR } }));
+        }
+      });
 
     if (!exercises.some((e) => e.id === newEx.id)) {
       setExercises((prev) => [...prev, newEx]);
@@ -403,6 +417,23 @@ export default function WorkoutDetailPage({
     runFullSync().catch(() => {});
     setShowSwapModal(false);
     setSwapSourceExercise(null);
+  }
+
+  // 判斷某組是否突破個人歷史紀錄 (新 PR)
+  function isSetNewPR(s: SetItem): boolean {
+    if (s.weight_kg <= 0 || !s.reps || s.reps <= 0) return false;
+    if (isWarmupOrActivation(s)) return false; // 熱身組不計入 PR
+
+    const historyPR = prMap[s.exercise_id];
+    if (!historyPR || historyPR.maxWeight <= 0) return false;
+
+    // 重量直接突破歷史最高重量
+    if (s.weight_kg > historyPR.maxWeight) return true;
+
+    // 重量同歷史最高，但次數超越歷史最高次數
+    if (s.weight_kg === historyPR.maxWeight && s.reps > historyPR.maxReps) return true;
+
+    return false;
   }
 
   // 格式化組數 raw_text
@@ -859,22 +890,6 @@ export default function WorkoutDetailPage({
       )
     : null;
 
-  // 計算當日訓練總容量 (Total Volume，已排組數或進行中所有有重量之組數累積)
-  const totalVolume = sets.reduce((sum, s) => {
-    if (s.weight_kg <= 0 || s.reps <= 0) return sum;
-    const ex = exercises.find((e) => e.id === s.exercise_id);
-    const multiplier = ex?.weight_type === "dumbbell_single" ? 2 : 1;
-    let setVol = s.weight_kg * s.reps;
-    if (s.sub_fields && s.sub_fields.length > 0) {
-      for (const sf of s.sub_fields) {
-        if (sf.weight_kg && sf.reps) {
-          setVol += sf.weight_kg * sf.reps;
-        }
-      }
-    }
-    return sum + setVol * multiplier;
-  }, 0);
-
   // 動作過濾（排除繩索夾胸，只顯示對應部位或搜尋，並依動作名稱去重）
   const seenExNames = new Set<string>();
   const displayExercises = exercises.filter((e) => {
@@ -914,17 +929,6 @@ export default function WorkoutDetailPage({
                 <span>{session.location || "三健客"}</span>
                 <ChevronDown className="w-3 h-3 opacity-60" />
               </button>
-
-              {/* 螢幕常亮標記 */}
-              {wakeLockActive && (
-                <span
-                  className="text-[10px] text-amber-300 font-bold bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded-md flex items-center gap-1 shrink-0"
-                  title="訓練期間螢幕保持常亮，不自動休眠黑屏"
-                >
-                  <span>🔆</span>
-                  <span className="hidden sm:inline">螢幕常亮</span>
-                </span>
-              )}
 
               {/* 切換場地下拉 (只可切換三健客、交大健身房、交大游泳池) */}
               {showLocationQuickPicker && (
@@ -1109,11 +1113,16 @@ export default function WorkoutDetailPage({
                     return `第 #${formalIdx} 正式組`;
                   })()})</span>
                 </div>
-                <div className="text-sm font-black text-white truncate">
-                  【{nextUpExercise?.name || "動作"}】
-                  <span className="text-gray-300 font-bold ml-1.5">
+                <div className="text-sm font-black text-white truncate flex items-center gap-1.5">
+                  <span>【{nextUpExercise?.name || "動作"}】</span>
+                  <span className="text-gray-300 font-bold">
                     {cleanSetDisplay(nextUpSet)}
                   </span>
+                  {isSetNewPR(nextUpSet) && (
+                    <span className="bg-gradient-to-r from-amber-500 to-red-500 text-black text-[10px] font-black px-1.5 py-0.5 rounded shadow shrink-0 animate-pulse">
+                      🔥 挑戰新 PR
+                    </span>
+                  )}
                 </div>
 
                 {nextUpGhost && (
@@ -1181,6 +1190,12 @@ export default function WorkoutDetailPage({
                     </span>
                     <Dumbbell className="w-4 h-4 text-emerald-400 shrink-0" />
                     <h3 className="font-black text-gray-100 text-sm">{exercise?.name}</h3>
+                    {exSets.some((s) => isSetNewPR(s)) && (
+                      <span className="text-[10px] font-black text-amber-300 bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shrink-0 animate-pulse">
+                        <span>🔥</span>
+                        <span>破紀錄 PR</span>
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1.5">
@@ -1248,21 +1263,6 @@ export default function WorkoutDetailPage({
                   </div>
                 </div>
 
-                {/* 上次對照基準 */}
-                {ghostSets && ghostSets.length > 0 && (
-                  <div className="bg-[#181b26]/70 border border-[#262b3d] rounded-xl p-2 text-xs text-gray-300">
-                    <span className="text-gray-400 text-[11px] mr-1.5 font-bold">上次做組：</span>
-                    {ghostSets.map((gs, i) => (
-                      <span
-                        key={gs.id || i}
-                        className="inline-block bg-[#090a0f] text-gray-400 px-1.5 py-0.5 rounded text-[11px] border border-[#262b3d] mr-1 mb-1"
-                      >
-                        {gs.raw_text || `${gs.weight_kg}Kg x${gs.reps}`}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
                 {/* 組數清單 (一組一組往下做，標示進行中與完成打勾) */}
                 <div className="space-y-1.5">
                   {exSets.map((s, sIdx) => {
@@ -1323,6 +1323,17 @@ export default function WorkoutDetailPage({
                           <span className={`font-bold truncate ${isDone ? "text-gray-400 line-through decoration-emerald-500/50" : isCurrent ? "text-white font-black" : "text-gray-100"}`}>
                             {cleanSetDisplay(s)}
                           </span>
+
+                          {/* 突破個人歷史紀錄 PR 標記 */}
+                          {isSetNewPR(s) && (
+                            <span
+                              className="px-1.5 py-0.5 rounded text-[10px] font-black bg-gradient-to-r from-amber-500/25 to-red-500/25 text-amber-300 border border-amber-500/50 flex items-center gap-0.5 shadow-sm shrink-0 animate-pulse"
+                              title={`突破個人歷史紀錄！(歷史最高：${prMap[s.exercise_id]?.maxWeight}Kg x${prMap[s.exercise_id]?.maxReps}下)`}
+                            >
+                              <span>🔥</span>
+                              <span>新 PR</span>
+                            </span>
+                          )}
 
                           {/* 緊貼顯示上次做組紀錄 */}
                           {matchingGhost && (
@@ -1661,39 +1672,6 @@ export default function WorkoutDetailPage({
             <Plus className="w-4 h-4 stroke-[3]" />
             <span>＋ 加入此組至紀錄</span>
           </button>
-        </div>
-      )}
-
-      {/* 當日訓練總容量 (Total Volume 噸數統計) */}
-      {session.target_muscle !== "游泳" && totalSetsCount > 0 && (
-        <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 shadow-sm space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-gray-300 flex items-center gap-1.5">
-              <TrendingUp className="w-4 h-4 text-emerald-400" />
-              <span>本日累積訓練量 (Total Volume)</span>
-            </span>
-            <span className="text-emerald-400 font-bold text-[11px]">
-              {completedSetsCount} / {totalSetsCount} 組完成 ({progressPct}%)
-            </span>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 text-center pt-1">
-            <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/60">
-              <span className="text-[10px] text-gray-400 block">動作數</span>
-              <span className="text-sm sm:text-base font-black text-white">{setsByExercise.length} 項</span>
-            </div>
-            <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/60">
-              <span className="text-[10px] text-gray-400 block">完成組數</span>
-              <span className="text-sm sm:text-base font-black text-emerald-400">{completedSetsCount} 組</span>
-            </div>
-            <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/60">
-              <span className="text-[10px] text-gray-400 block">總訓練噸數</span>
-              <span className="text-sm sm:text-base font-black text-amber-400">
-                {totalVolume >= 1000 ? `${(totalVolume / 1000).toFixed(1)}t` : `${totalVolume}kg`}
-              </span>
-              <span className="text-[9px] text-gray-500 block">({totalVolume.toLocaleString()} Kg)</span>
-            </div>
-          </div>
         </div>
       )}
 
