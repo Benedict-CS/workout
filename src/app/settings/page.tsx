@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from "react";
 import {
   Download,
   Upload,
-  RefreshCw,
   CheckCircle,
   Database,
   Trophy,
@@ -27,11 +26,6 @@ const LOCATION_OPTIONS = [
 
 export default function SettingsPage() {
   const [reseeded, setReseeded] = useState(false);
-
-  // 雲端同步狀態
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
-  const [lastSyncTime, setLastSyncTime] = useState<string>("");
 
   // 備份還原檔案輸入
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -66,11 +60,6 @@ export default function SettingsPage() {
     if (storedGym) setDefaultGym(storedGym);
     const storedRest = localStorage.getItem("workout_default_rest");
     if (storedRest) setDefaultRestTime(parseInt(storedRest, 10));
-
-    const storedLastSync = localStorage.getItem("workout_last_sync_time");
-    if (storedLastSync) {
-      setLastSyncTime(new Date(storedLastSync).toLocaleString("zh-TW", { hour12: false }));
-    }
   }, []);
 
   async function handleSaveBigThree() {
@@ -109,18 +98,6 @@ export default function SettingsPage() {
     localStorage.setItem("workout_default_rest", defaultRestTime.toString());
     setPrefSaved(true);
     setTimeout(() => setPrefSaved(false), 2000);
-  }
-
-  // 立即雙向同步
-  async function handleTriggerSync() {
-    setIsSyncing(true);
-    setSyncStatusMsg("正在同步本地與雲端資料...");
-    const res = await runFullSync();
-    setSyncStatusMsg(res.message);
-    setIsSyncing(false);
-    if (res.success) {
-      setLastSyncTime(new Date().toLocaleString("zh-TW", { hour12: false }));
-    }
   }
 
   // 匯出 Markdown 檔案 (.md)
@@ -193,6 +170,7 @@ export default function SettingsPage() {
           if (parsed.bigThree?.length) await db.big_three.bulkPut(parsed.bigThree);
         });
 
+        runFullSync().catch(() => {});
         setRestoreStatusMsg(`✅ 成功還原 ${parsed.sessions.length} 次訓練與 ${parsed.sets.length} 組紀錄！`);
       } else {
         // Markdown 檔案
@@ -213,6 +191,7 @@ export default function SettingsPage() {
           if (parsed.bigThree) await db.big_three.put(parsed.bigThree);
         });
 
+        runFullSync().catch(() => {});
         setRestoreStatusMsg(`✅ 成功從 Markdown 匯入 ${parsed.sessions.length} 次訓練與 ${parsed.sets.length} 組紀錄！`);
       }
     } catch (err: any) {
@@ -249,7 +228,7 @@ export default function SettingsPage() {
     <div className="space-y-5 pb-20">
       <div>
         <h1 className="text-xl font-black text-white">設定 & 個人客製化</h1>
-        <p className="text-xs text-gray-400">管理場地偏好、三項基準數據、備份匯入還原與 Supabase 雲端同步</p>
+        <p className="text-xs text-gray-400">管理場地偏好、三項基準數據、備份匯出與檔案還原</p>
       </div>
 
       {/* 個人三項基準與體重設定 */}
@@ -408,40 +387,6 @@ export default function SettingsPage() {
             <Upload className="w-4 h-4 text-cyan-400" />
             <span>從檔案還原備份 (.json / .md)</span>
           </button>
-        </div>
-
-        <div className="pt-2 border-t border-[#262b3d]/40 space-y-3">
-          {/* 自動即時同步說明提示 */}
-          <div className="bg-[#181b26] border border-emerald-500/30 rounded-xl p-3 text-xs space-y-1.5">
-            <div className="flex items-center gap-2 text-emerald-400 font-bold">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span>雲端全自動雙向同步中（免手動點擊）</span>
-            </div>
-            <p className="text-[11px] text-gray-400 leading-relaxed">
-              系統在每次新增或修改組數、開啟 App、切換分頁或網路重連時，均會<strong className="text-gray-200">全自動於背景雙向同步</strong>至 Supabase 雲端，平時記錄訓練完全無需手動操作。
-            </p>
-          </div>
-
-          <div className="space-y-1.5">
-            <button
-              onClick={handleTriggerSync}
-              disabled={isSyncing}
-              className="w-full bg-[#1e2333] hover:bg-[#282f45] border border-blue-500/40 text-blue-300 font-bold py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 active:scale-98"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin text-blue-400" : "text-blue-400"}`} />
-              <span>{isSyncing ? "正在雙向同步雲端資料..." : "手動強制同步雲端 (備用刷新)"}</span>
-            </button>
-            <p className="text-[10px] text-gray-500 text-center">
-              僅供更換新裝置或離線剛恢復時，若想立刻強制同步比對雲端可點擊。
-            </p>
-          </div>
-
-          {syncStatusMsg && (
-            <div className="p-2.5 rounded-xl text-xs bg-[#181b26] border border-blue-500/30 text-blue-300 flex items-center justify-between">
-              <span>{syncStatusMsg}</span>
-              {lastSyncTime && <span className="text-[10px] text-gray-400">上次: {lastSyncTime}</span>}
-            </div>
-          )}
         </div>
       </section>
     </div>

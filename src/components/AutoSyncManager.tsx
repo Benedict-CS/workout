@@ -38,17 +38,21 @@ export function AutoSyncManager() {
     };
 
     window.addEventListener("online", handleOnline);
+    window.addEventListener("focus", handleVisibilityChange);
+    window.addEventListener("workout:sync", handleVisibilityChange);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
-    // 4. 定期背景自動同步 (每 3 分鐘檢查一次)
+    // 4. 定期背景自動同步 (每 90 秒檢查一次)
     const intervalId = setInterval(() => {
       if (document.visibilityState === "visible") {
         triggerSync();
       }
-    }, 3 * 60 * 1000);
+    }, 90 * 1000);
 
     return () => {
       window.removeEventListener("online", handleOnline);
+      window.removeEventListener("focus", handleVisibilityChange);
+      window.removeEventListener("workout:sync", handleVisibilityChange);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       clearInterval(intervalId);
     };

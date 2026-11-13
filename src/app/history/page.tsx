@@ -200,6 +200,8 @@ export default function HistoryPage() {
         }
       });
 
+      runFullSync().catch(() => {});
+
       setImportSuccessMsg(`成功匯入 ${parsed.sessions.length} 場訓練、${parsed.sets.length} 組紀錄！`);
       await loadData();
       setTimeout(() => {
