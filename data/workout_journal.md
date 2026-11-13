@@ -692,9 +692,15 @@
 </details>
 
 <details>
-<summary><b>7/22 (游泳) - 交大游泳池</b></summary>
+<summary><b>7/22 (游泳) - 交大游泳池 (早上)</b></summary>
 
 - 早上游泳
+
+</details>
+
+<details>
+<summary><b>7/22 (游泳) - 交大游泳池 (晚上)</b></summary>
+
 - 晚上游泳
 
 </details>
@@ -745,9 +751,15 @@
 </details>
 
 <details>
-<summary><b>7/27 (游泳) - 交大游泳池</b></summary>
+<summary><b>7/27 (游泳) - 交大游泳池 (下午)</b></summary>
 
 - 下午游泳
+
+</details>
+
+<details>
+<summary><b>7/27 (游泳) - 交大游泳池 (晚上)</b></summary>
+
 - 晚上游泳
 
 </details>
@@ -2221,7 +2233,7 @@
 
 ---
 
-# 11 月份 (腿: 1, 背: 3, 胸: 3, 游泳: 1)
+# 11 月份 (腿: 1, 背: 3, 胸: 4, 肩: 1, 游泳: 1)
 
 <details>
 <summary><b>11/1 (胸部) - 三健客 - 第 1 次</b></summary>
@@ -2434,6 +2446,70 @@
     - set 1: 40Kg x8 + 休 + 4
     - set 2: 40Kg x12 (中間休幾次)
     - set 3: 40Kg x8 + 休 + 4 + 補3
+
+</details>
+
+<details>
+<summary><b>11/11 (肩部 + 手臂 / 動作測試 Day) - 三健客 - 第 8 次</b></summary>
+
+- 單臂滑輪側平舉 (單邊重量)：
+    - 5Kg (試重拉不動)
+    - set 1: 5Kg x7 + 補3
+    - set 2: 3.75Kg x10
+    - set 3: 3.75Kg x8 + 休 + 3 + 補2
+    - set 4: 3.75Kg x8 + 休 + 3 + 補4
+    - set 5: 3.75Kg x8 + 休 + 4 + 補4
+- 繩索面拉 (Face Pull)：
+    - set 1: 13.75Kg x12
+    - set 2: 16.25Kg x15
+    - set 3: 16.25Kg x12
+- 繩索三頭下壓：
+    - set 1: 18.75Kg x15
+    - set 2: 18.75Kg x10 + 16.25Kg x5
+    - set 3: 16.25Kg x10
+- 啞鈴槌式彎舉 (單邊重量)：
+    - set 1: 7.5Kg x10 (中間有休)
+    - set 2: 7.5Kg x10 (中間有休)
+    - set 3: 7.5Kg x10 (中間有休)
+    - set 4: 7.5Kg x10 (中間有休)
+- 上斜啞鈴彎舉 (單邊重量)：
+    - set 1: 7.5Kg x10 (中間有休)
+    - set 2: 7.5Kg x10 (中間有休)
+    - set 3: 7.5Kg x10 (中間有休)
+    - set 4: 7.5Kg x10 (中間有休)
+
+</details>
+
+<details>
+<summary><b>11/12 (胸 + 後肩) - 三健客 - 第 9 次</b></summary>
+
+- 啞鈴上斜臥推 (單邊重量)：
+    - 10Kg x12 熱身
+    - 15Kg x8 熱身
+    - 20Kg x4 神經激發
+    - 22.5Kg x2 試重激發
+    - set 1: 25Kg x11
+    - set 2: 25Kg x7 + 休 + 22.5Kg x4
+    - set 3: 22.5Kg x8
+    - set 4: 22.5Kg (力竭)
+- 槓鈴臥推：
+    - set 1: 60Kg x4 + 休 + 58Kg x4
+    - set 2: 58Kg x4 (力竭) + 休 + 56Kg x4
+    - set 3: 56Kg x4 + 休 + 55Kg x3
+    - set 4: 53Kg x4 (力竭) + 休 + 3 (力竭) + 休 + 50Kg x2 (力竭)
+- 蝴蝶機夾胸：
+    - set 1: 40Kg x10 + 休 + 5
+    - set 2: 37.5Kg x10 + 休 + 5
+    - set 3: 40Kg x7 + 休 + 3 + 休 + 5
+    - set 4: 37.5Kg x10 + 休 + 5
+- 反向蝴蝶機 (後三角)：
+    - set 1: 25Kg x12 (中間有休)
+    - set 2: 25Kg x12 (中間有休)
+    - set 3: 25Kg x12 (中間有休)
+    - set 4: 25Kg x12 (中間有休)
+    - set 5: 20Kg x20 (力竭組)
+- 啞鈴平推 (單邊重量)：
+    - set 1: 27.5Kg x5
 
 </details>
 

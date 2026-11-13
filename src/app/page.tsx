@@ -25,6 +25,7 @@ interface MonthGroupData {
     胸: number;
     背: number;
     腿: number;
+    肩?: number;
     游泳: number;
     total: number;
   };
@@ -173,13 +174,14 @@ export default function HomePage() {
           const rawSessList = monthMap.get(mk) || [];
           // 該月內訓練按日期由先至後順序排列
           const sessList = [...rawSessList].sort((a, b) => a.date.localeCompare(b.date));
-          const mStats = { 胸: 0, 背: 0, 腿: 0, 游泳: 0, total: sessList.length };
+          const mStats = { 胸: 0, 背: 0, 腿: 0, 肩: 0, 游泳: 0, total: sessList.length };
 
           // 計算該月部位頻率
           for (const s of sessList) {
             if (s.target_muscle.includes("胸")) mStats["胸"]++;
             else if (s.target_muscle.includes("背")) mStats["背"]++;
             else if (s.target_muscle.includes("腿")) mStats["腿"]++;
+            else if (s.target_muscle.includes("肩")) mStats["肩"]++;
             else if (s.target_muscle.includes("泳")) mStats["游泳"]++;
           }
 
@@ -324,7 +326,7 @@ export default function HomePage() {
                 <span className="text-[10px] text-gray-400 font-bold block mb-1">
                   該月訓練部位頻率
                 </span>
-                <div className="grid grid-cols-4 gap-1 text-center">
+                <div className={`grid ${(currentGroup.stats["肩"] || 0) > 0 ? "grid-cols-5" : "grid-cols-4"} gap-1 text-center`}>
                   <div>
                     <span className="text-[10px] text-gray-400 block">胸</span>
                     <span className="font-black text-white">{currentGroup.stats["胸"]}</span>
@@ -337,6 +339,12 @@ export default function HomePage() {
                     <span className="text-[10px] text-gray-400 block">腿</span>
                     <span className="font-black text-white">{currentGroup.stats["腿"]}</span>
                   </div>
+                  {(currentGroup.stats["肩"] || 0) > 0 && (
+                    <div>
+                      <span className="text-[10px] text-amber-400 block">肩</span>
+                      <span className="font-black text-amber-300">{currentGroup.stats["肩"]}</span>
+                    </div>
+                  )}
                   <div>
                     <span className="text-[10px] text-gray-400 block">游</span>
                     <span className="font-black text-white">{currentGroup.stats["游泳"]}</span>

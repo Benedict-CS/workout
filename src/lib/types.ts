@@ -11,7 +11,7 @@ export interface SetSubField {
   reps: number;
 }
 
-export type MuscleGroup = "胸" | "背" | "腿" | "游泳";
+export type MuscleGroup = "胸" | "背" | "腿" | "肩" | "游泳";
 
 export type WeightType =
   | "barbell_total"     // 槓鈴總重 (含空槓)

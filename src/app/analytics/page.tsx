@@ -49,6 +49,7 @@ export default function AnalyticsPage() {
     胸: 0,
     背: 0,
     腿: 0,
+    肩: 0,
     游泳: 0,
     total: 0,
   });
@@ -81,11 +82,12 @@ export default function AnalyticsPage() {
           .sortBy("date");
 
         // 全歷史累計訓練總量
-        const totalCounts = { 胸: 0, 背: 0, 腿: 0, 游泳: 0, total: sessions.length };
+        const totalCounts = { 胸: 0, 背: 0, 腿: 0, 肩: 0, 游泳: 0, total: sessions.length };
         for (const sess of sessions) {
           if (sess.target_muscle.includes("胸")) totalCounts["胸"]++;
           else if (sess.target_muscle.includes("背")) totalCounts["背"]++;
           else if (sess.target_muscle.includes("腿")) totalCounts["腿"]++;
+          else if (sess.target_muscle.includes("肩")) totalCounts["肩"]++;
           else if (sess.target_muscle.includes("泳")) totalCounts["游泳"]++;
         }
         setAllTimeStats(totalCounts);
@@ -289,7 +291,7 @@ export default function AnalyticsPage() {
           </span>
         </div>
 
-        <div className="grid grid-cols-4 gap-2 text-center">
+        <div className={`grid ${allTimeStats["肩"] > 0 ? "grid-cols-5" : "grid-cols-4"} gap-2 text-center`}>
           <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
             <span className="text-[11px] text-gray-400 block mb-0.5">練胸</span>
             <span className="text-lg font-black text-white">{allTimeStats["胸"]}</span>
@@ -305,6 +307,13 @@ export default function AnalyticsPage() {
             <span className="text-lg font-black text-white">{allTimeStats["腿"]}</span>
             <span className="text-[10px] text-gray-500 block">次</span>
           </div>
+          {allTimeStats["肩"] > 0 && (
+            <div className="bg-[#181b26] p-2.5 rounded-xl border border-amber-500/40">
+              <span className="text-[11px] text-amber-400 block mb-0.5">練肩</span>
+              <span className="text-lg font-black text-amber-300">{allTimeStats["肩"]}</span>
+              <span className="text-[10px] text-gray-500 block">次</span>
+            </div>
+          )}
           <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
             <span className="text-[11px] text-gray-400 block mb-0.5">游泳</span>
             <span className="text-lg font-black text-white">{allTimeStats["游泳"]}</span>

@@ -49,8 +49,16 @@ const exercises = [
   { id: 'ex-bulgarian-split-squat', name: '保加利亞分腿蹲', muscle_group: '腿', weight_type: 'dumbbell_single' },
   { id: 'ex-hack-squat', name: '哈克深蹲', muscle_group: '腿', weight_type: 'machine_stack' },
 
-  // 肩 (1)
-  { id: 'ex-dumbbell-shoulder-press', name: '啞鈴肩推', muscle_group: '腿', weight_type: 'dumbbell_single' },
+  // 肩 (4)
+  { id: 'ex-dumbbell-shoulder-press', name: '啞鈴肩推', muscle_group: '肩', weight_type: 'dumbbell_single' },
+  { id: 'ex-cable-lateral-raise', name: '單臂滑輪側平舉', muscle_group: '肩', weight_type: 'machine_single' },
+  { id: 'ex-face-pull', name: '繩索面拉', muscle_group: '肩', weight_type: 'machine_stack' },
+  { id: 'ex-reverse-pec-deck', name: '反向蝴蝶機 (後三角)', muscle_group: '肩', weight_type: 'machine_stack' },
+
+  // 手臂 (3)
+  { id: 'ex-rope-tricep-pushdown', name: '繩索三頭下壓', muscle_group: '胸', weight_type: 'machine_stack' },
+  { id: 'ex-dumbbell-hammer-curl', name: '啞鈴槌式彎舉', muscle_group: '背', weight_type: 'dumbbell_single' },
+  { id: 'ex-incline-dumbbell-curl', name: '上斜啞鈴彎舉', muscle_group: '背', weight_type: 'dumbbell_single' },
 
   // 游泳 (1)
   { id: 'ex-swim', name: '游泳', muscle_group: '游泳', weight_type: 'bodyweight', is_favorite: true },
@@ -94,6 +102,13 @@ function matchExerciseId(raw) {
   if (raw.includes('哈克深蹲')) return 'ex-hack-squat';
   if (raw.includes('槓鈴深蹲')) return 'ex-squat';
   if (raw.includes('啞鈴肩推')) return 'ex-dumbbell-shoulder-press';
+  if (raw.includes('單臂滑輪側平舉')) return 'ex-cable-lateral-raise';
+  if (raw.includes('繩索面拉') || raw.includes('Face Pull')) return 'ex-face-pull';
+  if (raw.includes('反向蝴蝶機')) return 'ex-reverse-pec-deck';
+  if (raw.includes('繩索三頭下壓')) return 'ex-rope-tricep-pushdown';
+  if (raw.includes('啞鈴槌式彎舉')) return 'ex-dumbbell-hammer-curl';
+  if (raw.includes('上斜啞鈴彎舉')) return 'ex-incline-dumbbell-curl';
+  if (raw.includes('啞鈴平推')) return 'ex-flat-dumbbell';
   if (raw.includes('超級組')) return 'ex-pullup';
   if (raw.includes('額外加碼測試')) return 'ex-flat-dumbbell-press';
   return 'ex-bench-press';
@@ -126,6 +141,7 @@ detailsBlocks.forEach((block, bIdx) => {
   if (rawTitle.includes('胸')) target = '胸';
   else if (rawTitle.includes('背')) target = '背';
   else if (rawTitle.includes('腿')) target = '腿';
+  else if (rawTitle.includes('肩')) target = '肩';
   else if (rawTitle.includes('游泳')) target = '游泳';
 
   // Determine Location
@@ -155,7 +171,12 @@ detailsBlocks.forEach((block, bIdx) => {
   const idxMatch = rawTitle.match(/第\s*(\d+)\s*次/);
   const monthlyIndex = idxMatch ? parseInt(idxMatch[1], 10) : 1;
 
-  const sessionId = `session-${dateStr}-${monthlyIndex}`;
+  // Session ID: 保證即使同日有多場訓練或多次游泳 (如 7/22 早上與晚上)，ID 均唯一不覆蓋
+  const sameDaySessions = sessions.filter(s => s.date === dateStr);
+  let sessionId = idxMatch ? `session-${dateStr}-${monthlyIndex}` : `session-${dateStr}-${sameDaySessions.length + 1}`;
+  if (sessions.some(s => s.id === sessionId)) {
+    sessionId = `session-${dateStr}-${monthlyIndex}-${sameDaySessions.length + 1}`;
+  }
 
   const session = {
     id: sessionId,
@@ -340,10 +361,8 @@ async function uploadToSupabase() {
     }
   });
 
-  if (!url || !key) {
-    console.log('Missing Supabase credentials in .env.local');
-    return;
-  }
+  url = url || 'https://sbvcbkvnvhwalypmzbvt.supabase.co';
+  key = key || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNidmNia3Zudmh3YWx5cG16YnZ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQyNTkzODksImV4cCI6MjEwOTgzNTM4OX0.flhfWoAIdfpp-5cQ98R_H1Hs6y5xTnCKD16eG6-VP_8';
 
   const supabase = createClient(url, key);
   console.log('Connecting to Supabase at:', url);

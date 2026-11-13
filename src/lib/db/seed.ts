@@ -19,8 +19,10 @@ export async function ensureDatabaseSeeded(): Promise<void> {
     }
   }
 
-  // 若尚未初始化，或尚未包含游泳 sessions / 未達 98 場，則自動更新為精煉資料
-  if (sessionCount === 0 || sessionCount < seedData.sessions.length || !hasSwimSession) {
+  const updatedSessionCount = await db.sessions.count();
+
+  // 若尚未初始化，或尚未包含完整場次 (共 102 場) / 缺游泳，則自動更新為精煉資料
+  if (updatedSessionCount === 0 || updatedSessionCount < seedData.sessions.length || !hasSwimSession) {
     console.log("Seeding / Migrating to curated staple exercises & sessions...");
 
     await db.transaction("rw", [db.sessions, db.exercises, db.sets, db.big_three], async () => {

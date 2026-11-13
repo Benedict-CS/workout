@@ -280,11 +280,11 @@ export async function runFullSync(): Promise<SyncResult> {
       .limit(1000);
 
     if (remoteSessions && remoteSessions.length > 0) {
-      // 依 date + target_muscle 自然鍵去重，保證同一天同一部位僅保留一筆標準紀錄
+      // 依 date + target_muscle + display_title 自然去重，保證同日多次訓練 (如 7/22 早上與晚上游泳) 均獨立保留
       const validRemoteMap = new Map<string, typeof remoteSessions[0]>();
       for (const rs of remoteSessions) {
         if (rs.id.startsWith("session-swim-")) continue;
-        const key = `${rs.date}_${rs.target_muscle}`;
+        const key = `${rs.date}_${rs.target_muscle}_${rs.display_title || rs.id}`;
         if (!validRemoteMap.has(key)) {
           validRemoteMap.set(key, rs);
         } else {
