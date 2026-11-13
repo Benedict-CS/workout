@@ -44,22 +44,32 @@ export default function SettingsPage() {
   const [prefSaved, setPrefSaved] = useState(false);
 
   useEffect(() => {
-    // 讀取三項
-    db.big_three.toArray().then((list) => {
+    async function loadSettings() {
+      // 1. 優先讀取秤盤最新量測體重 (空腹量測基準)
+      const bwList = await db.body_weight.orderBy("date").toArray();
+      const latestScaleWeight = bwList.length > 0 ? bwList[bwList.length - 1].weight_kg : null;
+
+      // 2. 讀取三項
+      const list = await db.big_three.toArray();
       if (list.length > 0) {
         const b = list[0];
         setBenchKg(b.bench_press_kg.toString());
         setSquatKg(b.squat_kg.toString());
         setDeadliftKg(b.deadlift_kg.toString());
-        if (b.body_weight_kg) setBodyWeight(b.body_weight_kg.toString());
+        // 體重以秤盤最新量測為準（若無秤盤記錄則使用三項中存的體重）
+        const effectiveBw = latestScaleWeight || b.body_weight_kg || 62.6;
+        setBodyWeight(effectiveBw.toString());
+      } else if (latestScaleWeight) {
+        setBodyWeight(latestScaleWeight.toString());
       }
-    });
 
-    // 讀取偏好
-    const storedGym = localStorage.getItem("workout_default_gym");
-    if (storedGym) setDefaultGym(storedGym);
-    const storedRest = localStorage.getItem("workout_default_rest");
-    if (storedRest) setDefaultRestTime(parseInt(storedRest, 10));
+      // 讀取偏好
+      const storedGym = localStorage.getItem("workout_default_gym");
+      if (storedGym) setDefaultGym(storedGym);
+      const storedRest = localStorage.getItem("workout_default_rest");
+      if (storedRest) setDefaultRestTime(parseInt(storedRest, 10));
+    }
+    loadSettings();
   }, []);
 
   async function handleSaveBigThree() {
@@ -238,7 +248,7 @@ export default function SettingsPage() {
             <Trophy className="w-4 h-4 text-amber-400" />
             <h2 className="text-sm font-bold text-gray-100">個人三項基準 & 體重倍數</h2>
           </div>
-          <span className="text-[10px] text-gray-400">自動更新首頁與分析看板</span>
+          <span className="text-[10px] text-emerald-400 font-medium">體重自動抓取秤盤量測</span>
         </div>
 
         <div className="grid grid-cols-4 gap-2">

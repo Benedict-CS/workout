@@ -6,7 +6,6 @@ import {
   Trophy,
   TrendingUp,
   Dumbbell,
-  Calendar,
   Scale,
   Plus,
   Trash2,
@@ -304,7 +303,7 @@ export default function AnalyticsPage() {
             <span className="text-base font-black text-emerald-300">
               {netDiff > 0 ? `+${netDiff}` : netDiff}
             </span>
-            <span className="text-[10px] text-emerald-400/80 block">kg 增肌</span>
+            <span className="text-[10px] text-emerald-400/80 block">kg</span>
           </div>
 
           {latestFat !== null && (
@@ -538,17 +537,45 @@ export default function AnalyticsPage() {
               <XAxis dataKey="monthLabel" stroke="#6b7280" fontSize={11} tickLine={false} />
               <YAxis stroke="#6b7280" fontSize={11} domain={["dataMin - 10", "dataMax + 10"]} />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: "#181b26",
-                  borderColor: "#374151",
-                  borderRadius: "0.75rem",
-                  fontSize: "11px",
-                  color: "#fff",
+                content={({ active, payload, label }) => {
+                  if (!active || !payload || !payload.length) return null;
+                  const data = payload[0]?.payload as MonthBigThreeData;
+                  if (!data) return null;
+                  return (
+                    <div className="bg-[#181b26] border border-[#374151] rounded-xl p-3 text-xs shadow-xl space-y-1.5 min-w-[140px]">
+                      <div className="font-bold text-white border-b border-[#262b3d] pb-1 text-[11px]">
+                        {data.monthLabel || label}
+                      </div>
+                      <div className="space-y-1 text-[11px]">
+                        <div className="flex items-center justify-between text-red-300">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-red-400"></span>
+                            <span>臥推</span>
+                          </span>
+                          <span className="font-bold">{data.bench > 0 ? `${data.bench} Kg` : "-"}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-emerald-300">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                            <span>深蹲</span>
+                          </span>
+                          <span className="font-bold">{data.squat > 0 ? `${data.squat} Kg` : "-"}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-blue-300">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                            <span>硬舉</span>
+                          </span>
+                          <span className="font-bold">{data.deadlift > 0 ? `${data.deadlift} Kg` : "-"}</span>
+                        </div>
+                        <div className="border-t border-[#262b3d] pt-1.5 mt-1 flex items-center justify-between text-amber-400 font-black">
+                          <span>三項總和</span>
+                          <span>{data.total > 0 ? `${data.total} Kg` : "-"}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
                 }}
-                formatter={(val: any, name: any) => [
-                  `${val} Kg`,
-                  name === "bench" ? "臥推最高" : name === "squat" ? "深蹲最高" : "硬舉最高",
-                ]}
               />
               <Line
                 type="monotone"
@@ -576,46 +603,6 @@ export default function AnalyticsPage() {
               />
             </LineChart>
           </ResponsiveContainer>
-        </div>
-      </section>
-
-      {/* 每月三項實測最高數據表 */}
-      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3">
-        <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-emerald-400" />
-            <h2 className="text-sm font-bold text-gray-100">各月三項最高對比表</h2>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          {monthlyTrend.slice().reverse().map((m) => (
-            <div
-              key={m.monthKey}
-              className="bg-[#181b26] p-3 rounded-xl border border-[#262b3d] flex items-center justify-between text-xs"
-            >
-              <div className="font-black text-white text-sm">{m.monthLabel}</div>
-
-              <div className="flex items-center gap-3 text-right">
-                <div>
-                  <span className="text-[10px] text-gray-400 block">臥推</span>
-                  <span className="font-bold text-red-300">{m.bench > 0 ? `${m.bench}k` : "-"}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-gray-400 block">深蹲</span>
-                  <span className="font-bold text-emerald-300">{m.squat > 0 ? `${m.squat}k` : "-"}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-gray-400 block">硬舉</span>
-                  <span className="font-bold text-blue-300">{m.deadlift > 0 ? `${m.deadlift}k` : "-"}</span>
-                </div>
-                <div className="border-l border-[#262b3d] pl-3">
-                  <span className="text-[10px] text-gray-400 block">三項總和</span>
-                  <span className="font-black text-amber-400">{m.total > 0 ? `${m.total}k` : "-"}</span>
-                </div>
-              </div>
-            </div>
-          ))}
         </div>
       </section>
     </div>
