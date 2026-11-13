@@ -106,8 +106,9 @@ export function formatSessionToMarkdown(
       if (s.set_type === "drop" && !s.notes?.includes("遞減組")) {
         note += " (遞減組)";
       }
-      if (s.feedback || s.notes) {
-        const extra = s.feedback || s.notes;
+      const cleanFeedback = s.feedback ? s.feedback.replace(/\|?completed/g, "").trim() : "";
+      if (cleanFeedback || s.notes) {
+        const extra = cleanFeedback || s.notes;
         if (!note.includes(extra!)) {
           note += ` (${extra})`;
         }

@@ -226,7 +226,9 @@ export async function runFullSync(): Promise<SyncResult> {
           rest_pause_detail: st.sub_fields ? JSON.stringify(st.sub_fields) : (st.rest_pause_detail || null),
           forced_reps: st.forced_reps || null,
           is_failure: !!st.is_failure,
-          feedback: st.feedback || null,
+          feedback: st.is_completed
+            ? (st.feedback ? `${st.feedback.replace(/\|?completed/g, "")}|completed` : "completed")
+            : (st.feedback ? st.feedback.replace(/\|?completed/g, "").trim() || null : null),
           notes: st.notes || null,
           created_at: st.created_at,
           updated_at: st.updated_at,
@@ -326,11 +328,17 @@ export async function runFullSync(): Promise<SyncResult> {
         }
       }
 
-      // 單一真實來源 (SSOT) 修復：清除本地已標記 synced 但雲端已被刪除的孤兒記錄（例如已被清理的 16 筆重複游泳）
+      // 單一真實來源 (SSOT) 修復：清除本地已標記 synced 但雲端已被刪除的孤兒記錄（例如已被清理的 16 筆重複游泳或 11/13 測試記錄）
       const localAll = await db.sessions.toArray();
-      const orphaned = localAll.filter(
-        (s) => (s.sync_status === "synced" || s.id.startsWith("session-swim-")) && !remoteIdSet.has(s.id)
-      );
+      const nowMs = Date.now();
+      const orphaned = localAll.filter((s) => {
+        if (remoteIdSet.has(s.id)) return false;
+        if (s.date === "2026-11-13") return true;
+        if (s.sync_status === "synced" || s.id.startsWith("session-swim-")) return true;
+        const createdMs = new Date(s.created_at).getTime();
+        if (!isNaN(createdMs) && nowMs - createdMs > 5 * 60 * 1000) return true;
+        return false;
+      });
       if (orphaned.length > 0) {
         const orpIds = orphaned.map((o) => o.id);
         await db.sessions.bulkDelete(orpIds);
@@ -398,6 +406,7 @@ export async function runFullSync(): Promise<SyncResult> {
             rest_pause_detail: rst.rest_pause_detail,
             forced_reps: rst.forced_reps,
             is_failure: rst.is_failure,
+            is_completed: rst.feedback?.includes("completed") || false,
             feedback: rst.feedback,
             notes: rst.notes,
             created_at: rst.created_at,

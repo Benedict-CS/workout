@@ -323,6 +323,8 @@ export default function WorkoutDetailPage({
       raw_text: raw,
       sub_fields: inputSubFields.length > 0 ? inputSubFields : undefined,
       notes: inputNotes || undefined,
+      is_completed: true,
+      feedback: "completed",
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       sync_status: "pending",
@@ -369,6 +371,8 @@ export default function WorkoutDetailPage({
       raw_text: raw,
       sub_fields: last.sub_fields,
       notes: last.notes,
+      is_completed: true,
+      feedback: "completed",
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       sync_status: "pending",
@@ -377,6 +381,85 @@ export default function WorkoutDetailPage({
     await db.sets.add(newSet);
     setSets((prev) => [...prev, newSet]);
     startRestTimer(defaultRestDuration);
+    runFullSync().catch(() => {});
+  }
+
+  // 檢查組數是否已完成
+  function isSetCompleted(s: SetItem, sessionDate?: string): boolean {
+    if (s.is_completed === true) return true;
+    if (s.is_completed === false) return false;
+    if (s.feedback && s.feedback.includes("completed")) return true;
+    const today = new Date().toISOString().split("T")[0];
+    if (sessionDate && sessionDate < today) return true;
+    return false;
+  }
+
+  // 標記/切換單組完成狀態 (一組一組往下做，完成時自動啟動休息計時器)
+  async function handleToggleSetCompleted(setId: string) {
+    const target = sets.find((s) => s.id === setId);
+    if (!target) return;
+
+    const currentStatus = isSetCompleted(target, session?.date);
+    const newStatus = !currentStatus;
+
+    const updated: SetItem = {
+      ...target,
+      is_completed: newStatus,
+      feedback: newStatus
+        ? (target.feedback ? `${target.feedback.replace(/\|?completed/g, "")}|completed` : "completed")
+        : (target.feedback ? target.feedback.replace(/\|?completed/g, "").trim() || undefined : undefined),
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    };
+
+    await db.sets.put(updated);
+    setSets((prev) => prev.map((s) => (s.id === setId ? updated : s)));
+    runFullSync().catch(() => {});
+
+    // 若剛標記完成，自動啟動休息計時器 (2分半)
+    if (newStatus && session?.target_muscle !== "游泳") {
+      startRestTimer(defaultRestDuration);
+    }
+  }
+
+  // 更換動作順序 (上移 / 下移) - 當健身房器材有人使用時可彈性調換
+  async function handleMoveExercise(exIdx: number, direction: "up" | "down") {
+    const targetIdx = direction === "up" ? exIdx - 1 : exIdx + 1;
+    if (targetIdx < 0 || targetIdx >= setsByExercise.length) return;
+
+    const currentOrderIds = setsByExercise.map((item) => item.exercise?.id).filter(Boolean) as string[];
+    const [movedId] = currentOrderIds.splice(exIdx, 1);
+    currentOrderIds.splice(targetIdx, 0, movedId);
+
+    // 依據調換後的新動作順序，重新編排所有 sets 的 set_order
+    let currentOrder = 1;
+    const newSetsList: SetItem[] = [];
+
+    for (const exId of currentOrderIds) {
+      const exSets = sets.filter((s) => s.exercise_id === exId);
+      for (const st of exSets) {
+        newSetsList.push({
+          ...st,
+          set_order: currentOrder++,
+          updated_at: new Date().toISOString(),
+          sync_status: "pending",
+        });
+      }
+    }
+
+    // 補齊未匹配到的組數 (邊緣情況保護)
+    const remainingSets = sets.filter((s) => !currentOrderIds.includes(s.exercise_id));
+    for (const st of remainingSets) {
+      newSetsList.push({
+        ...st,
+        set_order: currentOrder++,
+        updated_at: new Date().toISOString(),
+        sync_status: "pending",
+      });
+    }
+
+    await db.sets.bulkPut(newSetsList);
+    setSets(newSetsList);
     runFullSync().catch(() => {});
   }
 
@@ -545,6 +628,13 @@ export default function WorkoutDetailPage({
     setsByExercise.push({ exercise: ex, sets: exSets });
   }
 
+  // 訓練整體進度與當前進行中組數 (一組一組往下做)
+  const totalSetsCount = sets.length;
+  const completedSetsCount = sets.filter((s) => isSetCompleted(s, session.date)).length;
+  const progressPct = totalSetsCount > 0 ? Math.round((completedSetsCount / totalSetsCount) * 100) : 0;
+  const nextUpSet = sets.find((s) => !isSetCompleted(s, session.date));
+  const nextUpExercise = nextUpSet ? exercises.find((e) => e.id === nextUpSet.exercise_id) : null;
+
   // 動作過濾（排除繩索夾胸，只顯示對應部位或搜尋）
   const displayExercises = exercises.filter((e) => {
     if (e.name.includes("繩索夾胸")) return false;
@@ -688,6 +778,63 @@ export default function WorkoutDetailPage({
         </div>
       )}
 
+      {/* 訓練進度看板 & 當前進行中組數 (重訓專用，一組一組往下做) */}
+      {session.target_muscle !== "游泳" && totalSetsCount > 0 && (
+        <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3 shadow-md">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-black text-gray-200 flex items-center gap-1.5">
+              <Zap className="w-4 h-4 text-emerald-400" />
+              <span>訓練進度</span>
+            </span>
+            <span className="font-mono font-black text-emerald-400 text-xs">
+              {completedSetsCount} / {totalSetsCount} 組 ({progressPct}%)
+            </span>
+          </div>
+
+          {/* 進度條 */}
+          <div className="w-full bg-[#181b26] h-2.5 rounded-full overflow-hidden border border-[#262b3d]/60">
+            <div
+              className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-300 shadow"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+
+          {/* 當前進行中組數提醒 */}
+          {nextUpSet ? (
+            <div className="bg-[#181b26] border border-emerald-500/50 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 shadow-sm">
+              <div className="min-w-0">
+                <div className="text-[10px] font-black text-emerald-400 uppercase tracking-wider flex items-center gap-1.5 mb-0.5">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span>當前進行中組數 (第 #{nextUpSet.set_order} 組)</span>
+                </div>
+                <div className="text-sm font-black text-white truncate">
+                  【{nextUpExercise?.name || "動作"}】
+                  <span className="text-gray-300 font-bold ml-1.5">
+                    {nextUpSet.raw_text || `${nextUpSet.weight_kg}Kg × ${nextUpSet.reps}下`}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleToggleSetCompleted(nextUpSet.id)}
+                className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-lg active:scale-95 transition-all shrink-0 cursor-pointer"
+              >
+                <Check className="w-4 h-4 stroke-[3]" />
+                <span>完成此組 (啟動休息)</span>
+              </button>
+            </div>
+          ) : (
+            <div className="bg-emerald-950/30 border border-emerald-500/40 rounded-xl p-3 text-center text-xs font-black text-emerald-300">
+              🎉 太棒了！本次訓練預排組數已全數完成！
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 已記錄組數區塊 */}
       <div className="space-y-3">
         {setsByExercise.length === 0 ? (
@@ -697,7 +844,7 @@ export default function WorkoutDetailPage({
               : "尚未記錄任何組數，請在下方輸入重量次數並按「＋記錄完成」！"}
           </div>
         ) : (
-          setsByExercise.map(({ exercise, sets: exSets }) => {
+          setsByExercise.map(({ exercise, sets: exSets }, exIdx) => {
             const ghostSets = exercise ? ghostMap[exercise.id] : undefined;
 
             return (
@@ -707,12 +854,40 @@ export default function WorkoutDetailPage({
               >
                 <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
                   <div className="flex items-center gap-2">
-                    <Dumbbell className="w-4 h-4 text-emerald-400" />
+                    <span className="text-[11px] font-black bg-[#181b26] text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-lg shrink-0">
+                      #{exIdx + 1}
+                    </span>
+                    <Dumbbell className="w-4 h-4 text-emerald-400 shrink-0" />
                     <h3 className="font-black text-gray-100 text-sm">{exercise?.name}</h3>
                   </div>
-                  <span className="text-xs bg-[#181b26] text-gray-400 px-2 py-0.5 rounded border border-[#262b3d]">
-                    {exSets.length} 組
-                  </span>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs bg-[#181b26] text-gray-400 px-2 py-0.5 rounded border border-[#262b3d]">
+                      {exSets.length} 組
+                    </span>
+
+                    {/* 換順序按鈕：當健身器材有人使用時可彈性調換 */}
+                    <div className="flex items-center gap-0.5 bg-[#181b26] p-0.5 rounded-lg border border-[#262b3d]">
+                      <button
+                        type="button"
+                        disabled={exIdx === 0}
+                        onClick={() => handleMoveExercise(exIdx, "up")}
+                        className="p-1 rounded text-gray-400 hover:text-white disabled:opacity-20 hover:bg-[#262b3d] transition-all cursor-pointer disabled:cursor-not-allowed"
+                        title="動作順序上移"
+                      >
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={exIdx === setsByExercise.length - 1}
+                        onClick={() => handleMoveExercise(exIdx, "down")}
+                        className="p-1 rounded text-gray-400 hover:text-white disabled:opacity-20 hover:bg-[#262b3d] transition-all cursor-pointer disabled:cursor-not-allowed"
+                        title="動作順序下移"
+                      >
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* 上次對照基準 */}
@@ -730,50 +905,102 @@ export default function WorkoutDetailPage({
                   </div>
                 )}
 
-                {/* 組數清單 */}
+                {/* 組數清單 (一組一組往下做，標示進行中與完成打勾) */}
                 <div className="space-y-1.5">
-                  {exSets.map((s, sIdx) => (
-                    <div
-                      key={s.id}
-                      className="bg-[#181b26] px-3 py-2 rounded-xl border border-[#262b3d]/70 flex items-center justify-between text-xs"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-gray-500 w-5">#{sIdx + 1}</span>
-                        <span className="font-bold text-gray-100">
-                          {s.raw_text || `${s.weight_kg}Kg x ${s.reps}`}
-                        </span>
-                      </div>
+                  {exSets.map((s, sIdx) => {
+                    const isDone = isSetCompleted(s, session.date);
+                    const isCurrent = nextUpSet?.id === s.id;
 
-                      <div className="flex items-center gap-1.5">
-                        {s.set_type === "warmup" && (
-                          <span className="bg-blue-500/20 text-blue-300 text-[10px] px-1.5 py-0.5 rounded">
-                            熱身
+                    return (
+                      <div
+                        key={s.id}
+                        className={`px-3 py-2.5 rounded-xl border flex items-center justify-between text-xs transition-all ${
+                          isCurrent
+                            ? "bg-[#14261f] border-emerald-500 shadow-md shadow-emerald-950/40 ring-1 ring-emerald-500/50"
+                            : isDone
+                            ? "bg-[#141722] border-[#262b3d]/60 opacity-80"
+                            : "bg-[#181b26] border-[#262b3d]/80"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                          {/* 打勾按鈕 */}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSetCompleted(s.id)}
+                            className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 transition-all cursor-pointer ${
+                              isDone
+                                ? "bg-emerald-500 text-black border border-emerald-400 shadow"
+                                : isCurrent
+                                ? "bg-emerald-500/20 border-2 border-emerald-400 text-emerald-300 hover:bg-emerald-500 hover:text-black"
+                                : "border border-gray-600 hover:border-emerald-400 text-transparent hover:text-emerald-400"
+                            }`}
+                            title={isDone ? "點擊取消完成" : "點擊標記此組完成"}
+                          >
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          </button>
+
+                          <span className={`font-mono font-bold ${isCurrent ? "text-emerald-400 font-black" : "text-gray-500"} w-5 shrink-0`}>
+                            #{sIdx + 1}
                           </span>
-                        )}
-                        {s.set_type === "drop" && (
-                          <span className="bg-amber-500/20 text-amber-300 text-[10px] px-1.5 py-0.5 rounded">
-                            遞減
+
+                          <span className={`font-bold truncate ${isDone ? "text-gray-400 line-through decoration-emerald-500/50" : isCurrent ? "text-white font-black" : "text-gray-100"}`}>
+                            {s.raw_text || `${s.weight_kg}Kg x ${s.reps}`}
                           </span>
-                        )}
 
-                        <button
-                          onClick={() => handleStartEditSet(s)}
-                          className="text-gray-400 hover:text-amber-400 p-1"
-                          title="修改此組"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
+                          {isCurrent && (
+                            <span className="bg-emerald-500 text-black text-[10px] font-black px-1.5 py-0.5 rounded-md shrink-0 animate-pulse">
+                              進行中
+                            </span>
+                          )}
+                          {isDone && (
+                            <span className="text-[10px] text-emerald-400 font-bold hidden sm:inline shrink-0">
+                              已完成
+                            </span>
+                          )}
+                        </div>
 
-                        <button
-                          onClick={() => handleDeleteSet(s.id)}
-                          className="text-gray-400 hover:text-red-400 p-1"
-                          title="刪除"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {s.set_type === "warmup" && (
+                            <span className="bg-blue-500/20 text-blue-300 text-[10px] px-1.5 py-0.5 rounded">
+                              熱身
+                            </span>
+                          )}
+                          {s.set_type === "drop" && (
+                            <span className="bg-amber-500/20 text-amber-300 text-[10px] px-1.5 py-0.5 rounded">
+                              遞減
+                            </span>
+                          )}
+
+                          {isCurrent && (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleSetCompleted(s.id)}
+                              className="bg-emerald-500 hover:bg-emerald-400 text-black px-2.5 py-1 rounded-lg text-xs font-black flex items-center gap-1 cursor-pointer active:scale-95 transition-all shadow"
+                            >
+                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                              <span>完成</span>
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => handleStartEditSet(s)}
+                            className="text-gray-400 hover:text-amber-400 p-1.5 rounded-lg hover:bg-[#202533] transition-colors"
+                            title="修改此組"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteSet(s.id)}
+                            className="text-gray-400 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-950/30 transition-colors"
+                            title="刪除"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );

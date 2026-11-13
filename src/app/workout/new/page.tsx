@@ -201,6 +201,7 @@ function NewWorkoutForm() {
         raw_text: s.raw_text,
         sub_fields: s.sub_fields,
         is_failure: false,
+        is_completed: false,
         feedback: undefined,
         notes: undefined,
         created_at: new Date().toISOString(),

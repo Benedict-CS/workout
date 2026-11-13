@@ -49,6 +49,7 @@ export interface SetItem {
   rest_pause_detail?: string;
   forced_reps?: number;
   is_failure?: boolean;
+  is_completed?: boolean;
   feedback?: string;
   notes?: string;
   created_at: string;
