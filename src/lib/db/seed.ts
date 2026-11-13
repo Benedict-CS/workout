@@ -8,7 +8,18 @@ export async function ensureDatabaseSeeded(): Promise<void> {
   const sessionCount = await db.sessions.count();
   const hasSwimSession = (await db.sessions.where("target_muscle").equals("游泳").count()) > 0;
 
-  // 若尚未初始化，或尚未包含游泳 sessions / 未達 88 場，則自動更新為精煉資料
+  // 檢查並清理歷史舊版 session-swim-* 幽靈資料與重複訓練
+  const legacySwims = await db.sessions.filter((s) => s.id.startsWith("session-swim-")).toArray();
+  if (legacySwims.length > 0) {
+    const legIds = legacySwims.map((s) => s.id);
+    await db.sessions.bulkDelete(legIds);
+    const legSets = await db.sets.filter((st) => legIds.includes(st.session_id)).toArray();
+    if (legSets.length > 0) {
+      await db.sets.bulkDelete(legSets.map((s) => s.id));
+    }
+  }
+
+  // 若尚未初始化，或尚未包含游泳 sessions / 未達 98 場，則自動更新為精煉資料
   if (sessionCount === 0 || sessionCount < seedData.sessions.length || !hasSwimSession) {
     console.log("Seeding / Migrating to curated staple exercises & sessions...");
 

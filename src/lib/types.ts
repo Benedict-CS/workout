@@ -91,6 +91,8 @@ export interface BodyWeightRecord {
   id: string;
   date: string;       // YYYY-MM-DD
   weight_kg: number;
+  body_fat_pct?: number;       // 體脂率 (%)
+  skeletal_muscle_kg?: number; // 骨骼肌重 (kg)
   note?: string;
   created_at: string;
   updated_at: string;

@@ -55,10 +55,13 @@ export default function AnalyticsPage() {
   const [monthlyTrend, setMonthlyTrend] = useState<MonthBigThreeData[]>([]);
   const [prList, setPrList] = useState<PRItem[]>([]);
 
-  // 體重數據狀態 (晨起空腹量測)
+  // 體重與身體成分數據狀態 (晨起空腹量測)
   const [bodyWeights, setBodyWeights] = useState<BodyWeightRecord[]>([]);
   const [newWeightDate, setNewWeightDate] = useState(new Date().toISOString().split("T")[0]);
   const [newWeightValue, setNewWeightValue] = useState("");
+  const [newFatValue, setNewFatValue] = useState("");
+  const [newMuscleValue, setNewMuscleValue] = useState("");
+  const [bwMetricTab, setBwMetricTab] = useState<"weight" | "fat">("weight");
   const [bwSaving, setBwSaving] = useState(false);
   const [showBwList, setShowBwList] = useState(false);
 
@@ -188,10 +191,15 @@ export default function AnalyticsPage() {
     if (!w || w <= 0 || !newWeightDate) return;
 
     setBwSaving(true);
+    const fat = newFatValue ? parseFloat(newFatValue) : undefined;
+    const muscle = newMuscleValue ? parseFloat(newMuscleValue) : undefined;
+
     const newRec: BodyWeightRecord = {
       id: `bw-${newWeightDate}`,
       date: newWeightDate,
       weight_kg: w,
+      body_fat_pct: fat && fat > 0 ? fat : undefined,
+      skeletal_muscle_kg: muscle && muscle > 0 ? muscle : undefined,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       sync_status: "pending",
@@ -218,6 +226,8 @@ export default function AnalyticsPage() {
     const updatedList = await db.body_weight.orderBy("date").toArray();
     setBodyWeights(updatedList);
     setNewWeightValue("");
+    setNewFatValue("");
+    setNewMuscleValue("");
     setBwSaving(false);
   }
 
@@ -241,10 +251,21 @@ export default function AnalyticsPage() {
   const latestBw = bodyWeights.length > 0 ? bodyWeights[bodyWeights.length - 1].weight_kg : 62.6;
   const netDiff = Math.round((latestBw - startBw) * 10) / 10;
 
+  const bwWithFat = bodyWeights.filter((b) => typeof b.body_fat_pct === "number");
+  const latestFat = bwWithFat.length > 0 && bwWithFat[bwWithFat.length - 1].body_fat_pct !== undefined
+    ? bwWithFat[bwWithFat.length - 1].body_fat_pct!
+    : null;
+  const startFat = bwWithFat.length > 0 && bwWithFat[0].body_fat_pct !== undefined
+    ? bwWithFat[0].body_fat_pct!
+    : null;
+  const fatDiff = latestFat !== null && startFat !== null ? Math.round((latestFat - startFat) * 10) / 10 : null;
+
   const bwChartData = bodyWeights.map((b) => ({
     date: b.date.slice(5),
     fullDate: b.date,
     weight: b.weight_kg,
+    bodyFat: b.body_fat_pct,
+    muscle: b.skeletal_muscle_kg,
   }));
 
   return (
@@ -304,8 +325,8 @@ export default function AnalyticsPage() {
           </span>
         </div>
 
-        {/* 3 大指標卡 */}
-        <div className="grid grid-cols-3 gap-2 text-center">
+        {/* 3 大指標卡 (若有體脂數據則並列顯示) */}
+        <div className={`grid ${latestFat !== null ? "grid-cols-4" : "grid-cols-3"} gap-2 text-center`}>
           <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
             <span className="text-[10px] text-gray-400 block mb-0.5">起始體重</span>
             <span className="text-base font-black text-gray-200">{startBw}</span>
@@ -325,9 +346,50 @@ export default function AnalyticsPage() {
             </span>
             <span className="text-[10px] text-emerald-400/80 block">kg 增肌</span>
           </div>
+
+          {latestFat !== null && (
+            <div className="bg-[#181b26] p-2.5 rounded-xl border border-amber-500/30">
+              <span className="text-[10px] text-amber-400 block mb-0.5">最新體脂</span>
+              <span className="text-base font-black text-amber-300">{latestFat}%</span>
+              <span className="text-[10px] text-amber-400/80 block">
+                {fatDiff !== null ? (fatDiff > 0 ? `+${fatDiff}%` : `${fatDiff}%`) : "空腹量測"}
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* 體重歷史折線圖 */}
+        {/* 曲線切換分頁 */}
+        <div className="flex items-center justify-between pt-1">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setBwMetricTab("weight")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                bwMetricTab === "weight"
+                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                  : "bg-[#181b26] text-gray-400 hover:text-gray-200 border border-[#262b3d]"
+              }`}
+            >
+              體重走勢 (kg)
+            </button>
+            <button
+              type="button"
+              onClick={() => setBwMetricTab("fat")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                bwMetricTab === "fat"
+                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                  : "bg-[#181b26] text-gray-400 hover:text-gray-200 border border-[#262b3d]"
+              }`}
+            >
+              體脂率趨勢 (%)
+            </button>
+          </div>
+          <span className="text-[10px] text-gray-500">
+            {bwMetricTab === "weight" ? "藍線：早晨體重" : "黃線：早晨體脂率"}
+          </span>
+        </div>
+
+        {/* 歷史折線圖 */}
         <div className="h-44 w-full pt-1">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={bwChartData} margin={{ top: 5, right: 10, left: -25, bottom: 5 }}>
@@ -342,52 +404,100 @@ export default function AnalyticsPage() {
                   fontSize: "11px",
                   color: "#fff",
                 }}
-                formatter={(val: any) => [`${val} kg`, "晨起體重"]}
+                formatter={(val: any) => [
+                  bwMetricTab === "weight" ? `${val} kg` : `${val} %`,
+                  bwMetricTab === "weight" ? "晨起體重" : "空腹體脂",
+                ]}
                 labelFormatter={(lbl, items) => {
                   const item = items[0]?.payload;
                   return item ? item.fullDate : lbl;
                 }}
               />
-              <Line
-                type="monotone"
-                dataKey="weight"
-                stroke="#06b6d4"
-                strokeWidth={2.5}
-                dot={false}
-                activeDot={{ r: 5, fill: "#06b6d4" }}
-              />
+              {bwMetricTab === "weight" ? (
+                <Line
+                  type="monotone"
+                  dataKey="weight"
+                  stroke="#06b6d4"
+                  strokeWidth={2.5}
+                  dot={false}
+                  activeDot={{ r: 5, fill: "#06b6d4" }}
+                />
+              ) : (
+                <Line
+                  type="monotone"
+                  dataKey="bodyFat"
+                  stroke="#f59e0b"
+                  strokeWidth={2.5}
+                  connectNulls
+                  dot={{ r: 2.5, fill: "#f59e0b" }}
+                  activeDot={{ r: 5, fill: "#f59e0b" }}
+                />
+              )}
             </LineChart>
           </ResponsiveContainer>
         </div>
 
-        {/* 快速記錄體重輸入列 */}
-        <div className="flex items-center gap-2 pt-1 border-t border-[#262b3d]/40">
-          <input
-            type="date"
-            value={newWeightDate}
-            onChange={(e) => setNewWeightDate(e.target.value)}
-            className="bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-2.5 py-2 outline-none focus:border-cyan-500"
-          />
-          <div className="relative flex-1">
-            <input
-              type="number"
-              step="0.1"
-              placeholder="輸入體重 (如 62.6)"
-              value={newWeightValue}
-              onChange={(e) => setNewWeightValue(e.target.value)}
-              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-cyan-500 font-bold"
-            />
-            <span className="absolute right-3 top-2 text-xs text-gray-500">kg</span>
+        {/* 快速記錄體重 / 體脂 / 骨骼肌 輸入列 */}
+        <div className="space-y-2 pt-2 border-t border-[#262b3d]/40">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div>
+              <label className="text-[10px] text-gray-400 block mb-1">日期</label>
+              <input
+                type="date"
+                value={newWeightDate}
+                onChange={(e) => setNewWeightDate(e.target.value)}
+                className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-2.5 py-2 outline-none focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-cyan-400 font-bold block mb-1">體重 (kg) *</label>
+              <input
+                type="number"
+                step="0.1"
+                placeholder="如 62.6"
+                value={newWeightValue}
+                onChange={(e) => setNewWeightValue(e.target.value)}
+                className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-cyan-500 font-bold"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-amber-400 block mb-1">體脂率 (% 選填)</label>
+              <input
+                type="number"
+                step="0.1"
+                placeholder="如 16.5"
+                value={newFatValue}
+                onChange={(e) => setNewFatValue(e.target.value)}
+                className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-amber-500"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-emerald-400 block mb-1">骨骼肌 (kg 選填)</label>
+              <input
+                type="number"
+                step="0.1"
+                placeholder="如 28.5"
+                value={newMuscleValue}
+                onChange={(e) => setNewMuscleValue(e.target.value)}
+                className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-emerald-500"
+              />
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={handleAddBodyWeight}
-            disabled={!newWeightValue || bwSaving}
-            className="bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 text-black font-black px-3.5 py-2 rounded-xl text-xs transition-all flex items-center gap-1 shadow cursor-pointer shrink-0"
-          >
-            <Plus className="w-3.5 h-3.5 stroke-[3]" />
-            <span>記錄</span>
-          </button>
+
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-gray-500">
+              * 建議固定晨起空腹量測；體脂率可參考趨勢，骨骼肌建議每 1~2 月比對 InBody
+            </span>
+            <button
+              type="button"
+              onClick={handleAddBodyWeight}
+              disabled={!newWeightValue || bwSaving}
+              className="bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 text-black font-black px-4 py-2 rounded-xl text-xs transition-all flex items-center gap-1 shadow cursor-pointer shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5 stroke-[3]" />
+              <span>記錄數據</span>
+            </button>
+          </div>
         </div>
 
         {/* 查看全部歷史紀錄 */}
@@ -408,13 +518,25 @@ export default function AnalyticsPage() {
                 key={b.id}
                 className="bg-[#181b26] px-3 py-1.5 rounded-lg flex items-center justify-between text-xs border border-[#262b3d]/60"
               >
-                <span className="font-mono text-gray-300 text-[11px]">{b.date}</span>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-gray-300 text-[11px]">{b.date}</span>
                   <span className="font-bold text-white">{b.weight_kg} kg</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  {typeof b.body_fat_pct === "number" && (
+                    <span className="text-[11px] text-amber-400 font-medium">
+                      體脂 {b.body_fat_pct}%
+                    </span>
+                  )}
+                  {typeof b.skeletal_muscle_kg === "number" && (
+                    <span className="text-[11px] text-emerald-400 font-medium">
+                      骨骼肌 {b.skeletal_muscle_kg}kg
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleDeleteBodyWeight(b.id)}
-                    className="text-gray-500 hover:text-red-400 transition-colors"
+                    className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>

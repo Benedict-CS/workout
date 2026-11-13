@@ -128,10 +128,21 @@ export async function runFullSync(): Promise<SyncResult> {
   let pulled = 0;
 
   try {
+    // 0. 清理本地歷史遺留的舊 ID (例如 session-swim-* 系列)，防止污染雲端
+    const legacySwims = await db.sessions.filter((s) => s.id.startsWith("session-swim-")).toArray();
+    if (legacySwims.length > 0) {
+      const legIds = legacySwims.map((s) => s.id);
+      await db.sessions.bulkDelete(legIds);
+      const legSets = await db.sets.filter((st) => legIds.includes(st.session_id)).toArray();
+      if (legSets.length > 0) {
+        await db.sets.bulkDelete(legSets.map((s) => s.id));
+      }
+    }
+
     // 1. 同步 Sessions
     const localSessions = await db.sessions.toArray();
     const pendingSessions = localSessions.filter(
-      (s) => s.sync_status === "pending" || !s.sync_status
+      (s) => (s.sync_status === "pending" || !s.sync_status) && !s.id.startsWith("session-swim-")
     );
 
     if (pendingSessions.length > 0) {
@@ -269,7 +280,25 @@ export async function runFullSync(): Promise<SyncResult> {
       .limit(1000);
 
     if (remoteSessions && remoteSessions.length > 0) {
+      // 依 date + target_muscle 自然鍵去重，保證同一天同一部位僅保留一筆標準紀錄
+      const validRemoteMap = new Map<string, typeof remoteSessions[0]>();
       for (const rs of remoteSessions) {
+        if (rs.id.startsWith("session-swim-")) continue;
+        const key = `${rs.date}_${rs.target_muscle}`;
+        if (!validRemoteMap.has(key)) {
+          validRemoteMap.set(key, rs);
+        } else {
+          const existing = validRemoteMap.get(key)!;
+          if (new Date(rs.updated_at) > new Date(existing.updated_at)) {
+            validRemoteMap.set(key, rs);
+          }
+        }
+      }
+
+      const deduplicatedRemotes = Array.from(validRemoteMap.values());
+      const remoteIdSet = new Set(deduplicatedRemotes.map((r) => r.id));
+
+      for (const rs of deduplicatedRemotes) {
         const local = await db.sessions.get(rs.id);
         if (!local || new Date(rs.updated_at) > new Date(local.updated_at)) {
           const loc = extractLocationFromSession(rs);
@@ -294,6 +323,20 @@ export async function runFullSync(): Promise<SyncResult> {
             sync_status: "synced",
           });
           pulled++;
+        }
+      }
+
+      // 單一真實來源 (SSOT) 修復：清除本地已標記 synced 但雲端已被刪除的孤兒記錄（例如已被清理的 16 筆重複游泳）
+      const localAll = await db.sessions.toArray();
+      const orphaned = localAll.filter(
+        (s) => (s.sync_status === "synced" || s.id.startsWith("session-swim-")) && !remoteIdSet.has(s.id)
+      );
+      if (orphaned.length > 0) {
+        const orpIds = orphaned.map((o) => o.id);
+        await db.sessions.bulkDelete(orpIds);
+        const orpSets = await db.sets.filter((st) => orpIds.includes(st.session_id)).toArray();
+        if (orpSets.length > 0) {
+          await db.sets.bulkDelete(orpSets.map((s) => s.id));
         }
       }
     }
@@ -389,6 +432,60 @@ export async function runFullSync(): Promise<SyncResult> {
           sync_status: "synced",
         });
       }
+    }
+
+    // 5.5 同步 Body Weights (體重與體脂率，嘗試同步，若資料表未建立則優雅略過)
+    try {
+      const localBw = await db.body_weight.toArray();
+      const pendingBw = localBw.filter((b) => b.sync_status === "pending" || !b.sync_status);
+      if (pendingBw.length > 0) {
+        const bwPayload = pendingBw.map((b) => ({
+          id: b.id,
+          date: b.date,
+          weight_kg: b.weight_kg,
+          body_fat_pct: b.body_fat_pct ?? null,
+          skeletal_muscle_kg: b.skeletal_muscle_kg ?? null,
+          note: b.note ?? null,
+          created_at: b.created_at,
+          updated_at: b.updated_at,
+        }));
+        const { error: bwErr } = await supabase
+          .from("body_weights")
+          .upsert(bwPayload, { onConflict: "id" });
+        if (!bwErr) {
+          pushed += pendingBw.length;
+          await db.body_weight.bulkPut(
+            pendingBw.map((b) => ({ ...b, sync_status: "synced" }))
+          );
+        }
+      }
+
+      const { data: remoteBw } = await supabase
+        .from("body_weights")
+        .select("*")
+        .limit(1000);
+
+      if (remoteBw && remoteBw.length > 0) {
+        for (const rb of remoteBw) {
+          const local = await db.body_weight.get(rb.id);
+          if (!local || new Date(rb.updated_at) > new Date(local.updated_at)) {
+            await db.body_weight.put({
+              id: rb.id,
+              date: rb.date,
+              weight_kg: Number(rb.weight_kg),
+              body_fat_pct: rb.body_fat_pct ? Number(rb.body_fat_pct) : undefined,
+              skeletal_muscle_kg: rb.skeletal_muscle_kg ? Number(rb.skeletal_muscle_kg) : undefined,
+              note: rb.note || undefined,
+              created_at: rb.created_at,
+              updated_at: rb.updated_at,
+              sync_status: "synced",
+            });
+            pulled++;
+          }
+        }
+      }
+    } catch {
+      // 雲端資料表未建立時優雅忽略，不中斷主流程
     }
 
     const now = new Date().toISOString();
