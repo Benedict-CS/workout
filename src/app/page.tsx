@@ -235,6 +235,14 @@ export default function HomePage() {
     }
 
     loadData();
+
+    const handleDataChanged = () => {
+      loadData();
+    };
+    window.addEventListener("workout:data_changed", handleDataChanged);
+    return () => {
+      window.removeEventListener("workout:data_changed", handleDataChanged);
+    };
   }, []);
 
   function handleCopyMarkdown(e: React.MouseEvent, session: WorkoutSession) {

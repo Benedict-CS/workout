@@ -109,17 +109,33 @@ function NewWorkoutForm() {
     const m = parseInt(parts[1], 10);
     const d = parseInt(parts[2], 10);
 
-    // 計算當月第幾次
-    const currentMonthCount = await db.sessions
-      .where("month_key")
-      .equals(monthKey)
-      .filter((s) => !s.deleted_at)
-      .count();
-
-    const monthlyIndex = currentMonthCount + 1;
     const finalLocation = location.trim();
     const finalMuscle = targetMuscle;
     const sessionId = `session-${date}-${Date.now()}`;
+
+    // 計算當月第幾次
+    // 注意：重訓的「第 X 次」是指當月重訓場次（排除游泳）！
+    // 游泳不帶「第 X 次」序號，且不計入重訓累計序號
+    let monthlyIndex = 1;
+    if (finalMuscle === "游泳") {
+      const swimCount = await db.sessions
+        .where("month_key")
+        .equals(monthKey)
+        .filter((s) => !s.deleted_at && s.target_muscle === "游泳")
+        .count();
+      monthlyIndex = swimCount + 1;
+    } else {
+      const weightSessionsInMonth = await db.sessions
+        .where("month_key")
+        .equals(monthKey)
+        .filter((s) => !s.deleted_at && s.target_muscle !== "游泳")
+        .toArray();
+      const maxMonthlyIndex = weightSessionsInMonth.reduce(
+        (max, s) => Math.max(max, s.monthly_index || 0),
+        0
+      );
+      monthlyIndex = maxMonthlyIndex + 1;
+    }
 
     // 格式化標準命名：
     // 若為游泳，如 "11/13 (游泳) - 交大游泳池 (下午)" 或 "11/13 (游泳) - 清大游泳池 [清大 alvaro 請]"

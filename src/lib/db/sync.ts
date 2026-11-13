@@ -328,12 +328,11 @@ export async function runFullSync(): Promise<SyncResult> {
         }
       }
 
-      // 單一真實來源 (SSOT) 修復：清除本地已標記 synced 但雲端已被刪除的孤兒記錄（例如已被清理的 16 筆重複游泳或 11/13 測試記錄）
+      // 單一真實來源 (SSOT) 修復：清除本地已標記 synced 但雲端已被刪除的孤兒記錄
       const localAll = await db.sessions.toArray();
       const nowMs = Date.now();
       const orphaned = localAll.filter((s) => {
         if (remoteIdSet.has(s.id)) return false;
-        if (s.date === "2026-11-13") return true;
         if (s.sync_status === "synced" || s.id.startsWith("session-swim-")) return true;
         const createdMs = new Date(s.created_at).getTime();
         if (!isNaN(createdMs) && nowMs - createdMs > 5 * 60 * 1000) return true;
@@ -500,6 +499,9 @@ export async function runFullSync(): Promise<SyncResult> {
     const now = new Date().toISOString();
     if (typeof window !== "undefined") {
       localStorage.setItem("workout_last_sync_time", now);
+      if (pulled > 0 || pushed > 0) {
+        window.dispatchEvent(new CustomEvent("workout:data_changed"));
+      }
     }
 
     return {
