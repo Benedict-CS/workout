@@ -92,9 +92,22 @@ export function formatSessionToMarkdown(
       let setLabel = "";
       let note = "";
 
-      if (s.set_type === "warmup") {
+      const raw = s.raw_text || "";
+      const notes = s.notes || "";
+      const isWarmupOrActivation =
+        s.set_type === "warmup" ||
+        raw.includes("熱身") ||
+        raw.includes("激發") ||
+        raw.includes("試重") ||
+        notes.includes("熱身") ||
+        notes.includes("激發") ||
+        notes.includes("試重");
+
+      if (isWarmupOrActivation) {
         setLabel = "";
-        note = " 熱身";
+        if (!raw.includes("熱身") && !raw.includes("激發") && !raw.includes("試重") && !notes.includes("熱身")) {
+          note = " 熱身";
+        }
       } else {
         formalSetCount += 1;
         setLabel = `set ${formalSetCount}: `;
@@ -122,10 +135,10 @@ export function formatSessionToMarkdown(
         }).join(" ");
       }
 
-      // 如果有 raw_text 且符合標準格式則直接沿用，否則標準拼裝
+      // 乾淨移除 raw_text 殘留的舊 set \d+: 字樣，依當前動作內順序加上正確 setLabel (熱身不帶 set，正式組自 set 1 起算)
       if (s.raw_text && s.raw_text.includes("Kg") && !s.sub_fields?.length) {
-        // 如果 raw_text 自帶 set 標記或為熱身
-        lines.push(`  - ${s.raw_text.trim()}`);
+        const cleanBody = s.raw_text.replace(/^set\s*\d+:\s*/i, "").trim();
+        lines.push(`  - ${setLabel}${cleanBody}`);
       } else {
         lines.push(`  - ${setLabel}${s.weight_kg}Kg x${s.reps}${subText}${note}`);
       }

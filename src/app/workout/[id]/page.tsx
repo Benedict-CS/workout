@@ -252,6 +252,24 @@ export default function WorkoutDetailPage({
     }
   }
 
+  // 判定是否為熱身或激發/試重組 (不佔用正式組序號)
+  function isWarmupOrActivation(s: SetItem): boolean {
+    if (s.set_type === "warmup") return true;
+    const raw = s.raw_text || "";
+    const notes = s.notes || "";
+    if (raw.includes("熱身") || raw.includes("激發") || raw.includes("試重")) return true;
+    if (notes.includes("熱身") || notes.includes("激發") || notes.includes("試重")) return true;
+    return false;
+  }
+
+  // 取得熱身組徽章標籤 (如：熱身、激發、試重)
+  function getWarmupLabel(s: SetItem): string {
+    const text = `${s.raw_text || ""} ${s.notes || ""}`;
+    if (text.includes("神經激發") || text.includes("激發")) return "激發";
+    if (text.includes("試重")) return "試重";
+    return "熱身";
+  }
+
   // 格式化組數 raw_text
   function formatSetRawText(
     formalIndex: number,
@@ -263,7 +281,11 @@ export default function WorkoutDetailPage({
   ): string {
     let mainPart = "";
     if (setType === "warmup") {
-      mainPart = `${weight}Kg x${reps} 熱身`;
+      if (notes.includes("激發") || notes.includes("試重")) {
+        mainPart = `${weight}Kg x${reps}`;
+      } else {
+        mainPart = `${weight}Kg x${reps} 熱身`;
+      }
     } else if (setType === "drop" && subFields.length === 0) {
       mainPart = `set ${formalIndex}: ${weight}Kg x${reps} (遞減組)`;
     } else {
@@ -302,7 +324,7 @@ export default function WorkoutDetailPage({
     const weightNum = parseFloat(inputWeight) || 0;
 
     const exSets = sets.filter((s) => s.exercise_id === selectedExId);
-    const formalIndex = exSets.filter((s) => s.set_type === "normal" || s.set_type === "drop").length + 1;
+    const formalIndex = inputType === "warmup" ? 0 : exSets.filter((s) => !isWarmupOrActivation(s)).length + 1;
 
     const raw = formatSetRawText(
       formalIndex,
@@ -351,7 +373,7 @@ export default function WorkoutDetailPage({
     const last = exSets[exSets.length - 1];
 
     const newOrder = sets.length + 1;
-    const formalIndex = exSets.filter((s) => s.set_type === "normal" || s.set_type === "drop").length + 1;
+    const formalIndex = isWarmupOrActivation(last) ? 0 : exSets.filter((s) => !isWarmupOrActivation(s)).length + 1;
     const raw = formatSetRawText(
       formalIndex,
       last.set_type,
@@ -541,6 +563,42 @@ export default function WorkoutDetailPage({
     runFullSync().catch(() => {});
   }
 
+  // 刪除整個動作組 (包含該動作的所有組數)
+  async function handleDeleteEntireExercise(exId?: string, exName?: string, count?: number) {
+    if (!exId) return;
+    const targetName = exName || "此動作";
+    const toDelete = sets.filter((s) => s.exercise_id === exId);
+    if (toDelete.length === 0) return;
+
+    if (!confirm(`確定要刪除整個動作【${targetName}】及其所有 ${toDelete.length} 組紀錄嗎？`)) {
+      return;
+    }
+
+    const remaining = sets.filter((s) => s.exercise_id !== exId);
+    let currentOrder = 1;
+    const reordered: SetItem[] = remaining.map((s) => ({
+      ...s,
+      set_order: currentOrder++,
+      updated_at: new Date().toISOString(),
+      sync_status: "pending" as const,
+    }));
+
+    await db.transaction("rw", [db.sets], async () => {
+      await db.sets.bulkDelete(toDelete.map((s) => s.id));
+      if (reordered.length > 0) {
+        await db.sets.bulkPut(reordered);
+      }
+    });
+
+    setSets(reordered);
+
+    // 同步至雲端刪除
+    toDelete.forEach((s) => {
+      deleteRemoteSet(s.id).catch(() => {});
+    });
+    runFullSync().catch(() => {});
+  }
+
   // 開啟修改單組
   function handleStartEditSet(s: SetItem) {
     setEditingSet(s);
@@ -557,8 +615,11 @@ export default function WorkoutDetailPage({
     const w = parseFloat(editSetWeight) || 0;
     const r = parseInt(editSetReps, 10) || 0;
 
+    const exSets = sets.filter((s) => s.exercise_id === editingSet.exercise_id);
+    const formalIndex = editSetType === "warmup" ? 0 : exSets.filter((s) => s.id !== editingSet.id && !isWarmupOrActivation(s)).length + 1;
+
     const raw = formatSetRawText(
-      editingSet.set_order,
+      formalIndex,
       editSetType,
       w,
       r,
@@ -851,7 +912,16 @@ export default function WorkoutDetailPage({
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                   </span>
-                  <span>當前進行中組數 (第 #{nextUpSet.set_order} 組)</span>
+                  <span>當前進行中組數 ({(() => {
+                    if (isWarmupOrActivation(nextUpSet)) {
+                      return `${getWarmupLabel(nextUpSet)}組`;
+                    }
+                    const nextUpExSets = sets.filter((s) => s.exercise_id === nextUpSet.exercise_id);
+                    const formalIdx = nextUpExSets
+                      .slice(0, nextUpExSets.findIndex((s) => s.id === nextUpSet.id) + 1)
+                      .filter((s) => !isWarmupOrActivation(s)).length;
+                    return `第 #${formalIdx} 正式組`;
+                  })()})</span>
                 </div>
                 <div className="text-sm font-black text-white truncate">
                   【{nextUpExercise?.name || "動作"}】
@@ -905,9 +975,25 @@ export default function WorkoutDetailPage({
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs bg-[#181b26] text-gray-400 px-2 py-0.5 rounded border border-[#262b3d]">
-                      {exSets.length} 組
-                    </span>
+                    {/* 組數標籤：區分正式組與熱身組 */}
+                    {(() => {
+                      const warmupCount = exSets.filter((s) => isWarmupOrActivation(s)).length;
+                      const formalCount = exSets.length - warmupCount;
+                      if (warmupCount > 0) {
+                        return (
+                          <span className="text-xs bg-[#181b26] text-gray-300 px-2 py-0.5 rounded border border-[#262b3d] font-medium">
+                            <span className="text-emerald-400 font-bold">{formalCount}</span> 正式組
+                            <span className="text-gray-500 mx-1">•</span>
+                            <span className="text-blue-400 font-bold">{warmupCount}</span> 熱身
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="text-xs bg-[#181b26] text-gray-400 px-2 py-0.5 rounded border border-[#262b3d]">
+                          {exSets.length} 組
+                        </span>
+                      );
+                    })()}
 
                     {/* 換順序按鈕：當健身器材有人使用時可彈性調換 */}
                     <div className="flex items-center gap-0.5 bg-[#181b26] p-0.5 rounded-lg border border-[#262b3d]">
@@ -930,6 +1016,16 @@ export default function WorkoutDetailPage({
                         <ChevronDown className="w-3.5 h-3.5" />
                       </button>
                     </div>
+
+                    {/* 刪除整個動作組按鈕 (一鍵移除此動作與所有組數) */}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteEntireExercise(exercise?.id, exercise?.name, exSets.length)}
+                      className="p-1.5 bg-[#181b26] hover:bg-red-950/40 text-gray-400 hover:text-red-400 rounded-lg border border-[#262b3d] hover:border-red-500/40 transition-all cursor-pointer"
+                      title={`刪除整個動作【${exercise?.name || "此動作"}】及所有組數`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
 
@@ -953,6 +1049,11 @@ export default function WorkoutDetailPage({
                   {exSets.map((s, sIdx) => {
                     const isDone = isSetCompleted(s, session.date);
                     const isCurrent = nextUpSet?.id === s.id;
+                    const isWarmup = isWarmupOrActivation(s);
+                    const warmupLabel = isWarmup ? getWarmupLabel(s) : "";
+                    const formalIndex = !isWarmup
+                      ? exSets.slice(0, sIdx + 1).filter((x) => !isWarmupOrActivation(x)).length
+                      : 0;
 
                     return (
                       <div
@@ -982,9 +1083,22 @@ export default function WorkoutDetailPage({
                             <Check className="w-3.5 h-3.5 stroke-[3]" />
                           </button>
 
-                          <span className={`font-mono font-bold ${isCurrent ? "text-emerald-400 font-black" : "text-gray-500"} w-5 shrink-0`}>
-                            #{sIdx + 1}
-                          </span>
+                          {/* 序號標記：熱身/激發組顯示藍色標籤 (不佔用正式組序號)，正式組依序由 #1 起算 */}
+                          {isWarmup ? (
+                            <span
+                              className="font-mono text-[10px] font-black px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 shrink-0"
+                              title="熱身/準備組 (不計入正式組序號)"
+                            >
+                              {warmupLabel}
+                            </span>
+                          ) : (
+                            <span
+                              className={`font-mono font-bold ${isCurrent ? "text-emerald-400 font-black" : "text-gray-400"} w-5 shrink-0 text-xs`}
+                              title={`第 ${formalIndex} 正式組`}
+                            >
+                              #{formalIndex}
+                            </span>
+                          )}
 
                           <span className={`font-bold truncate ${isDone ? "text-gray-400 line-through decoration-emerald-500/50" : isCurrent ? "text-white font-black" : "text-gray-100"}`}>
                             {cleanSetDisplay(s)}
@@ -1003,13 +1117,8 @@ export default function WorkoutDetailPage({
                         </div>
 
                         <div className="flex items-center gap-1.5 shrink-0">
-                          {s.set_type === "warmup" && (
-                            <span className="bg-blue-500/20 text-blue-300 text-[10px] px-1.5 py-0.5 rounded">
-                              熱身
-                            </span>
-                          )}
                           {s.set_type === "drop" && (
-                            <span className="bg-amber-500/20 text-amber-300 text-[10px] px-1.5 py-0.5 rounded">
+                            <span className="bg-amber-500/20 text-amber-300 text-[10px] px-1.5 py-0.5 rounded font-bold">
                               遞減
                             </span>
                           )}
