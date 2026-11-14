@@ -25,6 +25,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { db } from "@/lib/db/schema";
+import { ensureDatabaseSeeded } from "@/lib/db/seed";
 import { runFullSync, deleteRemoteBodyWeight } from "@/lib/db/sync";
 import type {
   WorkoutSession,
@@ -88,6 +89,8 @@ export default function AnalyticsPage() {
     setMounted(true);
     async function loadData() {
       try {
+        await ensureDatabaseSeeded();
+
         const b3 = await db.big_three.toArray();
         if (b3.length > 0) setBigThree(b3[0]);
 
@@ -197,6 +200,14 @@ export default function AnalyticsPage() {
       }
     }
     loadData();
+
+    const handleDataChanged = () => {
+      loadData();
+    };
+    window.addEventListener("workout:data_changed", handleDataChanged);
+    return () => {
+      window.removeEventListener("workout:data_changed", handleDataChanged);
+    };
   }, []);
 
   async function handleAddBodyWeight() {
@@ -391,9 +402,9 @@ export default function AnalyticsPage() {
             <span className="text-[10px] text-gray-500 block">次</span>
           </div>
           {allTimeStats["肩"] > 0 && (
-            <div className="bg-[#181b26] p-2.5 rounded-xl border border-amber-500/40">
-              <span className="text-[11px] text-amber-400 block mb-0.5">練肩</span>
-              <span className="text-lg font-black text-amber-300">{allTimeStats["肩"]}</span>
+            <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
+              <span className="text-[11px] text-gray-400 block mb-0.5">練肩</span>
+              <span className="text-lg font-black text-white">{allTimeStats["肩"]}</span>
               <span className="text-[10px] text-gray-500 block">次</span>
             </div>
           )}
@@ -651,7 +662,7 @@ export default function AnalyticsPage() {
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30 font-bold">
-              InBody 270 實測 ({inbodyList.length} 次)
+              InBody 實測 ({inbodyList.length} 次)
             </span>
             <button
               type="button"
@@ -696,9 +707,7 @@ export default function AnalyticsPage() {
               <div className="bg-[#0f1118] p-2.5 rounded-lg border border-[#262b3d]">
                 <span className="text-[10px] text-gray-400 block mb-0.5">實測體重</span>
                 <span className="text-base font-black text-white">{latestInbody.weight_kg}</span>
-                <span className="text-[10px] text-gray-400 block mt-0.5">
-                  扣衣估淨重: <span className="text-gray-200 font-bold">{latestInbody.estimated_net_weight_kg}</span> kg
-                </span>
+                <span className="text-[10px] text-gray-400 block mt-0.5">kg</span>
               </div>
 
               <div className="bg-[#0f1118] p-2.5 rounded-lg border border-emerald-500/40 bg-emerald-500/5">
@@ -798,7 +807,7 @@ export default function AnalyticsPage() {
                 formatter={(val: any, name: any) => {
                   if (inbodyMetricTab === "smm") return [`${val} kg`, "骨骼肌 (SMM)"];
                   if (inbodyMetricTab === "pbf") return [`${val} %`, "體脂率 (PBF)"];
-                  return [`${val} kg`, name === "weight" ? "實測體重" : "扣衣淨重"];
+                  return [`${val} kg`, "實測體重"];
                 }}
                 labelFormatter={(lbl, items) => {
                   const item = items[0]?.payload;
@@ -854,7 +863,7 @@ export default function AnalyticsPage() {
         {showInbodyForm && (
           <div className="bg-[#181b26] border border-emerald-500/30 rounded-xl p-3.5 space-y-3">
             <div className="flex items-center justify-between border-b border-[#262b3d] pb-2">
-              <span className="text-xs font-bold text-emerald-400">登錄新 InBody 270 檢測結果</span>
+              <span className="text-xs font-bold text-emerald-400">登錄新 InBody 檢測結果</span>
               <button
                 type="button"
                 onClick={() => setShowInbodyForm(false)}
@@ -1016,9 +1025,6 @@ export default function AnalyticsPage() {
                 <div className="flex items-center justify-between sm:justify-end gap-3 text-[11px]">
                   <span className="text-gray-300">
                     實測 <strong className="text-white">{ib.weight_kg}kg</strong>
-                    <span className="text-gray-500 text-[10px] ml-1">
-                      (淨 {ib.estimated_net_weight_kg}kg)
-                    </span>
                   </span>
                   <span className="text-emerald-400 font-bold">
                     骨骼肌 {ib.skeletal_muscle_kg}kg

@@ -329,12 +329,15 @@ export async function ensureDatabaseSeeded(): Promise<void> {
 
   const updatedSessionCount = await db.sessions.count();
   const currentSetCount = await db.sets.count();
+  const currentSwimCount = await db.sessions.where("target_muscle").equals("游泳").count();
   const pullupSetCount = await db.sets.where("exercise_id").equals("ex-pullup").count();
   const hasOldNovSession = (await db.sessions.where("id").equals("session-2026-11-10-1").count()) > 0;
 
-  // 若尚未初始化，或組數不完整 (全庫共 1503 組) / 引體向上組數缺漏 / 舊版 session ID 不匹配，則自動更新為 100% 完整歷史資料
+  // 若尚未初始化，或場次不完整 (全庫 102 場 / 22 場游泳) / 組數不完整 (全庫共 1503 組) / 引體向上組數缺漏 / 舊版 session ID 不匹配，則自動更新為 100% 完整歷史資料
   if (
     updatedSessionCount === 0 ||
+    updatedSessionCount < seedData.sessions.length ||
+    currentSwimCount < 22 ||
     currentSetCount < seedData.sets.length ||
     pullupSetCount < 80 ||
     hasOldNovSession ||
@@ -395,6 +398,15 @@ export async function ensureDatabaseSeeded(): Promise<void> {
       sync_status: "synced" as const,
     }));
     await db.inbody_records.bulkPut(formattedInbody as any);
+  }
+
+  // 檢查並補齊缺失的游泳或歷史訓練場次 (確保本地全庫 102 場 / 22 場游泳 100% 齊全)
+  const allCurSessions = await db.sessions.toArray();
+  const allCurIds = new Set(allCurSessions.map((s) => s.id));
+  const missingCurated = (seedData.sessions as any[]).filter((s) => !allCurIds.has(s.id));
+  if (missingCurated.length > 0) {
+    console.log(`Injecting ${missingCurated.length} missing sessions from seedData...`);
+    await db.sessions.bulkPut(missingCurated);
   }
 
   // 檢查並徹底清理 11/14 今日訓練組數污染 (41 組 -> 正確乾淨 21 組)
