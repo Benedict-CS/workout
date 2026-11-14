@@ -568,7 +568,7 @@ export default function HistoryPage() {
                       </span>
                     </div>
 
-                    {/* 訓練項目標籤 (紅/藍/綠/黃清晰部位色，顯示核心動作如引體、臥推) */}
+                    {/* 訓練部位標籤 (紅/藍/綠/黃清晰部位色) */}
                     <div className="space-y-0.5 overflow-hidden w-full">
                       {daySessions.map((ds) => {
                         let badgeStyle = "bg-rose-500/20 text-rose-300 border-rose-500/30";
@@ -581,27 +581,16 @@ export default function HistoryPage() {
                         if (ds.target_muscle.includes("泳"))
                           badgeStyle = "bg-blue-500/20 text-blue-300 border-blue-500/30";
 
-                        const shortLabel = ds.target_muscle.replace("部", "").slice(0, 2);
-
-                        // 判斷此場訓練是否有引體向上、臥推、深蹲、硬舉
-                        const sessSets = sets.filter((st) => st.session_id === ds.id && !st.deleted_at);
-                        const hasPullup = sessSets.some((st) => st.exercise_id === "ex-pullup" || st.exercise_id === "ex-assisted-pullup");
-                        const hasBench = sessSets.some((st) => st.exercise_id === "ex-bench");
-                        const hasSquat = sessSets.some((st) => st.exercise_id === "ex-squat");
-                        const hasDeadlift = sessSets.some((st) => st.exercise_id === "ex-deadlift" || st.exercise_id === "ex-trap-bar-deadlift");
-
-                        let keyAction = "";
-                        if (hasPullup) keyAction = "引體";
-                        else if (hasBench) keyAction = "臥推";
-                        else if (hasSquat) keyAction = "深蹲";
-                        else if (hasDeadlift) keyAction = "硬舉";
+                        const shortLabel = ds.target_muscle.includes("泳")
+                          ? "游泳"
+                          : ds.target_muscle.replace("部", "").slice(0, 2);
 
                         return (
                           <div
                             key={ds.id}
-                            className={`text-[9px] sm:text-[10px] font-black px-1 py-0.5 rounded border text-center truncate ${badgeStyle}`}
+                            className={`text-[10px] font-black px-1 py-0.5 rounded border text-center truncate ${badgeStyle}`}
                           >
-                            {keyAction ? `${shortLabel}·${keyAction}` : shortLabel}
+                            {shortLabel}
                           </div>
                         );
                       })}
