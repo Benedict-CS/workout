@@ -11,11 +11,9 @@ import {
   Trash2,
   Award,
   Activity,
-  Sparkles,
   Clock,
   ChevronDown,
   ChevronUp,
-  Info,
 } from "lucide-react";
 import {
   LineChart,
@@ -692,28 +690,8 @@ export default function AnalyticsPage() {
                 <span className="text-base font-black text-cyan-300">
                   {inbodyWeightDiff > 0 ? `+${inbodyWeightDiff}` : inbodyWeightDiff}
                 </span>
-                <span className="text-[10px] text-cyan-400/80 block mt-0.5">kg (首測 59.3kg)</span>
+                <span className="text-[10px] text-cyan-400/80 block mt-0.5">kg (首測 {firstInbody?.weight_kg || 60.3}kg)</span>
               </div>
-            </div>
-
-            {/* Science & Context Callout */}
-            <div className="bg-[#0f1118]/80 border border-[#262b3d] rounded-lg p-2.5 text-[11px] text-gray-300 space-y-1">
-              <div className="flex items-start gap-1.5 text-emerald-400 font-bold">
-                <Sparkles className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                <span>骨骼肌成長突破 30.0 kg 大關！</span>
-              </div>
-              <p className="text-[10px] text-gray-400 leading-relaxed pl-5">
-                從 8 月初 28.2kg ➔ 8 月底 29.6kg ➔ 11 月中正式突破 <strong className="text-emerald-300">30.0kg</strong>，純肌肉實質淨增 <strong className="text-emerald-300">+1.8 kg</strong>。
-              </p>
-              <div className="flex items-start gap-1.5 text-cyan-400 font-bold pt-1 border-t border-[#262b3d]/60 mt-1">
-                <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                <span>秤盤量測 vs InBody 數據校正解析</span>
-              </div>
-              <p className="text-[10px] text-gray-400 leading-relaxed pl-5">
-                • <strong className="text-white">衣物重量影響</strong>：11/12 OKOK 秤盤早晨空腹裸量為 <strong className="text-white">63.6 kg</strong>，同一天早上 09:09 InBody 穿衣量測為 <strong className="text-white">64.2 kg</strong>，兩者恰相差 0.6 kg（衣物鞋重）。
-                <br />
-                • <strong className="text-white">中午量測差異</strong>：10 月至 11 月中午檢測包含早餐飲水與衣物，實測約比晨起空腹高 1.2~1.5kg；因此追蹤「純骨骼肌 (SMM)」比單純看體重更能精準掌握增肌成效。
-              </p>
             </div>
           </div>
         )}

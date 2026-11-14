@@ -21,10 +21,17 @@ export async function ensureDatabaseSeeded(): Promise<void> {
   }
 
   const updatedSessionCount = await db.sessions.count();
+  const currentSetCount = await db.sets.count();
+  const pullupSetCount = await db.sets.where("exercise_id").equals("ex-pullup").count();
 
-  // 若尚未初始化，或尚未包含完整場次 (共 102 場) / 缺游泳，則自動更新為精煉資料
-  if (updatedSessionCount === 0 || updatedSessionCount < seedData.sessions.length || !hasSwimSession) {
-    console.log("Seeding / Migrating to curated staple exercises & sessions...");
+  // 若尚未初始化，或組數不完整 (全庫共 1503 組) / 引體向上組數缺漏，則自動更新為 100% 完整歷史資料
+  if (
+    updatedSessionCount === 0 ||
+    currentSetCount < seedData.sets.length ||
+    pullupSetCount < 50 ||
+    !hasSwimSession
+  ) {
+    console.log("Seeding / Migrating to 100% complete full-history exercises & sets (including all pull-ups)...");
 
     await db.transaction("rw", [db.sessions, db.exercises, db.sets, db.big_three], async () => {
       const userCustomExercises = existingExercises.filter(
@@ -69,7 +76,9 @@ export async function ensureDatabaseSeeded(): Promise<void> {
 
   // 檢查並載入 InBody 里程碑身體組成檢測 (17 次多頻電極實測)
   const inbodyCount = await db.inbody_records.count();
-  if (inbodyCount < inbodyData.length) {
+  const hasBogusInbody = (await db.inbody_records.filter((ib) => ib.date === "2026-08-02" || ib.date === "2026-08-21").count()) > 0;
+  if (inbodyCount < inbodyData.length || hasBogusInbody) {
+    await db.inbody_records.clear();
     const formattedInbody = inbodyData.map((ib: any) => ({
       ...ib,
       created_at: ib.created_at || `${ib.date}T${ib.time || "12:00"}:00.000Z`,
