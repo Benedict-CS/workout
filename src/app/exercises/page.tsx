@@ -14,6 +14,7 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
+import { runFullSync, deleteRemoteExercise } from "@/lib/db/sync";
 import type { Exercise, SetItem, MuscleGroup, WeightType } from "@/lib/types";
 
 interface ExerciseStat {
@@ -92,7 +93,12 @@ export default function ExercisesPage() {
 
   async function handleToggleFavorite(ex: Exercise) {
     const updated = !ex.is_favorite;
-    await db.exercises.update(ex.id, { is_favorite: updated });
+    await db.exercises.update(ex.id, {
+      is_favorite: updated,
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    });
+    runFullSync().catch(() => {});
     setStats((prev) =>
       prev.map((item) =>
         item.exercise.id === ex.id
@@ -121,6 +127,7 @@ export default function ExercisesPage() {
     setNewName("");
     setNewNotes("");
     setShowAddModal(false);
+    runFullSync().catch(() => {});
     await loadData();
   }
 
@@ -147,12 +154,15 @@ export default function ExercisesPage() {
 
     await db.exercises.put(updated);
     setEditingEx(null);
+    runFullSync().catch(() => {});
     await loadData();
   }
 
   async function handleDeleteExercise(ex: Exercise) {
     if (!confirm(`確定要從動作庫刪除【${ex.name}】嗎？`)) return;
     await db.exercises.delete(ex.id);
+    deleteRemoteExercise(ex.id).catch(() => {});
+    runFullSync().catch(() => {});
     await loadData();
   }
 

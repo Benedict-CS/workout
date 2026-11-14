@@ -580,3 +580,16 @@ export async function deleteRemoteBodyWeight(id: string): Promise<void> {
   }
 }
 
+/**
+ * 遠端刪除自訂動作紀錄
+ */
+export async function deleteRemoteExercise(id: string): Promise<void> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  try {
+    await supabase.from("exercises").delete().eq("id", id);
+  } catch (err) {
+    console.error("Failed to delete remote exercise:", err);
+  }
+}
+

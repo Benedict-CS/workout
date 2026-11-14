@@ -538,27 +538,49 @@ export default function HomePage() {
                       }}
                       className="px-3 py-2.5 text-xs cursor-pointer active:bg-[#202533]"
                     >
-                      {/* 主行：部位 badge + 標題 + 展開箭頭 */}
-                      <div className="flex items-start gap-2">
-                        <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                      {/* 主行：部位 badge + 標題與副資訊 + 展開操作 */}
+                      <div className="flex items-start gap-2.5">
+                        <div className="flex flex-col items-center gap-1 shrink-0 mt-0.5">
                           <span className={`px-2 py-0.5 rounded font-black text-xs border ${getMuscleBadgeColor(sess.target_muscle)}`}>
                             {primaryMuscle}
                           </span>
-                          {sess.status === "in_progress" && (
-                            <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
-                              進行中
-                            </span>
-                          )}
                         </div>
 
-                        <span
-                          className="font-bold text-gray-100 hover:text-emerald-400 transition-colors flex-1 min-w-0 break-words select-text cursor-text text-[13px] sm:text-sm leading-snug"
-                          title="可直接選取複製文字"
-                        >
-                          {cleanedTitle}
-                        </span>
+                        {/* 中間文字區：標題與副標題自然對齊，免去人工 margin-left 跑版 */}
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span
+                              className="font-bold text-gray-100 hover:text-emerald-400 transition-colors break-words select-text cursor-text text-[13px] sm:text-sm leading-snug"
+                              title="可直接選取複製文字"
+                            >
+                              {cleanedTitle}
+                            </span>
+                            {sess.status === "in_progress" && (
+                              <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                                進行中
+                              </span>
+                            )}
+                          </div>
 
-                        <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {sess.location && (
+                              <span className="text-[11px] sm:text-xs text-gray-400 font-medium">
+                                📍 {sess.location}
+                              </span>
+                            )}
+                            {sess.status === "in_progress" ? (
+                              <span className="text-[11px] sm:text-xs bg-amber-950/40 text-amber-300 px-2 py-0.5 rounded border border-amber-500/40 font-bold">
+                                已做 {formalSets.filter((s) => s.is_completed !== false).length}/{formalSets.length} 組
+                              </span>
+                            ) : (
+                              <span className="text-[11px] sm:text-xs bg-[#090a0f] text-gray-300 px-2 py-0.5 rounded border border-[#262b3d] font-semibold">
+                                {formalSets.length} 組
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0 mt-0.5">
                           {/* 一鍵複製標題文字按鈕 */}
                           <button
                             type="button"
@@ -590,24 +612,6 @@ export default function HomePage() {
                             }`}
                           />
                         </div>
-                      </div>
-
-                      {/* 副行：場地 + 組數 */}
-                      <div className="flex items-center gap-2 mt-1 ml-[calc(1.75rem+0.5rem)] flex-wrap">
-                        {sess.location && (
-                          <span className="text-[11px] sm:text-xs text-gray-400 font-medium">
-                            📍 {sess.location}
-                          </span>
-                        )}
-                        {sess.status === "in_progress" ? (
-                          <span className="text-[11px] sm:text-xs bg-amber-950/40 text-amber-300 px-2 py-0.5 rounded border border-amber-500/40 font-bold">
-                            已做 {formalSets.filter((s) => s.is_completed !== false).length}/{formalSets.length} 組
-                          </span>
-                        ) : (
-                          <span className="text-[11px] sm:text-xs bg-[#090a0f] text-gray-300 px-2 py-0.5 rounded border border-[#262b3d] font-semibold">
-                            {formalSets.length} 組
-                          </span>
-                        )}
                       </div>
                     </div>
 

@@ -502,6 +502,9 @@ export default function HistoryPage() {
                 {curMonthMuscleCounts["腿"] > 0 && (
                   <span className="text-emerald-400">腿 {curMonthMuscleCounts["腿"]}</span>
                 )}
+                {curMonthMuscleCounts["肩"] > 0 && (
+                  <span className="text-amber-400">肩 {curMonthMuscleCounts["肩"]}</span>
+                )}
                 {curMonthMuscleCounts["游泳"] > 0 && (
                   <span className="text-blue-400">泳 {curMonthMuscleCounts["游泳"]}</span>
                 )}
@@ -582,9 +585,7 @@ export default function HistoryPage() {
                         if (ds.target_muscle.includes("泳"))
                           badgeStyle = "bg-blue-500/20 text-blue-300 border-blue-500/30";
 
-                        const shortLabel = ds.target_muscle.includes("泳")
-                          ? "游泳"
-                          : ds.target_muscle.replace("部", "").slice(0, 2);
+                        const shortLabel = getPrimaryMuscle(ds.target_muscle);
 
                         return (
                           <div
@@ -719,7 +720,7 @@ export default function HistoryPage() {
                             >
                               <strong className="text-white">{name}</strong>
                               {data.maxWeight > 0 ? ` ${data.maxWeight}Kg` : ""}
-                              <span className="text-gray-500 ml-1">({data.setCount}組)</span>
+                              <span className="text-gray-500 ml-1">({data.setCount > 0 ? `${data.setCount}組` : "熱身"})</span>
                             </span>
                           ))}
                         </div>
