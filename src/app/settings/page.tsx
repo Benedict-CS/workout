@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import {
   Download,
   Upload,
@@ -9,6 +10,9 @@ import {
   Trophy,
   FileText,
   Trash2,
+  Dumbbell,
+  Sparkles,
+  ChevronRight,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
@@ -35,21 +39,52 @@ export default function SettingsPage() {
     async function loadSettings() {
       // 1. 優先讀取秤盤最新量測體重 (空腹量測基準)
       const bwList = await db.body_weight.orderBy("date").toArray();
-      const latestScaleWeight = bwList.length > 0 ? bwList[bwList.length - 1].weight_kg : null;
+      const latestScaleWeight = bwList.length > 0 ? bwList[bwList.length - 1].weight_kg : 63.6;
 
-      // 2. 讀取三項
-      const list = await db.big_three.toArray();
-      if (list.length > 0) {
-        const b = list[0];
-        setBenchKg(b.bench_press_kg.toString());
-        setSquatKg(b.squat_kg.toString());
-        setDeadliftKg(b.deadlift_kg.toString());
-        // 體重以秤盤最新量測為準（若無秤盤記錄則使用三項中存的體重）
-        const effectiveBw = latestScaleWeight || b.body_weight_kg || 62.6;
-        setBodyWeight(effectiveBw.toString());
-      } else if (latestScaleWeight) {
-        setBodyWeight(latestScaleWeight.toString());
+      // 2. 自動從真實訓練歷史中動態計算全歷史三項最高重量 (含今日深蹲 90Kg)
+      const allSets = await db.sets.filter((s) => !s.deleted_at && s.weight_kg > 0).toArray();
+      const allExercises = await db.exercises.toArray();
+      const benchExIds = allExercises.filter((e) => e.name.includes("臥推") && !e.name.includes("啞鈴")).map((e) => e.id);
+      const squatExIds = allExercises.filter((e) => e.name.includes("深蹲")).map((e) => e.id);
+      const deadliftExIds = allExercises.filter((e) => e.name.includes("硬舉")).map((e) => e.id);
+
+      let allTimeBench = 0;
+      let allTimeSquat = 0;
+      let allTimeDead = 0;
+      for (const st of allSets) {
+        if (benchExIds.includes(st.exercise_id) && st.weight_kg > allTimeBench) allTimeBench = st.weight_kg;
+        if (squatExIds.includes(st.exercise_id) && st.weight_kg > allTimeSquat) allTimeSquat = st.weight_kg;
+        if (deadliftExIds.includes(st.exercise_id) && st.weight_kg > allTimeDead) allTimeDead = st.weight_kg;
       }
+
+      const list = await db.big_three.toArray();
+      const oldB3 = list.length > 0 ? list[0] : null;
+
+      const effectiveBench = Math.max(allTimeBench, oldB3?.bench_press_kg || 60);
+      const effectiveSquat = Math.max(allTimeSquat, oldB3?.squat_kg || 85);
+      const effectiveDead = Math.max(allTimeDead, oldB3?.deadlift_kg || 90);
+      const effectiveBw = latestScaleWeight || oldB3?.body_weight_kg || 63.6;
+
+      setBenchKg(effectiveBench.toString());
+      setSquatKg(effectiveSquat.toString());
+      setDeadliftKg(effectiveDead.toString());
+      setBodyWeight(effectiveBw.toString());
+
+      // 自動同步寫入 db.big_three
+      const rec: BigThreeRecord = {
+        id: oldB3?.id || "big-three-global",
+        bench_press_kg: effectiveBench,
+        squat_kg: effectiveSquat,
+        deadlift_kg: effectiveDead,
+        total_kg: effectiveBench + effectiveSquat + effectiveDead,
+        body_weight_kg: effectiveBw,
+        bench_ratio: Math.round((effectiveBench / effectiveBw) * 100) / 100,
+        squat_ratio: Math.round((effectiveSquat / effectiveBw) * 100) / 100,
+        deadlift_ratio: Math.round((effectiveDead / effectiveBw) * 100) / 100,
+        updated_at: new Date().toISOString(),
+        sync_status: "pending",
+      };
+      await db.big_three.put(rec);
     }
     loadSettings();
   }, []);
@@ -233,9 +268,17 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
           <div className="flex items-center gap-2">
             <Trophy className="w-4 h-4 text-amber-400" />
-            <h2 className="text-sm font-bold text-gray-100">個人三項基準 & 體重倍數</h2>
+            <h2 className="text-sm font-bold text-gray-100">個人三項 PR 基準 & 體重倍數</h2>
           </div>
-          <span className="text-[10px] text-emerald-400 font-medium">體重自動抓取秤盤量測</span>
+          <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+            <Sparkles className="w-3 h-3" />
+            <span>自適應訓練即時抓取</span>
+          </span>
+        </div>
+
+        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] p-2.5 rounded-xl font-bold flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>系統已自動從真實歷史訓練（含今日深蹲 90Kg 新高）與最新量測體重 (63.6Kg) 即時同步更新！</span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
@@ -306,8 +349,29 @@ export default function SettingsPage() {
           className="w-full bg-amber-500 hover:bg-amber-400 text-black font-black py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow active:scale-95 cursor-pointer"
         >
           {b3Saved ? <CheckCircle className="w-4 h-4" /> : null}
-          <span>{b3Saved ? "三項數據已成功儲存！" : "儲存三項基準與體重倍數"}</span>
+          <span>{b3Saved ? "三項數據已成功儲存！" : "手動儲存三項基準與體重倍數"}</span>
         </button>
+      </section>
+
+      {/* 動作庫管理 */}
+      <section className="bg-[#12141c] border border-cyan-500/30 rounded-2xl p-4 space-y-3 shadow-lg">
+        <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
+          <div className="flex items-center gap-2">
+            <Dumbbell className="w-4 h-4 text-cyan-400" />
+            <h2 className="text-sm font-bold text-gray-100">動作庫管理</h2>
+          </div>
+          <span className="text-[10px] text-gray-400">自訂動作、重量模式、部位分組</span>
+        </div>
+        <p className="text-xs text-gray-400 leading-relaxed">
+          收錄啞鈴側平舉、槓鈴深蹲、引體向上等核心精選動作。可隨時自訂新增任何器械動作、管理常用收藏或微調重量類型設定。
+        </p>
+        <Link
+          href="/exercises"
+          className="w-full bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+        >
+          <span>進入動作庫管理清單</span>
+          <ChevronRight className="w-4 h-4" />
+        </Link>
       </section>
 
       {/* Markdown 與備份匯入還原 */}

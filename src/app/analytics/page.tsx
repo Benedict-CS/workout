@@ -130,6 +130,38 @@ export default function AnalyticsPage() {
         const squatExIds = allExercises.filter((e) => e.name.includes("深蹲")).map((e) => e.id);
         const deadliftExIds = allExercises.filter((e) => e.name.includes("硬舉")).map((e) => e.id);
 
+        // 🌟 自動從真實訓練歷史中動態計算全歷史三項最高重量 (含今日深蹲 90Kg) 與最新體重
+        let allTimeBench = 0;
+        let allTimeSquat = 0;
+        let allTimeDead = 0;
+        for (const st of allSets) {
+          if (benchExIds.includes(st.exercise_id) && st.weight_kg > allTimeBench) allTimeBench = st.weight_kg;
+          if (squatExIds.includes(st.exercise_id) && st.weight_kg > allTimeSquat) allTimeSquat = st.weight_kg;
+          if (deadliftExIds.includes(st.exercise_id) && st.weight_kg > allTimeDead) allTimeDead = st.weight_kg;
+        }
+
+        const latestWeight = bwList.length > 0 ? bwList[bwList.length - 1].weight_kg : (b3[0]?.body_weight_kg || 63.6);
+        const effectiveBench = Math.max(allTimeBench, b3[0]?.bench_press_kg || 60);
+        const effectiveSquat = Math.max(allTimeSquat, b3[0]?.squat_kg || 85);
+        const effectiveDead = Math.max(allTimeDead, b3[0]?.deadlift_kg || 90);
+        const effectiveTotal = effectiveBench + effectiveSquat + effectiveDead;
+
+        const effectiveB3: BigThreeRecord = {
+          id: b3[0]?.id || "big-three-global",
+          bench_press_kg: effectiveBench,
+          squat_kg: effectiveSquat,
+          deadlift_kg: effectiveDead,
+          total_kg: effectiveTotal,
+          body_weight_kg: latestWeight,
+          bench_ratio: Math.round((effectiveBench / latestWeight) * 100) / 100,
+          squat_ratio: Math.round((effectiveSquat / latestWeight) * 100) / 100,
+          deadlift_ratio: Math.round((effectiveDead / latestWeight) * 100) / 100,
+          updated_at: new Date().toISOString(),
+          sync_status: "pending",
+        };
+        setBigThree(effectiveB3);
+        await db.big_three.put(effectiveB3);
+
         const monthKeys = Array.from(new Set(sessions.map((s) => s.month_key))).sort();
         const trendList: MonthBigThreeData[] = [];
 

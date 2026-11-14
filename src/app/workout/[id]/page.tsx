@@ -38,7 +38,7 @@ import {
 } from "@/lib/db/crud";
 import { formatSessionToMarkdown } from "@/lib/markdown-generator";
 import { runFullSync, deleteRemoteSession, deleteRemoteSet } from "@/lib/db/sync";
-import type { Exercise, SetItem, WorkoutSession, WeightType, SetType, SetSubField } from "@/lib/types";
+import type { Exercise, SetItem, WorkoutSession, WeightType, SetType, SetSubField, MuscleGroup } from "@/lib/types";
 
 const LOCATION_OPTIONS = [
   "三健客",
@@ -117,6 +117,12 @@ export default function WorkoutDetailPage({
   const [swapSourceExercise, setSwapSourceExercise] = useState<Exercise | null>(null);
   const [swapSearchQuery, setSwapSearchQuery] = useState("");
   const [sessionNotFound, setSessionNotFound] = useState(false);
+
+  // ＋ 自訂新動作 Modal (現場隨時自訂新器材或新動作)
+  const [showNewExerciseModal, setShowNewExerciseModal] = useState(false);
+  const [newExName, setNewExName] = useState("");
+  const [newExMuscle, setNewExMuscle] = useState<MuscleGroup>("胸");
+  const [newExType, setNewExType] = useState<WeightType>("dumbbell_single");
 
   // 歷史各動作 PR (最高重量與次數) 對照表
   const [prMap, setPrMap] = useState<Record<string, { maxWeight: number; maxReps: number }>>({});
@@ -538,6 +544,31 @@ export default function WorkoutDetailPage({
     setSwapSourceExercise(null);
   }
 
+  // 現場自訂建立新動作 (如啞鈴側平舉) 並直接選取
+  async function handleCreateCustomExercise() {
+    if (!newExName.trim()) return;
+    const name = newExName.trim();
+    const newEx: Exercise = {
+      id: `ex-${Date.now()}`,
+      name,
+      muscle_group: newExMuscle,
+      weight_type: newExType,
+      is_favorite: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    };
+
+    await db.exercises.add(newEx);
+    setExercises((prev) => [...prev, newEx]);
+    setSelectedExId(newEx.id);
+    setInputWeight("");
+    setInputReps("");
+    setShowNewExerciseModal(false);
+    setNewExName("");
+    runFullSync().catch(() => {});
+  }
+
   // 取得某組 PR 突破詳情 (重量新高、次數新高)
   function getSetPRDetails(s: SetItem): { isPR: boolean; type: "weight" | "reps" | null; diffText: string; prevText: string } {
     if (s.weight_kg <= 0 || !s.reps || s.reps <= 0) {
@@ -626,18 +657,39 @@ export default function WorkoutDetailPage({
     return full;
   }
 
-  // 快速新增單組
+  // 快速新增單組 (熱身組自動插入至熱身區，正式組依序遞增)
   async function handleAddSet() {
     if (!selectedExId || !inputReps) return;
     const repsNum = parseInt(inputReps, 10) || 0;
     if (repsNum <= 0) return;
 
-    const newOrder = sets.length + 1;
     const weightNum = parseFloat(inputWeight) || 0;
-
     const exSets = sets.filter((s) => s.exercise_id === selectedExId);
-    const formalIndex = inputType === "warmup" ? 0 : exSets.filter((s) => !isWarmupOrActivation(s)).length + 1;
 
+    let targetOrder = sets.length + 1;
+    if (inputType === "warmup") {
+      const lastWarmup = exSets.filter((s) => isWarmupOrActivation(s)).pop();
+      if (lastWarmup) {
+        targetOrder = lastWarmup.set_order + 1;
+      } else if (exSets.length > 0) {
+        targetOrder = exSets[0].set_order;
+      }
+    } else {
+      if (exSets.length > 0) {
+        targetOrder = exSets[exSets.length - 1].set_order + 1;
+      }
+    }
+
+    const setsToShift = sets.filter((s) => s.set_order >= targetOrder);
+    if (setsToShift.length > 0) {
+      await db.transaction("rw", [db.sets], async () => {
+        for (const s of setsToShift) {
+          await db.sets.update(s.id, { set_order: s.set_order + 1 });
+        }
+      });
+    }
+
+    const formalIndex = inputType === "warmup" ? 0 : exSets.filter((s) => !isWarmupOrActivation(s)).length + 1;
     const raw = formatSetRawText(
       formalIndex,
       inputType,
@@ -648,10 +700,10 @@ export default function WorkoutDetailPage({
     );
 
     const newSet: SetItem = {
-      id: `set-${Date.now()}-${newOrder}`,
+      id: `set-${Date.now()}-${targetOrder}`,
       session_id: id,
       exercise_id: selectedExId,
-      set_order: newOrder,
+      set_order: targetOrder,
       set_type: inputType,
       weight_kg: weightNum,
       reps: repsNum,
@@ -666,7 +718,11 @@ export default function WorkoutDetailPage({
     };
 
     await db.sets.add(newSet);
-    setSets((prev) => [...prev, newSet]);
+    setSets((prev) =>
+      [...prev.map((s) => (s.set_order >= targetOrder ? { ...s, set_order: s.set_order + 1 } : s)), newSet].sort(
+        (a, b) => a.set_order - b.set_order
+      )
+    );
     runFullSync().catch(() => {});
 
     // 重設子欄位
@@ -873,6 +929,37 @@ export default function WorkoutDetailPage({
 
     await db.sets.bulkPut(newSetsList);
     setSets(newSetsList);
+    runFullSync().catch(() => {});
+  }
+
+  // 微調單一組數順序 (組數上移 / 下移)
+  async function handleMoveSet(setId: string, direction: "up" | "down") {
+    const targetSet = sets.find((s) => s.id === setId);
+    if (!targetSet) return;
+    const exSets = sets.filter((s) => s.exercise_id === targetSet.exercise_id);
+    const currIdx = exSets.findIndex((s) => s.id === setId);
+    if (currIdx < 0) return;
+    if (direction === "up" && currIdx === 0) return;
+    if (direction === "down" && currIdx === exSets.length - 1) return;
+
+    const swapIdx = direction === "up" ? currIdx - 1 : currIdx + 1;
+    const otherSet = exSets[swapIdx];
+
+    const targetOrder = targetSet.set_order;
+    const otherOrder = otherSet.set_order;
+
+    await db.transaction("rw", [db.sets], async () => {
+      await db.sets.update(targetSet.id, { set_order: otherOrder, updated_at: new Date().toISOString() });
+      await db.sets.update(otherSet.id, { set_order: targetOrder, updated_at: new Date().toISOString() });
+    });
+
+    setSets((prev) =>
+      prev.map((s) => {
+        if (s.id === targetSet.id) return { ...s, set_order: otherOrder };
+        if (s.id === otherSet.id) return { ...s, set_order: targetOrder };
+        return s;
+      }).sort((a, b) => a.set_order - b.set_order)
+    );
     runFullSync().catch(() => {});
   }
 
@@ -1321,7 +1408,15 @@ export default function WorkoutDetailPage({
   for (const exId of exerciseIdOrder) {
     const ex = exercises.find((e) => e.id === exId);
     const exSets = sets.filter((s) => s.exercise_id === exId);
-    setsByExercise.push({ exercise: ex, sets: exSets });
+    // 動作內組數嚴格排序：熱身組在最前面，正式組依序遞增
+    const sortedSets = [...exSets].sort((a, b) => {
+      const aW = isWarmupOrActivation(a);
+      const bW = isWarmupOrActivation(b);
+      if (aW && !bW) return -1;
+      if (!aW && bW) return 1;
+      return a.set_order - b.set_order;
+    });
+    setsByExercise.push({ exercise: ex, sets: sortedSets });
   }
 
   // 訓練整體進度與當前進行中組數
@@ -1697,6 +1792,24 @@ export default function WorkoutDetailPage({
                               </button>
                             )}
                             <button
+                              type="button"
+                              disabled={sIdx === 0}
+                              onClick={() => handleMoveSet(s.id, "up")}
+                              className="text-gray-500 hover:text-white disabled:opacity-20 p-1 rounded hover:bg-[#202533] transition-colors disabled:cursor-not-allowed"
+                              title="此組上移"
+                            >
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={sIdx === exSets.length - 1}
+                              onClick={() => handleMoveSet(s.id, "down")}
+                              className="text-gray-500 hover:text-white disabled:opacity-20 p-1 rounded hover:bg-[#202533] transition-colors disabled:cursor-not-allowed"
+                              title="此組下移"
+                            >
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </button>
+                            <button
                               onClick={() => handleStartEditSet(s)}
                               className="text-gray-400 hover:text-amber-400 p-1.5 rounded-lg hover:bg-[#202533] transition-colors"
                               title="修改此組"
@@ -1868,6 +1981,21 @@ export default function WorkoutDetailPage({
                   {ex.name}
                 </button>
               ))}
+
+              <button
+                type="button"
+                onClick={() => {
+                  const m = (session.target_muscle || "").replace("部", "").slice(0, 1) as MuscleGroup;
+                  const validM: MuscleGroup = ["胸", "背", "腿", "肩"].includes(m) ? m : "胸";
+                  setNewExMuscle(validM);
+                  setShowNewExerciseModal(true);
+                }}
+                className="text-xs sm:text-sm px-3 py-2 rounded-xl border border-dashed border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 shrink-0 font-bold flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+                title="自訂建立新動作（如啞鈴側平舉）"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>自訂動作</span>
+              </button>
             </div>
           </div>
 
@@ -2665,6 +2793,119 @@ export default function WorkoutDetailPage({
               <X className="w-3 h-3" />
             </span>
           </button>
+        </div>
+      )}
+
+      {/* 🚀 浮動吸頂/吸底休息倒數膠囊 (無論滑到哪裡，隨時直覺掌握剩餘休息秒數，不必滑回頂部) */}
+      {timerActive && timerSeconds !== null && timerSeconds > 0 && (
+        <div className="fixed bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200 pointer-events-auto">
+          <div className="bg-[#12141c]/95 border-2 border-amber-400 backdrop-blur-md px-4 py-2 rounded-full shadow-2xl shadow-amber-500/30 flex items-center gap-2.5 text-white">
+            <div className="flex items-center gap-1.5 text-amber-400 font-mono font-black text-sm">
+              <Timer className="w-4 h-4 animate-spin" style={{ animationDuration: "3s" }} />
+              <span>
+                {Math.floor(timerSeconds / 60)}:{(timerSeconds % 60).toString().padStart(2, "0")}
+              </span>
+            </div>
+            <div className="h-4 w-px bg-white/20" />
+            <button
+              type="button"
+              onClick={() => addRestSeconds(30)}
+              className="text-[11px] font-black bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 px-2 py-0.5 rounded-full border border-amber-400/40 active:scale-95 transition-all cursor-pointer"
+            >
+              +30s
+            </button>
+            <button
+              type="button"
+              onClick={stopRestTimer}
+              className="text-gray-400 hover:text-white p-0.5 rounded-full hover:bg-white/10 active:scale-95 transition-all cursor-pointer"
+              title="結束計時"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 現場自訂建立新動作 Modal (隨時自訂啞鈴側平舉等新器材/動作) */}
+      {showNewExerciseModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#12141c] border border-emerald-500/40 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#262b3d] pb-3">
+              <div className="flex items-center gap-2">
+                <Plus className="w-5 h-5 text-emerald-400 stroke-[3]" />
+                <h3 className="font-bold text-white text-base">現場自訂新動作</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowNewExerciseModal(false)}
+                className="text-gray-400 hover:text-white p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-300 block mb-1 font-bold">動作名稱</label>
+                <input
+                  type="text"
+                  placeholder="例如：啞鈴側平舉、羅馬尼亞硬舉"
+                  value={newExName}
+                  onChange={(e) => setNewExName(e.target.value)}
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-sm rounded-xl p-3 focus:border-emerald-500 outline-none font-bold"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-300 block mb-1 font-bold">訓練部位</label>
+                <select
+                  value={newExMuscle}
+                  onChange={(e) => setNewExMuscle(e.target.value as MuscleGroup)}
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 focus:border-emerald-500 outline-none"
+                >
+                  <option value="胸">胸部</option>
+                  <option value="背">背部</option>
+                  <option value="腿">腿部</option>
+                  <option value="肩">肩部</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-300 block mb-1 font-bold">重量類型</label>
+                <select
+                  value={newExType}
+                  onChange={(e) => setNewExType(e.target.value as WeightType)}
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 focus:border-emerald-500 outline-none"
+                >
+                  <option value="dumbbell_single">啞鈴重量 (單邊，如側平舉)</option>
+                  <option value="barbell_total">槓鈴標準總重 (包含 20Kg 槓重)</option>
+                  <option value="machine_stack">機械插銷重量 (總重)</option>
+                  <option value="machine_single">機械掛片單邊重量</option>
+                  <option value="bodyweight">自身體重 (自重引體/伏地挺身)</option>
+                  <option value="assisted_inverse">輔助反向機 (配重越重越輕鬆)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowNewExerciseModal(false)}
+                className="flex-1 bg-[#181b26] text-gray-300 py-2.5 rounded-xl text-xs font-bold hover:bg-[#202533] cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={!newExName.trim()}
+                onClick={handleCreateCustomExercise}
+                className="flex-1 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black py-2.5 rounded-xl text-xs font-black shadow transition-all cursor-pointer"
+              >
+                建立並立即選取
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Dumbbell,
   Search,
@@ -10,6 +11,7 @@ import {
   Star,
   Pencil,
   Trash2,
+  ChevronLeft,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import type { Exercise, SetItem, MuscleGroup, WeightType } from "@/lib/types";
@@ -163,6 +165,14 @@ export default function ExercisesPage() {
 
   return (
     <div className="space-y-4 pb-24">
+      <Link
+        href="/settings"
+        className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-emerald-400 transition-colors py-1"
+      >
+        <ChevronLeft className="w-4 h-4" />
+        <span>返回設定</span>
+      </Link>
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-black text-white">精選動作庫</h1>

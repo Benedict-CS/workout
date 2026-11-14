@@ -56,6 +56,7 @@ const CANONICAL_EXERCISES: Record<string, { id: string; muscle: MuscleGroup; typ
   "上斜啞鈴彎舉": { id: "ex-incline-db-curl", muscle: "背", type: "dumbbell_single" },
 
   // 肩
+  "啞鈴側平舉": { id: "ex-db-lateral-raise", muscle: "肩", type: "dumbbell_single" },
   "啞鈴肩推": { id: "ex-db-shoulder-press", muscle: "肩", type: "dumbbell_single" },
   "單臂滑輪側平舉": { id: "ex-cable-lateral-raise", muscle: "肩", type: "machine_stack" },
   "繩索面拉": { id: "ex-cable-face-pull", muscle: "肩", type: "machine_stack" },

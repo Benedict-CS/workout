@@ -66,10 +66,32 @@ export function formatSessionToMarkdown(
     }
   }
 
+  function isWarmupCheck(st: SetItem): boolean {
+    if (st.set_type === "warmup") return true;
+    const r = st.raw_text || "";
+    const n = st.notes || "";
+    return (
+      r.includes("熱身") ||
+      r.includes("激發") ||
+      r.includes("試重") ||
+      n.includes("熱身") ||
+      n.includes("激發") ||
+      n.includes("試重")
+    );
+  }
+
   for (const exId of exerciseIdOrder) {
     const ex = exMap.get(exId);
     const exSets = sets.filter((s) => s.exercise_id === exId);
-    groupedSets.push({ exercise: ex, sets: exSets });
+    // 嚴格排序：熱身/激發組永遠在最前面，正式組依序排在後方！
+    const sortedSets = [...exSets].sort((a, b) => {
+      const aW = isWarmupCheck(a);
+      const bW = isWarmupCheck(b);
+      if (aW && !bW) return -1;
+      if (!aW && bW) return 1;
+      return a.set_order - b.set_order;
+    });
+    groupedSets.push({ exercise: ex, sets: sortedSets });
   }
 
   const lines: string[] = [];
