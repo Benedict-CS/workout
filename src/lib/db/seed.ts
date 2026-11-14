@@ -402,13 +402,45 @@ export async function ensureDatabaseSeeded(): Promise<void> {
     await db.inbody_records.bulkPut(formattedInbody as any);
   }
 
-  // 檢查並補齊缺失的游泳或歷史訓練場次 (確保本地全庫 102 場 / 22 場游泳 100% 齊全)
+  // 檢查並強制復原所有 22 場游泳訓練（確保 deleted_at = null，永不消失）
+  const swimSessionsInSeed = (seedData.sessions as any[]).filter(
+    (s) => s.target_muscle === "游泳" || s.display_title.includes("泳")
+  );
+  for (const sw of swimSessionsInSeed) {
+    const existing = await db.sessions.get(sw.id);
+    if (!existing || existing.deleted_at !== null || existing.target_muscle !== "游泳") {
+      await db.sessions.put({
+        ...sw,
+        target_muscle: "游泳",
+        deleted_at: null,
+        sync_status: "synced",
+      });
+    }
+  }
+
+  // 檢查並補齊缺失的歷史訓練場次 (確保本地全庫 103 場齊全)
   const allCurSessions = await db.sessions.toArray();
   const allCurIds = new Set(allCurSessions.map((s) => s.id));
   const missingCurated = (seedData.sessions as any[]).filter((s) => !allCurIds.has(s.id));
   if (missingCurated.length > 0) {
     console.log(`Injecting ${missingCurated.length} missing sessions from seedData...`);
     await db.sessions.bulkPut(missingCurated);
+  }
+
+  // 強制清除本地所有 InBody 舊版「(穿衣)」與未吃/午餐錯誤標籤 (以 13:00 為界)
+  const allIb = await db.inbody_records.toArray();
+  for (const ib of allIb) {
+    const [h, m] = (ib.time || "12:00").split(":").map(Number);
+    const totalM = (h || 0) * 60 + (m || 0);
+    const isBefore = totalM < 13 * 60;
+    const newTiming = isBefore ? "before_lunch" : "after_lunch";
+    const newCond = isBefore ? "午餐前 (僅吃早餐)" : "午餐後 (已吃午餐)";
+    if (ib.condition_label !== newCond || ib.timing !== newTiming) {
+      await db.inbody_records.update(ib.id, {
+        timing: newTiming,
+        condition_label: newCond,
+      });
+    }
   }
 
   // 檢查並徹底清理 11/14 今日訓練組數污染 (41 組 -> 正確乾淨 21 組)

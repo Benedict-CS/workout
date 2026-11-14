@@ -376,6 +376,9 @@ export default function AnalyticsPage() {
   const inbodyWeightDiff = latestInbody && firstInbody
     ? Math.round((latestInbody.weight_kg - firstInbody.weight_kg) * 10) / 10
     : 0;
+  const pbfDiff = latestInbody && firstInbody
+    ? Math.round((latestInbody.body_fat_pct - firstInbody.body_fat_pct) * 10) / 10
+    : 0;
 
   const inbodyChartData = inbodyList.map((ib) => {
     const isBefore =
@@ -915,21 +918,26 @@ export default function AnalyticsPage() {
               <div className="bg-[#0f1118] p-2.5 rounded-lg border border-[#262b3d]">
                 <span className="text-[10px] text-gray-400 block mb-0.5">實測體重</span>
                 <span className="text-base font-black text-white">{latestInbody.weight_kg}</span>
-                <span className="text-[10px] text-gray-400 block mt-0.5">kg</span>
+                <span className="text-[10px] text-gray-400 block mt-0.5">
+                  kg (首測 {firstInbody?.weight_kg || 60.3} → {latestInbody.weight_kg}kg)
+                </span>
               </div>
 
               <div className="bg-[#0f1118] p-2.5 rounded-lg border border-emerald-500/40 bg-emerald-500/5">
                 <span className="text-[10px] text-emerald-400 block mb-0.5 font-bold">骨骼肌重 (SMM)</span>
                 <span className="text-base font-black text-emerald-300">{latestInbody.skeletal_muscle_kg}</span>
                 <span className="text-[10px] text-emerald-400 font-bold block mt-0.5">
-                  {smmDiff > 0 ? `+${smmDiff} kg (首測起)` : `${smmDiff} kg`}
+                  {smmDiff > 0 ? `+${smmDiff} kg` : `${smmDiff} kg`} (首測 {firstInbody?.skeletal_muscle_kg || 29.6} → {latestInbody.skeletal_muscle_kg}kg)
                 </span>
               </div>
 
               <div className="bg-[#0f1118] p-2.5 rounded-lg border border-amber-500/30">
                 <span className="text-[10px] text-amber-400 block mb-0.5 font-bold">體脂肪率 (PBF)</span>
                 <span className="text-base font-black text-amber-300">{latestInbody.body_fat_pct}%</span>
-                <span className="text-[10px] text-gray-400 block mt-0.5">
+                <span className="text-[10px] text-amber-400/90 font-bold block mt-0.5">
+                  {pbfDiff > 0 ? `+${pbfDiff}%` : `${pbfDiff}%`} (首測 {firstInbody?.body_fat_pct || 12.9}% → {latestInbody.body_fat_pct}%)
+                </span>
+                <span className="text-[9px] text-gray-400 block mt-0.5">
                   體脂重: <span className="text-gray-200 font-bold">{latestInbody.body_fat_mass_kg}</span> kg
                 </span>
               </div>
@@ -939,7 +947,9 @@ export default function AnalyticsPage() {
                 <span className="text-base font-black text-cyan-300">
                   {inbodyWeightDiff > 0 ? `+${inbodyWeightDiff}` : inbodyWeightDiff}
                 </span>
-                <span className="text-[10px] text-cyan-400/80 block mt-0.5">kg (首測 {firstInbody?.weight_kg || 60.3}kg)</span>
+                <span className="text-[10px] text-cyan-400/80 block mt-0.5">
+                  kg (首測 {firstInbody?.weight_kg || 60.3}kg)
+                </span>
               </div>
             </div>
           </div>

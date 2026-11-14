@@ -316,18 +316,21 @@ export async function runFullSync(): Promise<SyncResult> {
               noteText = JSON.parse(rs.notes).note;
             } catch {}
           }
+          const isSwim = rs.target_muscle === "游泳" || (rs.display_title && rs.display_title.includes("泳"));
+          const effectiveDeletedAt = isSwim ? null : rs.deleted_at;
+
           await db.sessions.put({
             id: rs.id,
             date: rs.date,
             month_key: rs.month_key,
             display_title: rs.display_title,
-            target_muscle: rs.target_muscle,
+            target_muscle: isSwim ? "游泳" : rs.target_muscle,
             monthly_index: rs.monthly_index,
             location: loc,
             notes: noteText,
             created_at: rs.created_at,
             updated_at: rs.updated_at,
-            deleted_at: rs.deleted_at,
+            deleted_at: effectiveDeletedAt,
             sync_status: "synced",
           });
           pulled++;
@@ -338,6 +341,8 @@ export async function runFullSync(): Promise<SyncResult> {
       const localAll = await db.sessions.toArray();
       const nowMs = Date.now();
       const orphaned = localAll.filter((s) => {
+        // 絕對保護游泳訓練紀錄，永不視為孤兒資料刪除！
+        if (s.target_muscle === "游泳" || (s.display_title && s.display_title.includes("泳"))) return false;
         if (remoteIdSet.has(s.id)) return false;
         if (s.date === "2026-11-13") return true;
         if (s.sync_status === "synced" || s.id.startsWith("session-swim-")) return true;
