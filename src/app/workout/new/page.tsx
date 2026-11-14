@@ -14,6 +14,7 @@ import {
 import { db } from "@/lib/db/schema";
 import { getPreviousSessionTemplate } from "@/lib/db/crud";
 import { runFullSync } from "@/lib/db/sync";
+import { cleanSessionTitle } from "@/lib/workout-utils";
 import type { WorkoutSession, SetItem, Exercise } from "@/lib/types";
 
 const LOCATION_PRESETS = [
@@ -303,7 +304,7 @@ function NewWorkoutForm() {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
               <h4 className="text-white font-bold text-sm truncate">
-                {existingActiveSession.display_title}
+                {cleanSessionTitle(existingActiveSession.display_title, existingActiveSession.target_muscle)}
               </h4>
               <p className="text-[11px] text-gray-400 mt-0.5">
                 日期：{existingActiveSession.date} • {existingActiveSession.location}
@@ -334,17 +335,18 @@ function NewWorkoutForm() {
           />
         </div>
 
-        {/* 主攻部位 (僅 4 大項：胸、背、腿、游泳) */}
+        {/* 主攻部位 (5 大項：胸、背、腿、肩、游泳) */}
         <div>
           <label className="text-xs font-bold text-gray-300 block mb-1.5 flex items-center gap-1.5">
             <Dumbbell className="w-4 h-4 text-emerald-400" />
-            <span>主攻部位 (大項)</span>
+            <span>主攻部位</span>
           </label>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
             {MUSCLE_PRESETS.map((p) => {
               let icon = "🔥";
               if (p === "背") icon = "⚡";
               if (p === "腿") icon = "🦵";
+              if (p === "肩") icon = "🎯";
               if (p === "游泳") icon = "🏊";
 
               return (
@@ -352,7 +354,7 @@ function NewWorkoutForm() {
                   key={p}
                   type="button"
                   onClick={() => setTargetMuscle(p)}
-                  className={`py-3 px-2 text-sm rounded-xl border font-bold text-center transition-all flex flex-col items-center gap-1 cursor-pointer active:scale-95 ${
+                  className={`py-2.5 px-1 sm:px-2 text-xs sm:text-sm rounded-xl border font-bold text-center transition-all flex flex-col items-center gap-1 cursor-pointer active:scale-95 ${
                     targetMuscle === p
                       ? "bg-emerald-500 text-black border-emerald-400 shadow-lg scale-[1.02] font-black"
                       : "bg-[#181b26] border-[#262b3d] text-gray-300 hover:border-gray-600"

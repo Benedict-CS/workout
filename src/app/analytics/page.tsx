@@ -188,7 +188,8 @@ export default function AnalyticsPage() {
             if (deadliftExIds.includes(st.exercise_id) && st.weight_kg > maxDeadlift) maxDeadlift = st.weight_kg;
           }
 
-          const label = mk.replace("2026-", "") + "月";
+          const parts = mk.split("-");
+          const label = `${parseInt(parts[1] || "1", 10)}月`;
           trendList.push({
             monthKey: mk,
             monthLabel: label,
@@ -1137,7 +1138,14 @@ export default function AnalyticsPage() {
             <LineChart data={monthlyTrend} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#262b3d" />
               <XAxis dataKey="monthLabel" stroke="#6b7280" fontSize={11} tickLine={false} />
-              <YAxis stroke="#6b7280" fontSize={11} domain={["dataMin - 10", "dataMax + 10"]} />
+              <YAxis
+                stroke="#6b7280"
+                fontSize={11}
+                domain={[
+                  (dataMin: number) => Math.max(0, Math.floor((dataMin - 10) / 10) * 10),
+                  (dataMax: number) => Math.ceil((dataMax + 10) / 10) * 10,
+                ]}
+              />
               <Tooltip
                 content={({ active, payload, label }) => {
                   if (!active || !payload || !payload.length) return null;

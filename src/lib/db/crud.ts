@@ -7,11 +7,10 @@ import type {
 } from "@/lib/types";
 
 export async function getRecentSessions(limit = 30): Promise<WorkoutSession[]> {
-  return await db.sessions
+  const all = await db.sessions
     .filter((s) => !s.deleted_at)
-    .reverse()
-    .sortBy("date")
-    .then((list) => list.slice(0, limit));
+    .sortBy("date");
+  return all.reverse().slice(0, limit);
 }
 
 export async function getSessionById(id: string): Promise<WorkoutSession | undefined> {
@@ -89,12 +88,13 @@ export async function getExerciseHistorySessions(
   if (sets.length === 0) return [];
 
   const sessionIds = Array.from(new Set(sets.map((s) => s.session_id)));
-  const sessions = await db.sessions
-    .where("id")
-    .anyOf(sessionIds)
-    .filter((s) => !s.deleted_at)
-    .reverse()
-    .sortBy("date");
+  const sessions = (
+    await db.sessions
+      .where("id")
+      .anyOf(sessionIds)
+      .filter((s) => !s.deleted_at)
+      .sortBy("date")
+  ).reverse();
 
   const topSessions = sessions.slice(0, limit);
   const result: { session: WorkoutSession; sets: SetItem[] }[] = [];
@@ -115,10 +115,11 @@ export async function getExerciseHistorySessions(
 export async function getPreviousSessionTemplate(
   targetMuscle: string
 ): Promise<{ session: WorkoutSession; exerciseIds: string[]; sets: SetItem[] } | null> {
-  const sessions = await db.sessions
-    .filter((s) => !s.deleted_at && s.target_muscle.includes(targetMuscle))
-    .reverse()
-    .sortBy("date");
+  const sessions = (
+    await db.sessions
+      .filter((s) => !s.deleted_at && s.target_muscle.includes(targetMuscle))
+      .sortBy("date")
+  ).reverse();
 
   if (sessions.length === 0) return null;
 

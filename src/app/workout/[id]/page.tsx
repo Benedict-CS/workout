@@ -1604,8 +1604,8 @@ export default function WorkoutDetailPage({
             className="flex-1 px-3 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 shadow active:scale-95 cursor-pointer"
             title="完成本次訓練並返回首頁"
           >
-            <Check className="w-4 h-4 stroke-[3]" />
-            <span>完成訓練</span>
+            <Check className="w-4 h-4 stroke-[3] shrink-0" />
+            <span className="whitespace-nowrap">完成訓練</span>
           </button>
 
           {/* 頂部極簡手動啟動/查看休息計時按鈕 */}
@@ -1628,7 +1628,7 @@ export default function WorkoutDetailPage({
             >
               <Timer className={`w-4 h-4 ${timerActive ? "text-amber-400 animate-spin" : "text-gray-400"}`} style={timerActive ? { animationDuration: "3s" } : undefined} />
               {timerActive && timerSeconds !== null && timerSeconds > 0 ? (
-                <span className="text-xs font-mono font-black text-amber-300 tabular-nums">
+                <span className="text-xs font-mono font-black text-amber-300 tabular-nums hidden sm:inline">
                   {Math.floor(timerSeconds / 60)}:{(timerSeconds % 60).toString().padStart(2, "0")}
                 </span>
               ) : null}
@@ -1883,24 +1883,9 @@ export default function WorkoutDetailPage({
                           </div>
                         </div>
 
-                        {/* 副行：上次紀錄 + PR + 進行中/完成 徽章 + 快速休息氣泡 */}
-                        {(matchingGhost || isSetNewPR(s) || isCurrent || isDone || s.set_type === "drop" || restPromptSetId === s.id) && (
+                        {/* 副行：上次紀錄 + PR + 進行中/完成 徽章 */}
+                        {(matchingGhost || isSetNewPR(s) || isCurrent || isDone || s.set_type === "drop") && (
                           <div className="flex items-center gap-2 mt-1.5 ml-9 flex-wrap text-xs">
-                            {/* 做組完成時彈出的極簡快速休息氣泡 */}
-                            {restPromptSetId === s.id && !timerActive && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  startRestTimer(defaultRestDuration || 150);
-                                  setRestPromptSetId(null);
-                                }}
-                                className="animate-in fade-in zoom-in-95 duration-200 bg-amber-500 hover:bg-amber-400 text-black px-2.5 py-1 rounded-lg text-xs font-black shadow-lg flex items-center gap-1.5 active:scale-95 cursor-pointer ring-2 ring-amber-400/60"
-                                title="一鍵啟動 2 分半組間休息計時"
-                              >
-                                <Timer className="w-3.5 h-3.5 stroke-[2.5]" />
-                                <span>⏱️ 啟動 {Math.floor((defaultRestDuration || 150) / 60)}:{((defaultRestDuration || 150) % 60).toString().padStart(2, "0")} 休息</span>
-                              </button>
-                            )}
                             {matchingGhost && (
                               <span
                                 className={`text-[11px] font-medium ${

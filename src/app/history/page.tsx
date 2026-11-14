@@ -78,10 +78,11 @@ export default function HistoryPage() {
       await ensureDatabaseSeeded();
     } catch {}
 
-    const allSessions = await db.sessions
-      .filter((s) => !s.deleted_at)
-      .reverse()
-      .sortBy("date");
+    const allSessions = (
+      await db.sessions
+        .filter((s) => !s.deleted_at)
+        .sortBy("date")
+    ).reverse();
     setSessions(allSessions);
 
     const allSets = await db.sets.filter((s) => !s.deleted_at).toArray();

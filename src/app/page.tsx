@@ -321,7 +321,7 @@ export default function HomePage() {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
               <h3 className="font-black text-white text-base truncate">
-                {activeSession.display_title}
+                {cleanSessionTitle(activeSession.display_title, activeSession.target_muscle)}
               </h3>
               <p className="text-xs text-gray-400 mt-0.5">
                 {(sessionSetsMap[activeSession.id] || []).filter((s) => s.is_completed).length} /{" "}
@@ -462,19 +462,19 @@ export default function HomePage() {
                   <div>
                     <span className="text-[11px] text-gray-400 block">臥推</span>
                     <span className="text-sm font-black text-white">
-                      {currentGroup.bigThreeMax.bench > 0 ? `${currentGroup.bigThreeMax.bench}k` : "-"}
+                      {currentGroup.bigThreeMax.bench > 0 ? `${currentGroup.bigThreeMax.bench}kg` : "-"}
                     </span>
                   </div>
                   <div>
                     <span className="text-[11px] text-gray-400 block">深蹲</span>
                     <span className="text-sm font-black text-white">
-                      {currentGroup.bigThreeMax.squat > 0 ? `${currentGroup.bigThreeMax.squat}k` : "-"}
+                      {currentGroup.bigThreeMax.squat > 0 ? `${currentGroup.bigThreeMax.squat}kg` : "-"}
                     </span>
                   </div>
                   <div>
                     <span className="text-[11px] text-gray-400 block">硬舉</span>
                     <span className="text-sm font-black text-white">
-                      {currentGroup.bigThreeMax.deadlift > 0 ? `${currentGroup.bigThreeMax.deadlift}k` : "-"}
+                      {currentGroup.bigThreeMax.deadlift > 0 ? `${currentGroup.bigThreeMax.deadlift}kg` : "-"}
                     </span>
                   </div>
                 </div>
