@@ -49,9 +49,9 @@ export default function HomePage() {
   // 展開的訓練場次 ID 集合 (點擊 title 展開/收合，不跳轉新頁面)
   const [expandedSessionIds, setExpandedSessionIds] = useState<Set<string>>(new Set());
 
-  // 單月分頁檢視 (順序排列：6月 -> 11月，支援鍵盤 ← → 鍵與左右滑動切換)
+  // 單月分頁檢視 (順序排列：6月 -> 11月，鎖定僅透過按鈕左右切換或點選切換，絕不允許手勢滑動誤觸)
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(0);
-  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [showMonthDropdown, setShowMonthDropdown] = useState(false);
   const currentGroup = monthGroups[selectedMonthIndex] || monthGroups[0];
 
   // 鍵盤 ← / → 鍵左右切換月份 (防在輸入框中誤觸)
@@ -81,25 +81,6 @@ export default function HomePage() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [monthGroups.length]);
-
-  function handleTouchStart(e: React.TouchEvent) {
-    setTouchStartX(e.touches[0].clientX);
-  }
-
-  function handleTouchEnd(e: React.TouchEvent) {
-    if (touchStartX === null) return;
-    const touchEndX = e.changedTouches[0].clientX;
-    const diff = touchEndX - touchStartX;
-    // 右滑：看上個月 (較舊月，向左切換)
-    if (diff > 50 && selectedMonthIndex > 0) {
-      setSelectedMonthIndex((prev) => prev - 1);
-    }
-    // 左滑：看下個月 (較新月，向右切換)
-    else if (diff < -50 && selectedMonthIndex < monthGroups.length - 1) {
-      setSelectedMonthIndex((prev) => prev + 1);
-    }
-    setTouchStartX(null);
-  }
 
   // 單場點擊切換展開/收合
   function toggleExpand(sessionId: string) {
@@ -328,15 +309,51 @@ export default function HomePage() {
             <span className="hidden sm:inline">上個月</span>
           </button>
 
-          <div className="flex flex-col items-center">
-            <div className="flex items-center gap-1.5">
+          <div className="relative flex flex-col items-center">
+            <button
+              type="button"
+              onClick={() => setShowMonthDropdown(!showMonthDropdown)}
+              className="flex items-center gap-1.5 py-1 px-2.5 rounded-xl hover:bg-[#181b26] transition-colors cursor-pointer"
+              title="點擊切換月份"
+            >
               <Calendar className="w-4 h-4 text-emerald-400" />
               <span className="text-base font-black text-white">
                 {currentGroup?.monthTitle || "訓練月份"}
               </span>
-            </div>
+              <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+            </button>
+
+            {/* 快速切換月份下拉選單 (點選即跳轉，鎖定操作) */}
+            {showMonthDropdown && (
+              <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 z-40 bg-[#181b26] border border-[#262b3d] rounded-2xl p-2 shadow-2xl min-w-[170px] space-y-1">
+                {monthGroups.map((mg, idx) => {
+                  const isCur = idx === selectedMonthIndex;
+                  return (
+                    <button
+                      key={mg.monthKey}
+                      type="button"
+                      onClick={() => {
+                        setSelectedMonthIndex(idx);
+                        setShowMonthDropdown(false);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer transition-colors ${
+                        isCur
+                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                          : "text-gray-300 hover:bg-[#202533]"
+                      }`}
+                    >
+                      <span>{mg.monthTitle}</span>
+                      <span className="text-[10px] text-gray-400 font-normal">
+                        {mg.stats.total} 場
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <span className="text-xs text-gray-400 mt-0.5">
-              當月共 {currentGroup?.stats.total || 0} 場訓練 <span className="hidden sm:inline">• 可按鍵盤 ← → 切換</span><span className="sm:hidden">• 滑動換月</span>
+              當月共 {currentGroup?.stats.total || 0} 場訓練 <span className="hidden sm:inline">• 可按左右鍵切換</span>
             </span>
           </div>
 
@@ -352,11 +369,9 @@ export default function HomePage() {
           </button>
         </div>
 
-        {/* 當前月份的獨立卡片 (支援手機觸控向左/向右滑動換月，或鍵盤 ← → 鍵) */}
+        {/* 當前月份的獨立卡片 (完全鎖定，僅能透過按鈕與下拉選單切換，徹底杜絕手機滑動誤跳) */}
         {currentGroup && (
           <section
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
             className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-3.5 sm:p-4 space-y-3.5 shadow-md transition-all"
           >
             {/* 該月統計：部位頻率 + 該月 3 項最高重量 (直觀看每個月力量進步) */}
