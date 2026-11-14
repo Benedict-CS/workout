@@ -626,7 +626,6 @@ export default function WorkoutDetailPage({
   async function handleAddOneMoreSet(last: SetItem) {
     if (!last) return;
     const exSets = sets.filter((s) => s.exercise_id === last.exercise_id);
-    const newOrder = sets.length + 1;
     const formalIndex = isWarmupOrActivation(last) ? 0 : exSets.filter((s) => !isWarmupOrActivation(s)).length + 1;
     const raw = formatSetRawText(
       formalIndex,
@@ -638,10 +637,10 @@ export default function WorkoutDetailPage({
     );
 
     const newSet: SetItem = {
-      id: `set-${Date.now()}-${newOrder}`,
+      id: `set-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       session_id: id,
       exercise_id: last.exercise_id,
-      set_order: newOrder,
+      set_order: last.set_order + 1,
       set_type: last.set_type,
       weight_kg: last.weight_kg,
       reps: last.reps,
@@ -654,8 +653,21 @@ export default function WorkoutDetailPage({
       sync_status: "pending",
     };
 
-    await db.sets.add(newSet);
-    setSets((prev) => [...prev, newSet]);
+    // 插入在該動作最後一組之後，並重新計算全體 set_order
+    const lastIdx = sets.findIndex((s) => s.id === last.id);
+    const newSetsList = [...sets];
+    if (lastIdx !== -1) {
+      newSetsList.splice(lastIdx + 1, 0, newSet);
+    } else {
+      newSetsList.push(newSet);
+    }
+    const reordered = newSetsList.map((s, idx) => ({ ...s, set_order: idx + 1 }));
+
+    await db.transaction("rw", [db.sets], async () => {
+      await db.sets.bulkPut(reordered);
+    });
+
+    setSets(reordered);
     runFullSync().catch(() => {});
   }
 
@@ -1508,7 +1520,7 @@ export default function WorkoutDetailPage({
                                 title="一鍵啟動 2 分半組間休息計時"
                               >
                                 <Timer className="w-3.5 h-3.5 stroke-[2.5]" />
-                                <span>⏱️ 啟動 2:30 休息</span>
+                                <span>⏱️ 啟動 {Math.floor((defaultRestDuration || 150) / 60)}:{((defaultRestDuration || 150) % 60).toString().padStart(2, "0")} 休息</span>
                               </button>
                             )}
                             {matchingGhost && (
@@ -2371,6 +2383,33 @@ export default function WorkoutDetailPage({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 做組打勾完成後，螢幕底部大拇指極速快捷休息氣泡 (5秒自動消失) */}
+      {restPromptSetId && !timerActive && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <button
+            type="button"
+            onClick={() => {
+              startRestTimer(defaultRestDuration || 150);
+              setRestPromptSetId(null);
+            }}
+            className="bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black px-4 py-2.5 rounded-full font-black text-xs shadow-2xl flex items-center gap-2 ring-4 ring-amber-400/40 active:scale-95 cursor-pointer transition-all"
+          >
+            <Timer className="w-4 h-4 stroke-[2.5]" />
+            <span>⏱️ 啟動 {Math.floor((defaultRestDuration || 150) / 60)}:{((defaultRestDuration || 150) % 60).toString().padStart(2, "0")} 休息</span>
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                setRestPromptSetId(null);
+              }}
+              className="ml-1 p-0.5 rounded-full hover:bg-black/20 text-black/70 hover:text-black cursor-pointer"
+              title="關閉提示"
+            >
+              <X className="w-3 h-3" />
+            </span>
+          </button>
         </div>
       )}
     </div>

@@ -653,6 +653,11 @@ export default function HistoryPage() {
                             <span className="text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 text-[11px]">
                               {s.target_muscle}
                             </span>
+                            {s.status === "in_progress" && (
+                              <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black px-1.5 py-0.5 rounded animate-pulse">
+                                進行中草稿
+                              </span>
+                            )}
                             {s.location && (
                               <span className="text-blue-400 flex items-center gap-0.5 text-[11px]">
                                 <MapPin className="w-3 h-3" />
