@@ -64,22 +64,28 @@ export function GlobalRestTimer() {
 
     updateState();
     const interval = setInterval(updateState, 500);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        updateState();
+      }
+    };
+
     window.addEventListener("storage", updateState);
     window.addEventListener("workout_timer_update", updateState);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener("storage", updateState);
       window.removeEventListener("workout_timer_update", updateState);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 
-  // 如果目前使用者就在當前的 workout 詳情頁，則由該頁面的內建計時器展示，避免重疊
+  // 如果目前使用者就在當前的 workout 詳情頁，由該頁內建的吸底浮動膠囊展示，避免雙重覆蓋
   const isCurrentlyInWorkoutPage =
-    pathname.startsWith("/workout/") &&
-    pathname !== "/workout/new" &&
-    timerInfo?.sessionId &&
-    pathname.includes(timerInfo.sessionId);
+    pathname.startsWith("/workout/") && pathname !== "/workout/new";
 
   if (isCurrentlyInWorkoutPage) {
     return null;

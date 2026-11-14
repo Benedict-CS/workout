@@ -499,6 +499,15 @@ export default function HomePage() {
                 const sessSets = sessionSetsMap[sess.id] || [];
                 const isExpanded = expandedSessionIds.has(sess.id);
 
+                // 熱身組不計入組數，只統計正式組
+                const isWarmup = (st: SetItem) => {
+                  if (st.set_type === "warmup") return true;
+                  const r = st.raw_text || "";
+                  const n = st.notes || "";
+                  return r.includes("熱身") || r.includes("激發") || r.includes("試重") || n.includes("熱身");
+                };
+                const formalSets = sessSets.filter((st) => !isWarmup(st));
+
                 let badgeColor = "bg-red-500/20 text-red-300 border-red-500/40";
                 if (sess.target_muscle.includes("背")) {
                   badgeColor = "bg-blue-500/20 text-blue-300 border-blue-500/40";
@@ -597,11 +606,11 @@ export default function HomePage() {
                         )}
                         {sess.status === "in_progress" ? (
                           <span className="text-[11px] sm:text-xs bg-amber-950/40 text-amber-300 px-2 py-0.5 rounded border border-amber-500/40 font-bold">
-                            已做 {sessSets.filter((s) => s.is_completed !== false).length}/{sessSets.length} 組
+                            已做 {formalSets.filter((s) => s.is_completed !== false).length}/{formalSets.length} 組
                           </span>
                         ) : (
                           <span className="text-[11px] sm:text-xs bg-[#090a0f] text-gray-300 px-2 py-0.5 rounded border border-[#262b3d] font-semibold">
-                            {sessSets.length} 組
+                            {formalSets.length} 組
                           </span>
                         )}
                       </div>

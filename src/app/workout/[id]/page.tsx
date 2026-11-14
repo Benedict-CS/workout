@@ -137,12 +137,21 @@ export default function WorkoutDetailPage({
   } | null>(null);
   const prCelebrationTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 計時器倒數邏輯 (手動觸發，結束時輕微震動提醒)
+  // 計時器倒數邏輯 (手動觸發、跨頁面/鎖屏無縫恢復、結束時震動提醒)
   useEffect(() => {
-    function checkTimer() {
-      if (!targetEndTime || !timerActive) return;
+    function syncTimerState() {
+      const storedEndStr = localStorage.getItem("workout_timer_end");
+      if (!storedEndStr) {
+        setTimerActive(false);
+        setTimerSeconds(null);
+        setTargetEndTime(null);
+        return;
+      }
+
+      const endMs = parseInt(storedEndStr, 10);
       const now = Date.now();
-      const remain = Math.ceil((targetEndTime - now) / 1000);
+      const remain = Math.ceil((endMs - now) / 1000);
+
       if (remain <= 0) {
         setTimerSeconds(0);
         setTimerActive(false);
@@ -154,21 +163,34 @@ export default function WorkoutDetailPage({
           } catch {}
         }
       } else {
+        setTargetEndTime(endMs);
         setTimerSeconds(remain);
+        setTimerActive(true);
       }
     }
 
-    if (timerActive && targetEndTime) {
-      checkTimer();
-      timerIntervalRef.current = setInterval(checkTimer, 500);
-    } else {
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    }
+    // 掛載與切換進來時第一時間立即恢復計時狀態
+    syncTimerState();
+
+    const interval = setInterval(syncTimerState, 500);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        syncTimerState();
+      }
+    };
+
+    window.addEventListener("workout_timer_update", syncTimerState);
+    window.addEventListener("storage", syncTimerState);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      clearInterval(interval);
+      window.removeEventListener("workout_timer_update", syncTimerState);
+      window.removeEventListener("storage", syncTimerState);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [timerActive, targetEndTime]);
+  }, []);
 
   function startRestTimer(seconds: number) {
     const end = Date.now() + seconds * 1000;
@@ -176,31 +198,31 @@ export default function WorkoutDetailPage({
     setTimerSeconds(seconds);
     setTimerActive(true);
     localStorage.setItem("workout_timer_end", end.toString());
-    if (session) {
-      const loc = session.location ? ` (${session.location})` : "";
-      localStorage.setItem(
-        "workout_timer_info",
-        JSON.stringify({
-          sessionId: session.id,
-          title: `${session.target_muscle}${loc}`,
-        })
-      );
-    }
+    const loc = session?.location ? ` (${session.location})` : "";
+    const title = session ? `${session.target_muscle}${loc}` : "訓練休息";
+    localStorage.setItem(
+      "workout_timer_info",
+      JSON.stringify({
+        sessionId: id,
+        title,
+      })
+    );
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("workout_timer_update"));
     }
   }
 
   function addRestSeconds(seconds: number) {
-    if (!targetEndTime || !timerActive) {
-      startRestTimer(seconds);
-      return;
-    }
-    const newEnd = targetEndTime + seconds * 1000;
+    const storedEndStr = localStorage.getItem("workout_timer_end");
+    const currentEnd = storedEndStr ? parseInt(storedEndStr, 10) : (targetEndTime || Date.now());
+    const baseEnd = Math.max(Date.now(), currentEnd);
+    const newEnd = baseEnd + seconds * 1000;
     const now = Date.now();
     const remain = Math.ceil((newEnd - now) / 1000);
+
     setTargetEndTime(newEnd);
     setTimerSeconds(remain);
+    setTimerActive(true);
     localStorage.setItem("workout_timer_end", newEnd.toString());
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("workout_timer_update"));
@@ -212,6 +234,7 @@ export default function WorkoutDetailPage({
     setTimerSeconds(null);
     setTargetEndTime(null);
     localStorage.removeItem("workout_timer_end");
+    localStorage.removeItem("workout_timer_info");
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("workout_timer_update"));
     }
@@ -1419,9 +1442,10 @@ export default function WorkoutDetailPage({
     setsByExercise.push({ exercise: ex, sets: sortedSets });
   }
 
-  // 訓練整體進度與當前進行中組數
-  const totalSetsCount = sets.length;
-  const completedSetsCount = sets.filter((s) => isSetCompleted(s, session.date)).length;
+  // 訓練整體進度與當前進行中組數（熱身組不計入組數，只統計正式組）
+  const formalSets = sets.filter((s) => !isWarmupOrActivation(s));
+  const totalSetsCount = formalSets.length;
+  const completedSetsCount = formalSets.filter((s) => isSetCompleted(s, session.date)).length;
   const nextUpSet = sets.find((s) => !isSetCompleted(s, session.date));
 
   // 動作過濾（排除繩索夾胸，只顯示對應部位或搜尋，並依動作名稱去重）

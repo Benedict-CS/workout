@@ -625,13 +625,24 @@ export default function HistoryPage() {
                 {selectedDaySessions.map((s) => {
                   const sessSets = sets.filter((st) => st.session_id === s.id && !st.deleted_at);
 
-                  // 提取這場訓練所做的所有動作與最高重量
+                  // 熱身不計入組數，只統計正式組
+                  const isWarmup = (st: SetItem) => {
+                    if (st.set_type === "warmup") return true;
+                    const r = st.raw_text || "";
+                    const n = st.notes || "";
+                    return r.includes("熱身") || r.includes("激發") || r.includes("試重") || n.includes("熱身");
+                  };
+                  const formalSets = sessSets.filter((st) => !isWarmup(st));
+
+                  // 提取這場訓練所做的所有動作與最高重量 (僅統計正式組)
                   const seenEx = new Map<string, { maxWeight: number; setCount: number }>();
                   for (const st of sessSets) {
                     const ex = exMap.get(st.exercise_id);
                     const name = ex ? ex.name : "動作";
                     const cur = seenEx.get(name) || { maxWeight: 0, setCount: 0 };
-                    cur.setCount++;
+                    if (!isWarmup(st)) {
+                      cur.setCount++;
+                    }
                     if (st.weight_kg > cur.maxWeight) cur.maxWeight = st.weight_kg;
                     seenEx.set(name, cur);
                   }
@@ -663,7 +674,7 @@ export default function HistoryPage() {
                             )}
                             <span className="text-gray-500">•</span>
                             <span className="text-gray-300 font-medium text-[11px]">
-                              共 {sessSets.length} 組
+                              共 {formalSets.length} 組
                             </span>
                           </div>
                         </Link>
@@ -834,7 +845,14 @@ export default function HistoryPage() {
                         <span>•</span>
                         <span>{distinctEx} 個動作</span>
                         <span>•</span>
-                        <span>{sessSets.length} 組</span>
+                        <span>
+                          {sessSets.filter((st) => {
+                            if (st.set_type === "warmup") return false;
+                            const r = st.raw_text || "";
+                            const n = st.notes || "";
+                            return !(r.includes("熱身") || r.includes("激發") || r.includes("試重") || n.includes("熱身"));
+                          }).length} 組
+                        </span>
                         {s.location && (
                           <>
                             <span>•</span>
