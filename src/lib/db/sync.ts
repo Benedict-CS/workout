@@ -139,6 +139,12 @@ export async function runFullSync(): Promise<SyncResult> {
       }
     }
 
+    // 預先清理本地 11/14 髒組數 (舊版隨機生成之 set-179464... 或任何非標準組數)，絕不推送至遠端
+    const corruptedSets = await db.sets.filter((s) => s.id.startsWith("set-179464")).toArray();
+    if (corruptedSets.length > 0) {
+      await db.sets.bulkDelete(corruptedSets.map((c) => c.id));
+    }
+
     // 1. 同步 Sessions
     const localSessions = await db.sessions.toArray();
     const pendingSessions = localSessions.filter(
@@ -385,6 +391,18 @@ export async function runFullSync(): Promise<SyncResult> {
       .limit(5000);
 
     if (remoteSets && remoteSets.length > 0) {
+      const remoteIds = new Set(remoteSets.map((s) => s.id));
+      const remoteSessionIds = new Set(remoteSets.map((s) => s.session_id));
+
+      // 嚴格保持本地與遠端一致：對於遠端已收錄的 session，清除本地已被遠端淘汰的過期組數 (例如 11/14 髒資料)
+      for (const sId of remoteSessionIds) {
+        const localSets = await db.sets.where("session_id").equals(sId).toArray();
+        const orphaned = localSets.filter((ls) => !remoteIds.has(ls.id));
+        if (orphaned.length > 0) {
+          await db.sets.bulkDelete(orphaned.map((o) => o.id));
+        }
+      }
+
       for (const rst of remoteSets) {
         const local = await db.sets.get(rst.id);
         if (!local || new Date(rst.updated_at) > new Date(local.updated_at)) {
