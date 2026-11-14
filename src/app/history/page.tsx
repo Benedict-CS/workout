@@ -698,23 +698,16 @@ export default function HistoryPage() {
                       {/* 動作精華列表 */}
                       {seenEx.size > 0 && (
                         <div className="flex flex-wrap gap-1.5 pt-1 border-t border-[#262b3d]/60">
-                          {Array.from(seenEx.entries()).map(([name, data]) => {
-                            const isPullup = name.includes("引體");
-                            return (
-                              <span
-                                key={name}
-                                className={`text-[11px] border px-2 py-0.5 rounded-lg flex items-center gap-1 ${
-                                  isPullup
-                                    ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-200 font-bold"
-                                    : "bg-[#12141c] border-[#262b3d] text-gray-300"
-                                }`}
-                              >
-                                <strong className={isPullup ? "text-cyan-300" : "text-white"}>{name}</strong>
-                                {data.maxWeight > 0 ? ` ${data.maxWeight}Kg` : ""}
-                                <span className={isPullup ? "text-cyan-400/80 ml-0.5" : "text-gray-500 ml-0.5"}>({data.setCount}組)</span>
-                              </span>
-                            );
-                          })}
+                          {Array.from(seenEx.entries()).map(([name, data]) => (
+                            <span
+                              key={name}
+                              className="text-[11px] bg-[#12141c] border border-[#262b3d] px-2 py-0.5 rounded-lg text-gray-300"
+                            >
+                              <strong className="text-white">{name}</strong>
+                              {data.maxWeight > 0 ? ` ${data.maxWeight}Kg` : ""}
+                              <span className="text-gray-500 ml-1">({data.setCount}組)</span>
+                            </span>
+                          ))}
                         </div>
                       )}
 
