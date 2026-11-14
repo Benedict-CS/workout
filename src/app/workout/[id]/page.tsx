@@ -38,6 +38,7 @@ import {
 } from "@/lib/db/crud";
 import { formatSessionToMarkdown } from "@/lib/markdown-generator";
 import { runFullSync, deleteRemoteSession, deleteRemoteSet } from "@/lib/db/sync";
+import { cleanSessionTitle } from "@/lib/workout-utils";
 import type { Exercise, SetItem, WorkoutSession, WeightType, SetType, SetSubField, MuscleGroup } from "@/lib/types";
 
 const LOCATION_OPTIONS = [
@@ -316,6 +317,13 @@ export default function WorkoutDetailPage({
           .filter((s) => !s.deleted_at)
           .sortBy("set_order");
         setSets(currentSets);
+
+        // 讀取偏好預設組間休息時長
+        const savedRest = typeof window !== "undefined" ? localStorage.getItem("workout_default_rest") : null;
+        if (savedRest) {
+          const val = parseInt(savedRest, 10);
+          if (!isNaN(val) && val > 0) setDefaultRestDuration(val);
+        }
 
         // 讀取上次對照 ghost 與歷史 PR (排除本次 session)
         const distinctExIds = Array.from(new Set(currentSets.map((s) => s.exercise_id)));
@@ -1505,7 +1513,7 @@ export default function WorkoutDetailPage({
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="min-w-0 flex-1">
-            <h1 className="text-lg font-black text-white leading-tight break-words">{session.display_title}</h1>
+            <h1 className="text-lg font-black text-white leading-tight break-words">{cleanSessionTitle(session.display_title, session.target_muscle)}</h1>
             <div className="flex items-center gap-2 text-xs text-gray-300 mt-1 relative flex-wrap font-medium">
               <span>{session.date}</span>
               <span>•</span>
@@ -1554,9 +1562,36 @@ export default function WorkoutDetailPage({
             <span>完成訓練</span>
           </button>
 
+          {/* 頂部極簡手動啟動/查看休息計時按鈕 */}
+          {session.target_muscle !== "游泳" && (
+            <button
+              type="button"
+              onClick={() => {
+                if (timerActive) {
+                  stopRestTimer();
+                } else {
+                  startRestTimer(defaultRestDuration || 150);
+                }
+              }}
+              className={`p-2.5 rounded-xl border flex items-center gap-1 active:scale-95 transition-all cursor-pointer shrink-0 ${
+                timerActive
+                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse font-black"
+                  : "bg-[#12141c] hover:bg-[#181b26] border-[#262b3d] text-gray-300 hover:text-white"
+              }`}
+              title={timerActive ? "點擊結束休息計時" : "手動啟動組間休息計時"}
+            >
+              <Timer className={`w-4 h-4 ${timerActive ? "text-amber-400 animate-spin" : "text-gray-400"}`} style={timerActive ? { animationDuration: "3s" } : undefined} />
+              {timerActive && timerSeconds !== null && timerSeconds > 0 ? (
+                <span className="text-xs font-mono font-black text-amber-300 tabular-nums">
+                  {Math.floor(timerSeconds / 60)}:{(timerSeconds % 60).toString().padStart(2, "0")}
+                </span>
+              ) : null}
+            </button>
+          )}
+
           <button
             onClick={handleCopyMarkdown}
-            className="p-2.5 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] text-emerald-400 rounded-xl flex items-center gap-1 active:scale-95"
+            className="p-2.5 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] text-emerald-400 rounded-xl flex items-center gap-1 active:scale-95 shrink-0"
             title="複製 Markdown"
           >
             <Copy className="w-4 h-4" />
@@ -1564,7 +1599,7 @@ export default function WorkoutDetailPage({
 
           <button
             onClick={() => setShowMarkdownModal(true)}
-            className="p-2.5 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] text-gray-300 rounded-xl active:scale-95"
+            className="p-2.5 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] text-gray-300 rounded-xl active:scale-95 shrink-0"
             title="檢視 Markdown"
           >
             <FileText className="w-4 h-4" />
@@ -1572,7 +1607,7 @@ export default function WorkoutDetailPage({
 
           <button
             onClick={handleDeleteEntireSession}
-            className="p-2.5 bg-[#12141c] hover:bg-red-950/40 border border-[#262b3d] text-gray-400 hover:text-red-400 rounded-xl active:scale-95"
+            className="p-2.5 bg-[#12141c] hover:bg-red-950/40 border border-[#262b3d] text-gray-400 hover:text-red-400 rounded-xl active:scale-95 shrink-0"
             title="刪除訓練"
           >
             <Trash2 className="w-4 h-4" />
@@ -1584,90 +1619,6 @@ export default function WorkoutDetailPage({
         <div className="bg-emerald-500 text-black px-4 py-2.5 rounded-xl text-xs font-black shadow-2xl flex items-center gap-2">
           <Check className="w-4 h-4 stroke-[3]" />
           <span>已複製 Markdown！</span>
-        </div>
-      )}
-
-      {/* 休息計時器控制列 (重訓專用，手動點擊觸發) — 手機版自適應換行 */}
-      {session.target_muscle !== "游泳" && (
-        <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-3 sm:p-3.5 text-xs shadow-sm space-y-2.5">
-          {/* 狀態列 */}
-          <div className="flex items-center gap-2">
-            <Timer className={`w-4 h-4 shrink-0 ${timerActive ? "text-amber-400 animate-pulse" : "text-gray-400"}`} />
-            <span className="font-bold text-gray-200 shrink-0 text-xs sm:text-sm">休息計時：</span>
-            {timerActive && timerSeconds !== null && timerSeconds > 0 ? (
-              <span className="text-amber-400 font-mono font-black text-base animate-pulse">
-                {Math.floor(timerSeconds / 60)}:{(timerSeconds % 60).toString().padStart(2, "0")}
-              </span>
-            ) : timerSeconds === 0 ? (
-              <span className="text-emerald-400 font-bold text-xs sm:text-sm">時間到！</span>
-            ) : (
-              <span className="text-gray-500 text-xs">手動點擊啟動</span>
-            )}
-          </div>
-
-          {/* 按鈕列 — 均分排列，加大觸控面積 */}
-          <div className="flex items-center gap-1.5">
-            {timerActive ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => adjustRestSeconds(-30)}
-                  className="flex-1 py-2 bg-[#181b26] hover:bg-[#202533] border border-red-500/40 text-red-300 rounded-xl text-xs font-bold active:scale-95 cursor-pointer text-center"
-                  title="減少 30 秒休息"
-                >
-                  -30秒
-                </button>
-                <button
-                  type="button"
-                  onClick={() => adjustRestSeconds(30)}
-                  className="flex-1 py-2 bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 rounded-xl text-xs font-bold active:scale-95 cursor-pointer text-center"
-                  title="延長 30 秒休息"
-                >
-                  +30秒
-                </button>
-                <button
-                  type="button"
-                  onClick={stopRestTimer}
-                  className="flex-1 py-2 bg-red-950/30 hover:bg-red-900/50 border border-red-500/30 text-red-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1 active:scale-95 cursor-pointer"
-                  title="結束休息計時"
-                >
-                  <X className="w-3.5 h-3.5" />
-                  <span>結束</span>
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => startRestTimer(90)}
-                  className="flex-1 py-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-xl text-xs font-bold active:scale-95 cursor-pointer text-center"
-                >
-                  1.5分
-                </button>
-                <button
-                  type="button"
-                  onClick={() => startRestTimer(120)}
-                  className="flex-1 py-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-xl text-xs font-bold active:scale-95 cursor-pointer text-center"
-                >
-                  2分
-                </button>
-                <button
-                  type="button"
-                  onClick={() => startRestTimer(150)}
-                  className="flex-1 py-2 bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 rounded-xl text-xs font-black active:scale-95 shadow-sm cursor-pointer text-center"
-                >
-                  2.5分
-                </button>
-                <button
-                  type="button"
-                  onClick={() => startRestTimer(180)}
-                  className="flex-1 py-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-xl text-xs font-bold active:scale-95 cursor-pointer text-center"
-                >
-                  3分
-                </button>
-              </>
-            )}
-          </div>
         </div>
       )}
 
@@ -2896,23 +2847,23 @@ export default function WorkoutDetailPage({
 
       {/* 做組打勾完成後，螢幕底部大拇指極速快捷休息氣泡 (5秒自動消失) */}
       {restPromptSetId && !timerActive && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 pointer-events-auto max-w-[92vw]">
           <button
             type="button"
             onClick={() => {
               startRestTimer(defaultRestDuration || 150);
               setRestPromptSetId(null);
             }}
-            className="bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black px-4 py-2.5 rounded-full font-black text-xs shadow-2xl flex items-center gap-2 ring-4 ring-amber-400/40 active:scale-95 cursor-pointer transition-all"
+            className="bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black px-4 py-2 rounded-full font-black text-xs shadow-2xl flex items-center gap-2 ring-4 ring-amber-400/40 active:scale-95 cursor-pointer transition-all whitespace-nowrap shrink-0"
           >
-            <Timer className="w-4 h-4 stroke-[2.5]" />
-            <span>⏱️ 啟動 {Math.floor((defaultRestDuration || 150) / 60)}:{((defaultRestDuration || 150) % 60).toString().padStart(2, "0")} 休息</span>
+            <Timer className="w-4 h-4 stroke-[2.5] shrink-0" />
+            <span className="shrink-0">⏱️ 啟動 {Math.floor((defaultRestDuration || 150) / 60)}:{((defaultRestDuration || 150) % 60).toString().padStart(2, "0")} 休息</span>
             <span
               onClick={(e) => {
                 e.stopPropagation();
                 setRestPromptSetId(null);
               }}
-              className="ml-1 p-0.5 rounded-full hover:bg-black/20 text-black/70 hover:text-black cursor-pointer"
+              className="ml-1 p-0.5 rounded-full hover:bg-black/20 text-black/70 hover:text-black cursor-pointer shrink-0"
               title="關閉提示"
             >
               <X className="w-3 h-3" />
@@ -2921,21 +2872,21 @@ export default function WorkoutDetailPage({
         </div>
       )}
 
-      {/* 🚀 浮動吸頂/吸底休息倒數膠囊 (無論滑到哪裡，隨時直覺掌握剩餘休息秒數，不必滑回頂部) */}
+      {/* 🚀 浮動吸底休息倒數膠囊 (無論滑到哪裡，隨時直覺掌握剩餘休息秒數，緊湊防換行) */}
       {timerActive && timerSeconds !== null && timerSeconds > 0 && (
-        <div className="fixed bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200 pointer-events-auto">
-          <div className="bg-[#12141c]/95 border-2 border-amber-400 backdrop-blur-md px-4 py-2 rounded-full shadow-2xl shadow-amber-500/30 flex items-center gap-2.5 text-white">
-            <div className="flex items-center gap-1.5 text-amber-400 font-mono font-black text-sm">
-              <Timer className="w-4 h-4 animate-spin" style={{ animationDuration: "3s" }} />
-              <span>
+        <div className="fixed bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 z-50 pointer-events-auto max-w-[94vw]">
+          <div className="bg-[#12141c]/95 border-2 border-amber-400 backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-2xl shadow-amber-500/30 flex items-center gap-2 text-white whitespace-nowrap shrink-0 select-none">
+            <div className="flex items-center gap-1.5 text-amber-400 font-mono font-black text-sm shrink-0">
+              <Timer className="w-4 h-4 animate-spin shrink-0" style={{ animationDuration: "3s" }} />
+              <span className="tabular-nums">
                 {Math.floor(timerSeconds / 60)}:{(timerSeconds % 60).toString().padStart(2, "0")}
               </span>
             </div>
-            <div className="h-4 w-px bg-white/20" />
+            <div className="h-3.5 w-px bg-white/20 shrink-0" />
             <button
               type="button"
               onClick={() => adjustRestSeconds(-30)}
-              className="text-[11px] font-black bg-red-500/20 hover:bg-red-500/30 text-red-300 px-2 py-0.5 rounded-full border border-red-500/40 active:scale-95 transition-all cursor-pointer"
+              className="text-[11px] font-black bg-red-500/20 hover:bg-red-500/30 text-red-300 px-2.5 py-1 rounded-full border border-red-500/40 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center"
               title="減少 30 秒"
             >
               -30s
@@ -2943,7 +2894,7 @@ export default function WorkoutDetailPage({
             <button
               type="button"
               onClick={() => adjustRestSeconds(30)}
-              className="text-[11px] font-black bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 px-2 py-0.5 rounded-full border border-amber-400/40 active:scale-95 transition-all cursor-pointer"
+              className="text-[11px] font-black bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 px-2.5 py-1 rounded-full border border-amber-400/40 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center"
               title="增加 30 秒"
             >
               +30s
@@ -2951,7 +2902,7 @@ export default function WorkoutDetailPage({
             <button
               type="button"
               onClick={stopRestTimer}
-              className="text-gray-400 hover:text-white p-0.5 rounded-full hover:bg-white/10 active:scale-95 transition-all cursor-pointer"
+              className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-white/10 active:scale-95 transition-all cursor-pointer shrink-0 ml-0.5"
               title="結束計時"
             >
               <X className="w-3.5 h-3.5" />

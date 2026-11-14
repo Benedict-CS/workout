@@ -30,6 +30,7 @@ import {
 } from "@/lib/markdown-generator";
 import { parseWorkoutMarkdown } from "@/lib/parser/markdown-parser";
 import { runFullSync, deleteRemoteSession } from "@/lib/db/sync";
+import { getPrimaryMuscle, getMuscleBadgeColor, cleanSessionTitle } from "@/lib/workout-utils";
 import type { WorkoutSession, SetItem, Exercise, BigThreeRecord } from "@/lib/types";
 
 const WEEK_DAYS = ["一", "二", "三", "四", "五", "六", "日"];
@@ -655,11 +656,11 @@ export default function HistoryPage() {
                       <div className="flex items-start justify-between gap-2">
                         <Link href={`/workout/${s.id}`} className="flex-1">
                           <h4 className="font-bold text-white text-sm group-hover:text-emerald-400 transition-colors">
-                            {s.display_title}
+                            {cleanSessionTitle(s.display_title, s.target_muscle)}
                           </h4>
                           <div className="flex items-center gap-2 text-xs text-gray-400 mt-1 flex-wrap">
-                            <span className="text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 text-[11px]">
-                              {s.target_muscle}
+                            <span className={`font-black px-2 py-0.5 rounded border text-[11px] ${getMuscleBadgeColor(s.target_muscle)}`}>
+                              {getPrimaryMuscle(s.target_muscle)}
                             </span>
                             {s.status === "in_progress" && (
                               <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black px-1.5 py-0.5 rounded animate-pulse">
@@ -836,12 +837,14 @@ export default function HistoryPage() {
                   >
                     <Link href={`/workout/${s.id}`} className="space-y-1 flex-1 pr-2">
                       <h4 className="font-bold text-gray-100 text-sm group-hover:text-emerald-400 transition-colors">
-                        {s.display_title}
+                        {cleanSessionTitle(s.display_title, s.target_muscle)}
                       </h4>
                       <div className="flex items-center gap-2 text-[11px] text-gray-400 flex-wrap">
                         <span>{s.date}</span>
                         <span>•</span>
-                        <span className="text-emerald-400 font-medium">{s.target_muscle}</span>
+                        <span className={`font-black px-1.5 py-0.5 rounded border text-[10px] ${getMuscleBadgeColor(s.target_muscle)}`}>
+                          {getPrimaryMuscle(s.target_muscle)}
+                        </span>
                         <span>•</span>
                         <span>{distinctEx} 個動作</span>
                         <span>•</span>

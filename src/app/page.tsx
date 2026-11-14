@@ -18,6 +18,7 @@ import { ensureDatabaseSeeded } from "@/lib/db/seed";
 import { formatSessionToMarkdown } from "@/lib/markdown-generator";
 import { deleteRemoteSession, runFullSync } from "@/lib/db/sync";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
+import { getPrimaryMuscle, getMuscleBadgeColor, cleanSessionTitle } from "@/lib/workout-utils";
 import type { WorkoutSession, SetItem, Exercise } from "@/lib/types";
 
 interface MonthGroupData {
@@ -508,15 +509,6 @@ export default function HomePage() {
                 };
                 const formalSets = sessSets.filter((st) => !isWarmup(st));
 
-                let badgeColor = "bg-red-500/20 text-red-300 border-red-500/40";
-                if (sess.target_muscle.includes("背")) {
-                  badgeColor = "bg-blue-500/20 text-blue-300 border-blue-500/40";
-                } else if (sess.target_muscle.includes("腿")) {
-                  badgeColor = "bg-emerald-500/20 text-emerald-300 border-emerald-500/40";
-                } else if (sess.target_muscle.includes("泳")) {
-                  badgeColor = "bg-cyan-500/20 text-cyan-300 border-cyan-500/40";
-                }
-
                 // 依動作群組分類組數
                 const exMap = new Map<string, SetItem[]>();
                 const exOrder: string[] = [];
@@ -527,6 +519,9 @@ export default function HomePage() {
                   }
                   exMap.get(st.exercise_id)!.push(st);
                 }
+
+                const cleanedTitle = cleanSessionTitle(sess.display_title, sess.target_muscle);
+                const primaryMuscle = getPrimaryMuscle(sess.target_muscle);
 
                 return (
                   <div
@@ -546,8 +541,8 @@ export default function HomePage() {
                       {/* 主行：部位 badge + 標題 + 展開箭頭 */}
                       <div className="flex items-start gap-2">
                         <div className="flex items-center gap-1 shrink-0 mt-0.5">
-                          <span className={`px-2 py-0.5 rounded font-black text-xs border ${badgeColor}`}>
-                            {sess.target_muscle}
+                          <span className={`px-2 py-0.5 rounded font-black text-xs border ${getMuscleBadgeColor(sess.target_muscle)}`}>
+                            {primaryMuscle}
                           </span>
                           {sess.status === "in_progress" && (
                             <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
@@ -560,7 +555,7 @@ export default function HomePage() {
                           className="font-bold text-gray-100 hover:text-emerald-400 transition-colors flex-1 min-w-0 break-words select-text cursor-text text-[13px] sm:text-sm leading-snug"
                           title="可直接選取複製文字"
                         >
-                          {sess.display_title}
+                          {cleanedTitle}
                         </span>
 
                         <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
@@ -569,8 +564,8 @@ export default function HomePage() {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              navigator.clipboard.writeText(sess.display_title);
-                              setCopyToast(`已複製標題：${sess.display_title}`);
+                              navigator.clipboard.writeText(cleanedTitle);
+                              setCopyToast(`已複製標題：${cleanedTitle}`);
                               setTimeout(() => setCopyToast(null), 2000);
                             }}
                             className="p-1.5 text-gray-400 hover:text-emerald-400 hover:bg-[#262b3d] rounded transition-all cursor-pointer"

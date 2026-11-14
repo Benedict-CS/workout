@@ -7,129 +7,39 @@ import {
   Upload,
   CheckCircle,
   Database,
-  Trophy,
   FileText,
-  Trash2,
   Dumbbell,
-  Sparkles,
+  Timer,
   ChevronRight,
+  RotateCcw,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
-import { ensureDatabaseSeeded } from "@/lib/db/seed";
 import { exportAllSessionsToMarkdown } from "@/lib/markdown-generator";
 import { parseWorkoutMarkdown } from "@/lib/parser/markdown-parser";
 import { runFullSync } from "@/lib/db/sync";
-import type { BigThreeRecord, WorkoutSession, SetItem, Exercise } from "@/lib/types";
 
 export default function SettingsPage() {
-  const [reseeded, setReseeded] = useState(false);
-
   // 備份還原檔案輸入
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [restoreStatusMsg, setRestoreStatusMsg] = useState<string | null>(null);
 
-  // 個人體重與三項設定
-  const [bodyWeight, setBodyWeight] = useState<string>("62.6");
-  const [benchKg, setBenchKg] = useState<string>("60");
-  const [squatKg, setSquatKg] = useState<string>("85");
-  const [deadliftKg, setDeadliftKg] = useState<string>("90");
-  const [b3Saved, setB3Saved] = useState(false);
+  // 預設組間休息時間 (秒)
+  const [defaultRest, setDefaultRest] = useState<number>(150);
+  const [restSaved, setRestSaved] = useState(false);
 
   useEffect(() => {
-    async function loadSettings() {
-      // 1. 優先讀取秤盤最新量測體重 (空腹量測基準)
-      const bwList = await db.body_weight.orderBy("date").toArray();
-      const latestScaleWeight = bwList.length > 0 ? bwList[bwList.length - 1].weight_kg : 63.6;
-
-      // 2. 自動從真實訓練歷史中動態計算全歷史三項最高重量 (含今日深蹲 90Kg)
-      const allSets = await db.sets.filter((s) => !s.deleted_at && s.weight_kg > 0).toArray();
-      const allExercises = await db.exercises.toArray();
-      const benchExIds = allExercises.filter((e) => e.name.includes("臥推") && !e.name.includes("啞鈴")).map((e) => e.id);
-      const squatExIds = allExercises.filter((e) => e.name.includes("深蹲")).map((e) => e.id);
-      const deadliftExIds = allExercises.filter((e) => e.name.includes("硬舉")).map((e) => e.id);
-
-      let allTimeBench = 0;
-      let allTimeSquat = 0;
-      let allTimeDead = 0;
-      for (const st of allSets) {
-        if (benchExIds.includes(st.exercise_id) && st.weight_kg > allTimeBench) allTimeBench = st.weight_kg;
-        if (squatExIds.includes(st.exercise_id) && st.weight_kg > allTimeSquat) allTimeSquat = st.weight_kg;
-        if (deadliftExIds.includes(st.exercise_id) && st.weight_kg > allTimeDead) allTimeDead = st.weight_kg;
-      }
-
-      const list = await db.big_three.toArray();
-      const oldB3 = list.length > 0 ? list[0] : null;
-
-      const effectiveBench = Math.max(allTimeBench, oldB3?.bench_press_kg || 60);
-      const effectiveSquat = Math.max(allTimeSquat, oldB3?.squat_kg || 85);
-      const effectiveDead = Math.max(allTimeDead, oldB3?.deadlift_kg || 90);
-      const effectiveBw = latestScaleWeight || oldB3?.body_weight_kg || 63.6;
-
-      setBenchKg(effectiveBench.toString());
-      setSquatKg(effectiveSquat.toString());
-      setDeadliftKg(effectiveDead.toString());
-      setBodyWeight(effectiveBw.toString());
-
-      // 自動同步寫入 db.big_three
-      const rec: BigThreeRecord = {
-        id: oldB3?.id || "big-three-global",
-        bench_press_kg: effectiveBench,
-        squat_kg: effectiveSquat,
-        deadlift_kg: effectiveDead,
-        total_kg: effectiveBench + effectiveSquat + effectiveDead,
-        body_weight_kg: effectiveBw,
-        bench_ratio: Math.round((effectiveBench / effectiveBw) * 100) / 100,
-        squat_ratio: Math.round((effectiveSquat / effectiveBw) * 100) / 100,
-        deadlift_ratio: Math.round((effectiveDead / effectiveBw) * 100) / 100,
-        updated_at: new Date().toISOString(),
-        sync_status: "pending",
-      };
-      await db.big_three.put(rec);
+    const savedRest = localStorage.getItem("workout_default_rest");
+    if (savedRest) {
+      const val = parseInt(savedRest, 10);
+      if (!isNaN(val) && val > 0) setDefaultRest(val);
     }
-    loadSettings();
   }, []);
 
-  // 即時動態計算體重倍數
-  const curBw = parseFloat(bodyWeight) || 0;
-  const curBench = parseFloat(benchKg) || 0;
-  const curSquat = parseFloat(squatKg) || 0;
-  const curDead = parseFloat(deadliftKg) || 0;
-  const curTotal = curBench + curSquat + curDead;
-
-  const benchMultiplier = curBw > 0 ? (curBench / curBw).toFixed(2) : "-";
-  const squatMultiplier = curBw > 0 ? (curSquat / curBw).toFixed(2) : "-";
-  const deadMultiplier = curBw > 0 ? (curDead / curBw).toFixed(2) : "-";
-  const totalMultiplier = curBw > 0 ? (curTotal / curBw).toFixed(2) : "-";
-
-  async function handleSaveBigThree() {
-    const bw = parseFloat(bodyWeight) || 62.6;
-    const b = parseFloat(benchKg) || 0;
-    const s = parseFloat(squatKg) || 0;
-    const d = parseFloat(deadliftKg) || 0;
-    const total = b + s + d;
-
-    const bRatio = Math.round((b / bw) * 100) / 100;
-    const sRatio = Math.round((s / bw) * 100) / 100;
-    const dRatio = Math.round((d / bw) * 100) / 100;
-
-    const rec: BigThreeRecord = {
-      id: "big-three-global",
-      bench_press_kg: b,
-      squat_kg: s,
-      deadlift_kg: d,
-      total_kg: total,
-      body_weight_kg: bw,
-      bench_ratio: bRatio,
-      squat_ratio: sRatio,
-      deadlift_ratio: dRatio,
-      updated_at: new Date().toISOString(),
-      sync_status: "pending",
-    };
-
-    await db.big_three.put(rec);
-    setB3Saved(true);
-    setTimeout(() => setB3Saved(false), 2000);
-    runFullSync().catch((err) => console.log("Sync error:", err));
+  function handleSelectDefaultRest(secs: number) {
+    setDefaultRest(secs);
+    localStorage.setItem("workout_default_rest", secs.toString());
+    setRestSaved(true);
+    setTimeout(() => setRestSaved(false), 2000);
   }
 
   // 匯出 Markdown 檔案 (.md)
@@ -233,34 +143,11 @@ export default function SettingsPage() {
     }
   }
 
-  // 重新從內建種子資料重置
-  async function handleReseed() {
-    if (!confirm("確定要重設並重新載入完整的初始歷史記錄嗎？")) return;
-    await db.sessions.clear();
-    await db.exercises.clear();
-    await db.sets.clear();
-    await db.big_three.clear();
-    await ensureDatabaseSeeded();
-    setReseeded(true);
-    setTimeout(() => setReseeded(false), 2500);
-  }
-
-  // 清空所有資料
-  async function handleClearAll() {
-    if (!confirm("⚠️ 警告：這將徹底清空本地的所有訓練日誌與動作紀錄！確定要執行嗎？")) return;
-    if (!confirm("最後確認：資料清空後無法復原，除非有事先備份檔案。確定清空？")) return;
-    await db.sessions.clear();
-    await db.exercises.clear();
-    await db.sets.clear();
-    await db.big_three.clear();
-    setRestoreStatusMsg("已清空所有本地資料！");
-  }
-
   return (
     <div className="space-y-5 pb-20">
       <div>
         <h1 className="text-xl font-black text-white">設定 & 個人客製化</h1>
-        <p className="text-xs text-gray-400">管理場地偏好、三項基準數據、備份匯出與檔案還原</p>
+        <p className="text-xs text-gray-400">管理常用動作庫、組間休息偏好、資料備份與還原</p>
       </div>
 
       {/* 動作庫管理 (置頂，方便現場與平時管理器材動作) */}
@@ -284,53 +171,46 @@ export default function SettingsPage() {
         </Link>
       </section>
 
-      {/* 個人三項 PR 基準 (自動抓取無須手動，導引至訓練分析) */}
+      {/* 預設組間休息設定 */}
       <section className="bg-[#12141c] border border-amber-500/30 rounded-2xl p-4 space-y-3 shadow-lg">
         <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
           <div className="flex items-center gap-2">
-            <Trophy className="w-4 h-4 text-amber-400" />
-            <h2 className="text-sm font-bold text-gray-100">個人三項 PR 基準（動態自適應）</h2>
+            <Timer className="w-5 h-5 text-amber-400" />
+            <h2 className="text-sm font-bold text-gray-100">預設組間休息時長</h2>
           </div>
-          <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
-            <Sparkles className="w-3 h-3" />
-            <span>全自動即時運算</span>
-          </span>
+          {restSaved && (
+            <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 animate-in fade-in">
+              <CheckCircle className="w-3 h-3" />
+              <span>已自動儲存</span>
+            </span>
+          )}
         </div>
 
-        <p className="text-xs text-gray-300 leading-relaxed">
-          系統已全自動從真實訓練紀錄（包含臥推 {benchKg}Kg、深蹲 {squatKg}Kg、硬舉 {deadliftKg}Kg）與最新量測體重 ({bodyWeight}Kg) 自動即時同步，三項總和 {curTotal}Kg ({totalMultiplier}x 體重)，<strong>無需再手動輸入儲存</strong>。
+        <p className="text-xs text-gray-400 leading-relaxed">
+          訓練時每組完成打勾後，底部浮動計時器將自動以此時長快速啟動倒數。
         </p>
 
-        <div className="grid grid-cols-4 gap-2 text-center text-xs bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]">
-          <div>
-            <span className="text-[10px] text-gray-400 block">臥推 PR</span>
-            <span className="text-sm font-black text-red-300">{benchKg}kg</span>
-            <span className="text-[10px] text-red-400 font-bold block">{benchMultiplier}x</span>
-          </div>
-          <div>
-            <span className="text-[10px] text-gray-400 block">深蹲 PR</span>
-            <span className="text-sm font-black text-emerald-300">{squatKg}kg</span>
-            <span className="text-[10px] text-emerald-400 font-bold block">{squatMultiplier}x</span>
-          </div>
-          <div>
-            <span className="text-[10px] text-gray-400 block">硬舉 PR</span>
-            <span className="text-sm font-black text-blue-300">{deadliftKg}kg</span>
-            <span className="text-[10px] text-blue-400 font-bold block">{deadMultiplier}x</span>
-          </div>
-          <div className="bg-[#202533]/50 rounded-lg p-0.5">
-            <span className="text-[10px] text-amber-400 block font-bold">總和</span>
-            <span className="text-sm font-black text-amber-300">{curTotal}kg</span>
-            <span className="text-[10px] text-amber-400/80 font-bold block">{totalMultiplier}x</span>
-          </div>
+        <div className="grid grid-cols-4 gap-2">
+          {[
+            { label: "1.5 分", secs: 90 },
+            { label: "2 分", secs: 120 },
+            { label: "2.5 分", secs: 150 },
+            { label: "3 分", secs: 180 },
+          ].map((item) => (
+            <button
+              key={item.secs}
+              type="button"
+              onClick={() => handleSelectDefaultRest(item.secs)}
+              className={`py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                defaultRest === item.secs
+                  ? "bg-amber-500 text-black border-amber-400 font-black shadow-md scale-[1.02]"
+                  : "bg-[#181b26] text-gray-300 hover:text-white border-[#262b3d]"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
-
-        <Link
-          href="/analytics"
-          className="w-full bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-        >
-          <span>查看完整訓練數據分析與每月成長走勢</span>
-          <ChevronRight className="w-4 h-4" />
-        </Link>
       </section>
 
       {/* Markdown 與備份匯入還原 */}

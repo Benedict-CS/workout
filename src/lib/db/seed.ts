@@ -416,6 +416,25 @@ export async function ensureDatabaseSeeded(): Promise<void> {
     }
   }
 
+  // 檢查並標準化所有訓練場次標題與主要部位 (胸/背/腿/肩/游泳，去除贅字贅詞如「+ 三頭」、「+ 後肩」)
+  const allSessionsToClean = await db.sessions.toArray();
+  for (const s of allSessionsToClean) {
+    let cleanTarget = "胸";
+    if (s.target_muscle.includes("胸") || s.display_title.includes("胸")) cleanTarget = "胸";
+    else if (s.target_muscle.includes("背") || s.display_title.includes("背")) cleanTarget = "背";
+    else if (s.target_muscle.includes("腿") || s.display_title.includes("腿")) cleanTarget = "腿";
+    else if (s.target_muscle.includes("肩") || s.display_title.includes("肩")) cleanTarget = "肩";
+    else if (s.target_muscle.includes("泳") || s.display_title.includes("泳")) cleanTarget = "游泳";
+
+    const cleanTitle = s.display_title.replace(/\(([^)]+)\)/, `(${cleanTarget})`);
+    if (cleanTitle !== s.display_title || cleanTarget !== s.target_muscle) {
+      await db.sessions.update(s.id, {
+        display_title: cleanTitle,
+        target_muscle: cleanTarget,
+      });
+    }
+  }
+
   // 嘗試在背景與 Supabase 雙向同步 (確保手機與電腦資料一致)
   if (typeof window !== "undefined") {
     runFullSync().catch((err) => console.log("Background sync info:", err));

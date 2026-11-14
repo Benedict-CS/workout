@@ -133,9 +133,9 @@ export function GlobalRestTimer() {
     <aside
       aria-label="全域組間休息計時器"
       onClick={handleReturnToWorkout}
-      className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] left-3 right-3 max-w-md mx-auto z-40 bg-[#12141c]/95 backdrop-blur-md border border-amber-500/40 hover:border-amber-400 rounded-2xl p-2.5 shadow-2xl transition-all cursor-pointer flex items-center justify-between gap-2.5 animate-slide-up"
+      className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] left-3 right-3 max-w-md mx-auto z-40 bg-[#12141c]/95 backdrop-blur-md border border-amber-500/40 hover:border-amber-400 rounded-2xl p-2.5 shadow-2xl transition-all cursor-pointer flex items-center justify-between gap-2 select-none animate-slide-up"
     >
-      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+      <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
         <div className={`p-2 rounded-xl shrink-0 ${isFinished ? "bg-emerald-500/20 text-emerald-400" : "bg-amber-500/20 text-amber-400"}`}>
           {isFinished ? (
             <CheckCircle2 className="w-5 h-5 stroke-[2.5]" />
@@ -144,42 +144,42 @@ export function GlobalRestTimer() {
           )}
         </div>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-sm font-black font-mono text-amber-300 tracking-wider">
+        <div className="min-w-0 flex-1 truncate">
+          <div className="flex items-center gap-1.5 truncate">
+            <span className="text-sm font-black font-mono text-amber-300 tracking-wider shrink-0 tabular-nums">
               {isFinished ? "休息結束！" : timeFormatted}
             </span>
-            <span className="text-[11px] text-gray-300 font-medium break-words">
+            <span className="text-[11px] text-gray-300 font-medium truncate">
               {isFinished ? "準備做下一組" : timerInfo?.title || "訓練組間休息"}
             </span>
           </div>
-          <div className="text-[10px] text-gray-400 flex items-center gap-0.5 hover:text-white mt-0.5">
+          <div className="text-[10px] text-gray-400 flex items-center gap-0.5 hover:text-white mt-0.5 truncate">
             <span>點擊返回訓練頁</span>
-            <ArrowUpRight className="w-3 h-3 text-gray-400" />
+            <ArrowUpRight className="w-3 h-3 text-gray-400 shrink-0" />
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5 shrink-0">
+      <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap">
         {!isFinished && (
           <>
             <button
               type="button"
               onClick={(e) => handleAdjustSeconds(e, -30)}
-              className="px-2 py-1 bg-[#181b26] hover:bg-[#202533] border border-red-500/40 text-red-300 rounded-lg text-xs font-bold active:scale-95 transition-all flex items-center gap-0.5 cursor-pointer"
+              className="px-2 py-1 bg-[#181b26] hover:bg-[#202533] border border-red-500/40 text-red-300 rounded-lg text-xs font-bold active:scale-95 transition-all flex items-center gap-0.5 cursor-pointer whitespace-nowrap shrink-0"
               title="減少 30 秒"
             >
-              <Minus className="w-3 h-3 stroke-[3]" />
-              <span>30s</span>
+              <Minus className="w-3 h-3 stroke-[3] shrink-0" />
+              <span className="shrink-0">30s</span>
             </button>
             <button
               type="button"
               onClick={(e) => handleAdjustSeconds(e, 30)}
-              className="px-2 py-1 bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 rounded-lg text-xs font-bold active:scale-95 transition-all flex items-center gap-0.5 cursor-pointer"
+              className="px-2 py-1 bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 rounded-lg text-xs font-bold active:scale-95 transition-all flex items-center gap-0.5 cursor-pointer whitespace-nowrap shrink-0"
               title="延長 30 秒"
             >
-              <Plus className="w-3 h-3 stroke-[3]" />
-              <span>30s</span>
+              <Plus className="w-3 h-3 stroke-[3] shrink-0" />
+              <span className="shrink-0">30s</span>
             </button>
           </>
         )}
@@ -187,7 +187,7 @@ export function GlobalRestTimer() {
         <button
           type="button"
           onClick={handleDismiss}
-          className="p-1.5 text-gray-400 hover:text-white bg-[#181b26] border border-[#262b3d] rounded-lg active:scale-95 transition-all"
+          className="p-1.5 text-gray-400 hover:text-white bg-[#181b26] border border-[#262b3d] rounded-lg active:scale-95 transition-all shrink-0"
           title="關閉計時"
         >
           <X className="w-3.5 h-3.5" />
