@@ -100,6 +100,10 @@ export default function WorkoutDetailPage({
   const [defaultRestDuration, setDefaultRestDuration] = useState<number>(150); // 預設 2 分半 (150秒)
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // 做組打勾完成後的快速休息氣泡
+  const [restPromptSetId, setRestPromptSetId] = useState<string | null>(null);
+  const restPromptTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // 動作歷史記錄 Modal
   const [viewHistoryEx, setViewHistoryEx] = useState<{
     exercise: Exercise;
@@ -584,7 +588,7 @@ export default function WorkoutDetailPage({
     return false;
   }
 
-  // 標記/切換單組完成狀態 (一組一組往下做，由使用者自主決定何時手動觸發休息)
+  // 標記/切換單組完成狀態 (一組一組往下做，完成時彈出快速休息氣泡)
   async function handleToggleSetCompleted(setId: string) {
     const target = sets.find((s) => s.id === setId);
     if (!target) return;
@@ -604,6 +608,54 @@ export default function WorkoutDetailPage({
 
     await db.sets.put(updated);
     setSets((prev) => prev.map((s) => (s.id === setId ? updated : s)));
+    runFullSync().catch(() => {});
+
+    // 若剛標記為已完成，且非游泳訓練，立即彈出快速休息氣泡（5秒不點擊自動隱藏）
+    if (newStatus && session?.target_muscle !== "游泳") {
+      setRestPromptSetId(setId);
+      if (restPromptTimerRef.current) clearTimeout(restPromptTimerRef.current);
+      restPromptTimerRef.current = setTimeout(() => {
+        setRestPromptSetId(null);
+      }, 5000);
+    } else {
+      if (restPromptSetId === setId) setRestPromptSetId(null);
+    }
+  }
+
+  // 快速複製該動作上一組多做一組 (0.5秒極速加組)
+  async function handleAddOneMoreSet(last: SetItem) {
+    if (!last) return;
+    const exSets = sets.filter((s) => s.exercise_id === last.exercise_id);
+    const newOrder = sets.length + 1;
+    const formalIndex = isWarmupOrActivation(last) ? 0 : exSets.filter((s) => !isWarmupOrActivation(s)).length + 1;
+    const raw = formatSetRawText(
+      formalIndex,
+      last.set_type,
+      last.weight_kg,
+      last.reps,
+      last.sub_fields,
+      last.notes || ""
+    );
+
+    const newSet: SetItem = {
+      id: `set-${Date.now()}-${newOrder}`,
+      session_id: id,
+      exercise_id: last.exercise_id,
+      set_order: newOrder,
+      set_type: last.set_type,
+      weight_kg: last.weight_kg,
+      reps: last.reps,
+      raw_text: raw,
+      sub_fields: last.sub_fields,
+      notes: last.notes,
+      is_completed: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    };
+
+    await db.sets.add(newSet);
+    setSets((prev) => [...prev, newSet]);
     runFullSync().catch(() => {});
   }
 
@@ -1441,9 +1493,24 @@ export default function WorkoutDetailPage({
                           </div>
                         </div>
 
-                        {/* 副行：上次紀錄 + PR + 進行中/完成 徽章 */}
-                        {(matchingGhost || isSetNewPR(s) || isCurrent || isDone || s.set_type === "drop") && (
+                        {/* 副行：上次紀錄 + PR + 進行中/完成 徽章 + 快速休息氣泡 */}
+                        {(matchingGhost || isSetNewPR(s) || isCurrent || isDone || s.set_type === "drop" || restPromptSetId === s.id) && (
                           <div className="flex items-center gap-2 mt-1.5 ml-9 flex-wrap text-xs">
+                            {/* 做組完成時彈出的極簡快速休息氣泡 */}
+                            {restPromptSetId === s.id && !timerActive && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  startRestTimer(defaultRestDuration || 150);
+                                  setRestPromptSetId(null);
+                                }}
+                                className="animate-in fade-in zoom-in-95 duration-200 bg-amber-500 hover:bg-amber-400 text-black px-2.5 py-1 rounded-lg text-xs font-black shadow-lg flex items-center gap-1.5 active:scale-95 cursor-pointer ring-2 ring-amber-400/60"
+                                title="一鍵啟動 2 分半組間休息計時"
+                              >
+                                <Timer className="w-3.5 h-3.5 stroke-[2.5]" />
+                                <span>⏱️ 啟動 2:30 休息</span>
+                              </button>
+                            )}
                             {matchingGhost && (
                               <span
                                 className={`text-[11px] font-medium ${
@@ -1483,6 +1550,20 @@ export default function WorkoutDetailPage({
                       </div>
                     );
                   })}
+                  {/* 動作卡片底部：＋ 多做一組快速加組按鈕 */}
+                  {session.target_muscle !== "游泳" && exSets.length > 0 && (
+                    <div className="pt-1.5 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => handleAddOneMoreSet(exSets[exSets.length - 1])}
+                        className="text-xs bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] hover:border-emerald-500/50 text-emerald-400 font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer shadow-sm"
+                        title="快速複製上一組的重量與次數加做一組"
+                      >
+                        <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                        <span>＋ 多做一組 ({exSets[exSets.length - 1].weight_kg}Kg x {exSets[exSets.length - 1].reps})</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             );
