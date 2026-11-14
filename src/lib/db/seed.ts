@@ -389,7 +389,9 @@ export async function ensureDatabaseSeeded(): Promise<void> {
   // 檢查並載入 InBody 里程碑身體組成檢測 (17 次多頻電極實測)
   const inbodyCount = await db.inbody_records.count();
   const hasBogusInbody = (await db.inbody_records.filter((ib) => ib.date === "2026-08-02" || ib.date === "2026-08-21").count()) > 0;
-  if (inbodyCount < inbodyData.length || hasBogusInbody) {
+  const hasOutdatedCondition = (await db.inbody_records.filter((ib) => Boolean(ib.condition_label && (ib.condition_label.includes("穿衣") || ib.condition_label.includes("中午飯後")))).count()) > 0;
+
+  if (inbodyCount < inbodyData.length || hasBogusInbody || hasOutdatedCondition) {
     await db.inbody_records.clear();
     const formattedInbody = inbodyData.map((ib: any) => ({
       ...ib,

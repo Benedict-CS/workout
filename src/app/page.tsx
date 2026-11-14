@@ -612,18 +612,16 @@ export default function HomePage() {
                                 📍 {sess.location}
                               </span>
                             )}
-                            {sess.target_muscle === "游泳" ? (
-                              <span className="text-[11px] sm:text-xs bg-cyan-950/40 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/30 font-medium">
-                                游泳紀錄
-                              </span>
-                            ) : sess.status === "in_progress" ? (
-                              <span className="text-[11px] sm:text-xs bg-amber-950/40 text-amber-300 px-2 py-0.5 rounded border border-amber-500/40 font-bold">
-                                已做 {formalSets.filter((s) => s.is_completed !== false).length}/{formalSets.length} 組
-                              </span>
-                            ) : (
-                              <span className="text-[11px] sm:text-xs bg-[#090a0f] text-gray-300 px-2 py-0.5 rounded border border-[#262b3d] font-semibold">
-                                {formalSets.length} 組
-                              </span>
+                            {sess.target_muscle !== "游泳" && (
+                              sess.status === "in_progress" ? (
+                                <span className="text-[11px] sm:text-xs bg-amber-950/40 text-amber-300 px-2 py-0.5 rounded border border-amber-500/40 font-bold">
+                                  已做 {formalSets.filter((s) => s.is_completed !== false).length}/{formalSets.length} 組
+                                </span>
+                              ) : (
+                                <span className="text-[11px] sm:text-xs bg-[#090a0f] text-gray-300 px-2 py-0.5 rounded border border-[#262b3d] font-semibold">
+                                  {formalSets.length} 組
+                                </span>
+                              )
                             )}
                           </div>
                         </div>

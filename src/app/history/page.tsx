@@ -696,10 +696,14 @@ export default function HistoryPage() {
                                 {s.location}
                               </span>
                             )}
-                            <span className="text-gray-500">•</span>
-                            <span className="text-gray-300 font-medium text-[11px]">
-                              {s.target_muscle === "游泳" ? "游泳紀錄" : `共 ${formalSets.length} 組`}
-                            </span>
+                            {s.target_muscle !== "游泳" && (
+                              <>
+                                <span className="text-gray-500">•</span>
+                                <span className="text-gray-300 font-medium text-[11px]">
+                                  共 {formalSets.length} 組
+                                </span>
+                              </>
+                            )}
                           </div>
                         </Link>
 
@@ -870,12 +874,7 @@ export default function HistoryPage() {
                         <span className={`font-black px-1.5 py-0.5 rounded border text-[10px] ${getMuscleBadgeColor(s.target_muscle)}`}>
                           {getPrimaryMuscle(s.target_muscle)}
                         </span>
-                        {s.target_muscle === "游泳" ? (
-                          <>
-                            <span>•</span>
-                            <span className="text-cyan-400 font-medium">游泳紀錄</span>
-                          </>
-                        ) : (
+                        {s.target_muscle !== "游泳" && (
                           <>
                             <span>•</span>
                             <span>{distinctEx} 個動作</span>

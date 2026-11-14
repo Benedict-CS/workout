@@ -83,7 +83,8 @@ export default function AnalyticsPage() {
   const [newIbSmm, setNewIbSmm] = useState("");
   const [newIbFatPct, setNewIbFatPct] = useState("");
   const [newIbScore, setNewIbScore] = useState("");
-  const [newIbTiming, setNewIbTiming] = useState<"morning" | "noon">("morning");
+  const [newIbTiming, setNewIbTiming] = useState<"before_lunch" | "after_lunch">("before_lunch");
+  const [prReps, setPrReps] = useState({ bench: 5, squat: 8, deadlift: 2 });
 
   useEffect(() => {
     setMounted(true);
@@ -170,6 +171,23 @@ export default function AnalyticsPage() {
         };
         setBigThree(effectiveB3);
         await db.big_three.put(effectiveB3);
+
+        // 計算 PR 實測次數 (非 1RM 極限單下，標記為實際完成之組數次數)
+        let bReps = 5;
+        let sReps = 8;
+        let dReps = 2;
+        for (const st of allSets) {
+          if (benchExIds.includes(st.exercise_id) && st.weight_kg === effectiveBench && st.reps > 0) {
+            if (st.reps > bReps) bReps = st.reps;
+          }
+          if (squatExIds.includes(st.exercise_id) && st.weight_kg === effectiveSquat && st.reps > 0) {
+            if (st.reps > sReps) sReps = st.reps;
+          }
+          if (deadliftExIds.includes(st.exercise_id) && st.weight_kg === effectiveDead && st.reps > 0) {
+            if (st.reps > dReps) dReps = st.reps;
+          }
+        }
+        setPrReps({ bench: bReps, squat: sReps, deadlift: dReps });
 
         const monthKeys = Array.from(new Set(sessions.map((s) => s.month_key))).sort();
         const trendList: MonthBigThreeData[] = [];
@@ -281,7 +299,8 @@ export default function AnalyticsPage() {
     const fatPct = newIbFatPct ? parseFloat(newIbFatPct) : 17.0;
     const score = newIbScore ? parseInt(newIbScore) : 78;
     const fatMass = Math.round(((w * fatPct) / 100) * 10) / 10;
-    const estNet = Math.round((w - 0.7) * 10) / 10;
+    const isBefore1PM = newIbTiming === "before_lunch";
+    const condLabel = isBefore1PM ? "午餐前 (僅吃早餐)" : "午餐後 (已吃午餐)";
 
     const newRec: InBodyRecord = {
       id: `inbody-${newIbDate}-${newIbTime.replace(":", "")}`,
@@ -293,8 +312,8 @@ export default function AnalyticsPage() {
       body_fat_pct: fatPct,
       inbody_score: score,
       timing: newIbTiming,
-      condition_label: newIbTiming === "morning" ? "早晨未吃 (有穿衣)" : "中午飯後 (有穿衣)",
-      estimated_net_weight_kg: estNet,
+      condition_label: condLabel,
+      estimated_net_weight_kg: w,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       sync_status: "pending",
@@ -358,18 +377,24 @@ export default function AnalyticsPage() {
     ? Math.round((latestInbody.weight_kg - firstInbody.weight_kg) * 10) / 10
     : 0;
 
-  const inbodyChartData = inbodyList.map((ib) => ({
-    date: ib.date.slice(5),
-    fullDate: `${ib.date} ${ib.time}`,
-    smm: ib.skeletal_muscle_kg,
-    bodyFatPct: ib.body_fat_pct,
-    fatMass: ib.body_fat_mass_kg,
-    weight: ib.weight_kg,
-    netWeight: ib.estimated_net_weight_kg,
-    score: ib.inbody_score,
-    timing: ib.timing,
-    condition: ib.condition_label,
-  }));
+  const inbodyChartData = inbodyList.map((ib) => {
+    const isBefore =
+      ib.timing === "before_lunch" ||
+      ib.timing === "morning" ||
+      (ib.time ? parseInt(ib.time.split(":")[0], 10) < 13 : true);
+    const cond = isBefore ? "午餐前 (僅吃早餐)" : "午餐後 (已吃午餐)";
+    return {
+      date: ib.date.slice(5),
+      fullDate: `${ib.date} ${ib.time}`,
+      smm: ib.skeletal_muscle_kg,
+      bodyFatPct: ib.body_fat_pct,
+      fatMass: ib.body_fat_mass_kg,
+      weight: ib.weight_kg,
+      score: ib.inbody_score,
+      timing: isBefore ? "before_lunch" : "after_lunch",
+      condition: cond,
+    };
+  });
 
   return (
     <div className="space-y-5 pb-24">
@@ -418,6 +443,182 @@ export default function AnalyticsPage() {
             <span className="text-lg font-black text-white">{allTimeStats["游泳"] || 0}</span>
             <span className="text-[10px] text-gray-500 block">次</span>
           </div>
+        </div>
+      </section>
+
+      {/* 個人三項 PR 基準 & 體重倍數卡片 (動態計算 + 實測次數注記) */}
+      {bigThree && (
+        <section className="bg-[#12141c] border border-amber-500/30 rounded-2xl p-4 space-y-2.5 shadow-md">
+          <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
+            <div className="flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-amber-400" />
+              <h2 className="text-sm font-bold text-gray-100">個人三項 PR 基準 & 體重倍數</h2>
+            </div>
+            <span className="text-[11px] text-gray-400">
+              基準體重：<span className="text-white font-bold">{bigThree.body_weight_kg || 63.6} kg</span>
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+            <div className="bg-[#181b26] p-2.5 rounded-xl border border-red-500/20">
+              <span className="text-[11px] text-gray-400 block mb-0.5">臥推 PR</span>
+              <div className="flex items-baseline justify-center gap-1">
+                <span className="text-base font-black text-red-300">{bigThree.bench_press_kg} kg</span>
+                <span className="text-[10px] text-red-400/90 font-bold">(x{prReps.bench}下)</span>
+              </div>
+              <span className="text-[10px] text-red-400 font-bold block mt-0.5">
+                {bigThree.body_weight_kg ? (bigThree.bench_press_kg / bigThree.body_weight_kg).toFixed(2) : "-"}x 體重
+              </span>
+            </div>
+
+            <div className="bg-[#181b26] p-2.5 rounded-xl border border-emerald-500/20">
+              <span className="text-[11px] text-gray-400 block mb-0.5">深蹲 PR</span>
+              <div className="flex items-baseline justify-center gap-1">
+                <span className="text-base font-black text-emerald-300">{bigThree.squat_kg} kg</span>
+                <span className="text-[10px] text-emerald-400/90 font-bold">(x{prReps.squat}下)</span>
+              </div>
+              <span className="text-[10px] text-emerald-400 font-bold block mt-0.5">
+                {bigThree.body_weight_kg ? (bigThree.squat_kg / bigThree.body_weight_kg).toFixed(2) : "-"}x 體重
+              </span>
+            </div>
+
+            <div className="bg-[#181b26] p-2.5 rounded-xl border border-blue-500/20">
+              <span className="text-[11px] text-gray-400 block mb-0.5">硬舉 PR</span>
+              <div className="flex items-baseline justify-center gap-1">
+                <span className="text-base font-black text-blue-300">{bigThree.deadlift_kg} kg</span>
+                <span className="text-[10px] text-blue-400/90 font-bold">(x{prReps.deadlift}下)</span>
+              </div>
+              <span className="text-[10px] text-blue-400 font-bold block mt-0.5">
+                {bigThree.body_weight_kg ? (bigThree.deadlift_kg / bigThree.body_weight_kg).toFixed(2) : "-"}x 體重
+              </span>
+            </div>
+
+            <div className="bg-[#181b26] p-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5">
+              <span className="text-[11px] text-amber-400 font-bold block mb-0.5">三項總和</span>
+              <div className="flex items-baseline justify-center gap-1">
+                <span className="text-base font-black text-amber-300">
+                  {bigThree.bench_press_kg + bigThree.squat_kg + bigThree.deadlift_kg} kg
+                </span>
+                <span className="text-[10px] text-amber-400/80 font-medium">(多下實測)</span>
+              </div>
+              <span className="text-[10px] text-amber-400 font-bold block mt-0.5">
+                {bigThree.body_weight_kg
+                  ? ((bigThree.bench_press_kg + bigThree.squat_kg + bigThree.deadlift_kg) / bigThree.body_weight_kg).toFixed(2)
+                  : "-"}x 體重
+              </span>
+            </div>
+          </div>
+
+          <div className="pt-1.5 border-t border-[#262b3d]/50 flex items-center justify-between text-[11px] text-gray-400 flex-wrap gap-1">
+            <span>💡 註：PR 標記為實際組數完成次數（非極限 1RM 單下，皆為多下實測重量）</span>
+          </div>
+        </section>
+      )}
+
+      {/* 每月三項最高重量成長曲線 (Kg) */}
+      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3 shadow-md">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-emerald-400" />
+            <h2 className="text-sm font-bold text-gray-100">每月三項最高重量成長曲線 (Kg)</h2>
+          </div>
+        </div>
+
+        <div className="text-[11px] text-gray-400 flex items-center gap-4">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block"></span>
+            <span>臥推</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block"></span>
+            <span>深蹲</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-400 inline-block"></span>
+            <span>硬舉</span>
+          </span>
+        </div>
+
+        <div className="h-60 w-full pt-2">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={monthlyTrend} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#262b3d" />
+              <XAxis dataKey="monthLabel" stroke="#6b7280" fontSize={11} tickLine={false} />
+              <YAxis
+                stroke="#6b7280"
+                fontSize={11}
+                domain={[
+                  (dataMin: number) => Math.max(0, Math.floor((dataMin - 10) / 10) * 10),
+                  (dataMax: number) => Math.ceil((dataMax + 10) / 10) * 10,
+                ]}
+              />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (!active || !payload || !payload.length) return null;
+                  const data = payload[0]?.payload as MonthBigThreeData;
+                  if (!data) return null;
+                  return (
+                    <div className="bg-[#181b26] border border-[#374151] rounded-xl p-3 text-xs shadow-xl space-y-1.5 min-w-[140px]">
+                      <div className="font-bold text-white border-b border-[#262b3d] pb-1 text-[11px]">
+                        {data.monthLabel || label}
+                      </div>
+                      <div className="space-y-1 text-[11px]">
+                        <div className="flex items-center justify-between text-red-300">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-red-400"></span>
+                            <span>臥推</span>
+                          </span>
+                          <span className="font-bold">{data.bench > 0 ? `${data.bench} Kg` : "-"}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-emerald-300">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                            <span>深蹲</span>
+                          </span>
+                          <span className="font-bold">{data.squat > 0 ? `${data.squat} Kg` : "-"}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-blue-300">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                            <span>硬舉</span>
+                          </span>
+                          <span className="font-bold">{data.deadlift > 0 ? `${data.deadlift} Kg` : "-"}</span>
+                        </div>
+                        <div className="border-t border-[#262b3d] pt-1.5 mt-1 flex items-center justify-between text-amber-400 font-black">
+                          <span>三項總和</span>
+                          <span>{data.total > 0 ? `${data.total} Kg` : "-"}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }}
+              />
+              <Line
+                type="monotone"
+                dataKey="bench"
+                name="bench"
+                stroke="#f87171"
+                strokeWidth={2.5}
+                dot={{ r: 4, fill: "#f87171" }}
+              />
+              <Line
+                type="monotone"
+                dataKey="squat"
+                name="squat"
+                stroke="#10b981"
+                strokeWidth={2.5}
+                dot={{ r: 4, fill: "#10b981" }}
+              />
+              <Line
+                type="monotone"
+                dataKey="deadlift"
+                name="deadlift"
+                stroke="#60a5fa"
+                strokeWidth={2.5}
+                dot={{ r: 4, fill: "#60a5fa" }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       </section>
 
@@ -690,12 +891,14 @@ export default function AnalyticsPage() {
                 </span>
                 <span
                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    latestInbody.timing === "morning"
+                    (latestInbody.timing === "before_lunch" || latestInbody.timing === "morning" || (latestInbody.time && parseInt(latestInbody.time.split(":")[0], 10) < 13))
                       ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
                       : "bg-blue-500/20 text-blue-300 border border-blue-500/40"
                   }`}
                 >
-                  {latestInbody.condition_label}
+                  {(latestInbody.timing === "before_lunch" || latestInbody.timing === "morning" || (latestInbody.time && parseInt(latestInbody.time.split(":")[0], 10) < 13))
+                    ? "午餐前 (僅吃早餐)"
+                    : "午餐後 (已吃午餐)"}
                 </span>
               </div>
               <span className="text-[11px] text-gray-400">
@@ -885,7 +1088,13 @@ export default function AnalyticsPage() {
                   type="text"
                   placeholder="09:00"
                   value={newIbTime}
-                  onChange={(e) => setNewIbTime(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setNewIbTime(val);
+                    const [h, m] = val.split(":").map(Number);
+                    const totalM = (h || 0) * 60 + (m || 0);
+                    setNewIbTiming(totalM < 13 * 60 ? "before_lunch" : "after_lunch");
+                  }}
                   className="w-full bg-[#12141c] border border-[#262b3d] text-white text-xs rounded-xl px-2.5 py-1.5 outline-none focus:border-emerald-500"
                 />
               </div>
@@ -938,38 +1147,35 @@ export default function AnalyticsPage() {
               </div>
 
               <div className="col-span-2">
-                <label className="text-[10px] text-gray-400 block mb-1">量測時段與狀態</label>
+                <label className="text-[10px] text-gray-400 block mb-1">量測時段與狀態 (下午 1:00 前為午餐前)</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => setNewIbTiming("morning")}
-                    className={`py-1.5 px-2 rounded-xl text-xs font-medium border cursor-pointer ${
-                      newIbTiming === "morning"
+                    onClick={() => setNewIbTiming("before_lunch")}
+                    className={`py-1.5 px-2 rounded-xl text-xs font-bold border cursor-pointer transition-colors ${
+                      newIbTiming === "before_lunch"
                         ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
                         : "bg-[#12141c] text-gray-400 border-[#262b3d]"
                     }`}
                   >
-                    早晨未吃 (穿衣)
+                    午餐前 (僅吃早餐)
                   </button>
                   <button
                     type="button"
-                    onClick={() => setNewIbTiming("noon")}
-                    className={`py-1.5 px-2 rounded-xl text-xs font-medium border cursor-pointer ${
-                      newIbTiming === "noon"
+                    onClick={() => setNewIbTiming("after_lunch")}
+                    className={`py-1.5 px-2 rounded-xl text-xs font-bold border cursor-pointer transition-colors ${
+                      newIbTiming === "after_lunch"
                         ? "bg-blue-500/20 text-blue-300 border-blue-500/50"
                         : "bg-[#12141c] text-gray-400 border-[#262b3d]"
                     }`}
                   >
-                    中午飯後 (穿衣)
+                    午餐後 (已吃午餐)
                   </button>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-[10px] text-gray-500">
-                系統將自動計算扣除衣物估算淨重 (約 -0.7kg)
-              </span>
+            <div className="flex items-center justify-end pt-1">
               <button
                 type="button"
                 onClick={handleAddInbody}
@@ -997,25 +1203,31 @@ export default function AnalyticsPage() {
         {/* 17 次 InBody 歷史明細清單 */}
         {showAllInbody && (
           <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1 border-t border-[#262b3d]/40 pt-2">
-            {inbodyList.slice().reverse().map((ib) => (
-              <div
-                key={ib.id}
-                className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-gray-300 text-[11px] font-bold">
-                    {ib.date} {ib.time}
-                  </span>
-                  <span
-                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                      ib.timing === "morning"
-                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                        : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
-                    }`}
-                  >
-                    {ib.timing === "morning" ? "早晨未吃" : "中午飯後"}
-                  </span>
-                </div>
+            {inbodyList.slice().reverse().map((ib) => {
+              const isBefore =
+                ib.timing === "before_lunch" ||
+                ib.timing === "morning" ||
+                (ib.time ? parseInt(ib.time.split(":")[0], 10) < 13 : true);
+              const label = isBefore ? "午餐前" : "午餐後";
+              return (
+                <div
+                  key={ib.id}
+                  className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-gray-300 text-[11px] font-bold">
+                      {ib.date} {ib.time}
+                    </span>
+                    <span
+                      className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                        isBefore
+                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                          : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                      }`}
+                    >
+                      {label}
+                    </span>
+                  </div>
 
                 <div className="flex items-center justify-between sm:justify-end gap-3 text-[11px]">
                   <span className="text-gray-300">
@@ -1039,169 +1251,10 @@ export default function AnalyticsPage() {
                   </button>
                 </div>
               </div>
-            ))}
+            );
+          })}
           </div>
         )}
-      </section>
-
-      {/* 個人三項 PR 基準 & 體重倍數卡片 */}
-      {bigThree && (
-        <section className="bg-[#12141c] border border-amber-500/30 rounded-2xl p-4 space-y-2.5 shadow-md">
-          <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
-            <div className="flex items-center gap-2">
-              <Trophy className="w-4 h-4 text-amber-400" />
-              <h2 className="text-sm font-bold text-gray-100">個人三項 PR 基準 & 體重倍數</h2>
-            </div>
-            <span className="text-[11px] text-gray-400">
-              基準體重：<span className="text-white font-bold">{bigThree.body_weight_kg || 63.6} kg</span>
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
-            <div className="bg-[#181b26] p-2.5 rounded-xl border border-red-500/20">
-              <span className="text-[11px] text-gray-400 block mb-0.5">臥推 PR</span>
-              <span className="text-base font-black text-red-300">{bigThree.bench_press_kg} kg</span>
-              <span className="text-[10px] text-red-400 font-bold block mt-0.5">
-                {bigThree.body_weight_kg ? (bigThree.bench_press_kg / bigThree.body_weight_kg).toFixed(2) : "-"}x 體重
-              </span>
-            </div>
-
-            <div className="bg-[#181b26] p-2.5 rounded-xl border border-emerald-500/20">
-              <span className="text-[11px] text-gray-400 block mb-0.5">深蹲 PR</span>
-              <span className="text-base font-black text-emerald-300">{bigThree.squat_kg} kg</span>
-              <span className="text-[10px] text-emerald-400 font-bold block mt-0.5">
-                {bigThree.body_weight_kg ? (bigThree.squat_kg / bigThree.body_weight_kg).toFixed(2) : "-"}x 體重
-              </span>
-            </div>
-
-            <div className="bg-[#181b26] p-2.5 rounded-xl border border-blue-500/20">
-              <span className="text-[11px] text-gray-400 block mb-0.5">硬舉 PR</span>
-              <span className="text-base font-black text-blue-300">{bigThree.deadlift_kg} kg</span>
-              <span className="text-[10px] text-blue-400 font-bold block mt-0.5">
-                {bigThree.body_weight_kg ? (bigThree.deadlift_kg / bigThree.body_weight_kg).toFixed(2) : "-"}x 體重
-              </span>
-            </div>
-
-            <div className="bg-[#181b26] p-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5">
-              <span className="text-[11px] text-amber-400 font-bold block mb-0.5">三項總和</span>
-              <span className="text-base font-black text-amber-300">
-                {bigThree.bench_press_kg + bigThree.squat_kg + bigThree.deadlift_kg} kg
-              </span>
-              <span className="text-[10px] text-amber-400 font-bold block mt-0.5">
-                {bigThree.body_weight_kg
-                  ? ((bigThree.bench_press_kg + bigThree.squat_kg + bigThree.deadlift_kg) / bigThree.body_weight_kg).toFixed(2)
-                  : "-"}x 體重
-              </span>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* 每月三項實測最高重量走勢圖 */}
-      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3 shadow-md">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-emerald-400" />
-            <h2 className="text-sm font-bold text-gray-100">每月三項最高重量成長曲線 (Kg)</h2>
-          </div>
-        </div>
-
-        <div className="text-[11px] text-gray-400 flex items-center gap-4">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block"></span>
-            <span>臥推</span>
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block"></span>
-            <span>深蹲</span>
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-blue-400 inline-block"></span>
-            <span>硬舉</span>
-          </span>
-        </div>
-
-        <div className="h-60 w-full pt-2">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={monthlyTrend} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#262b3d" />
-              <XAxis dataKey="monthLabel" stroke="#6b7280" fontSize={11} tickLine={false} />
-              <YAxis
-                stroke="#6b7280"
-                fontSize={11}
-                domain={[
-                  (dataMin: number) => Math.max(0, Math.floor((dataMin - 10) / 10) * 10),
-                  (dataMax: number) => Math.ceil((dataMax + 10) / 10) * 10,
-                ]}
-              />
-              <Tooltip
-                content={({ active, payload, label }) => {
-                  if (!active || !payload || !payload.length) return null;
-                  const data = payload[0]?.payload as MonthBigThreeData;
-                  if (!data) return null;
-                  return (
-                    <div className="bg-[#181b26] border border-[#374151] rounded-xl p-3 text-xs shadow-xl space-y-1.5 min-w-[140px]">
-                      <div className="font-bold text-white border-b border-[#262b3d] pb-1 text-[11px]">
-                        {data.monthLabel || label}
-                      </div>
-                      <div className="space-y-1 text-[11px]">
-                        <div className="flex items-center justify-between text-red-300">
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-red-400"></span>
-                            <span>臥推</span>
-                          </span>
-                          <span className="font-bold">{data.bench > 0 ? `${data.bench} Kg` : "-"}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-emerald-300">
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                            <span>深蹲</span>
-                          </span>
-                          <span className="font-bold">{data.squat > 0 ? `${data.squat} Kg` : "-"}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-blue-300">
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-blue-400"></span>
-                            <span>硬舉</span>
-                          </span>
-                          <span className="font-bold">{data.deadlift > 0 ? `${data.deadlift} Kg` : "-"}</span>
-                        </div>
-                        <div className="border-t border-[#262b3d] pt-1.5 mt-1 flex items-center justify-between text-amber-400 font-black">
-                          <span>三項總和</span>
-                          <span>{data.total > 0 ? `${data.total} Kg` : "-"}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }}
-              />
-              <Line
-                type="monotone"
-                dataKey="bench"
-                name="bench"
-                stroke="#f87171"
-                strokeWidth={2.5}
-                dot={{ r: 4, fill: "#f87171" }}
-              />
-              <Line
-                type="monotone"
-                dataKey="squat"
-                name="squat"
-                stroke="#10b981"
-                strokeWidth={2.5}
-                dot={{ r: 4, fill: "#10b981" }}
-              />
-              <Line
-                type="monotone"
-                dataKey="deadlift"
-                name="deadlift"
-                stroke="#60a5fa"
-                strokeWidth={2.5}
-                dot={{ r: 4, fill: "#60a5fa" }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
       </section>
     </div>
   );
