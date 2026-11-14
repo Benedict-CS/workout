@@ -53,6 +53,10 @@ function NewWorkoutForm() {
 
   // 讀取 URL 參數
   useEffect(() => {
+    const urlDate = searchParams.get("date");
+    if (urlDate) {
+      setDate(urlDate);
+    }
     const urlMuscle = searchParams.get("muscle");
     if (urlMuscle) {
       // 標準化部位至 4 大項

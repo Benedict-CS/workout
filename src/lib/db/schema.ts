@@ -3,6 +3,7 @@ import type {
   BigThreeRecord,
   BodyWeightRecord,
   Exercise,
+  InBodyRecord,
   SetItem,
   WorkoutSession,
 } from "@/lib/types";
@@ -13,6 +14,7 @@ export class WorkoutDB extends Dexie {
   sets!: EntityTable<SetItem, "id">;
   big_three!: EntityTable<BigThreeRecord, "id">;
   body_weight!: EntityTable<BodyWeightRecord, "id">;
+  inbody_records!: EntityTable<InBodyRecord, "id">;
 
   constructor() {
     super("workout_db");
@@ -24,6 +26,9 @@ export class WorkoutDB extends Dexie {
     });
     this.version(2).stores({
       body_weight: "id, date, weight_kg, updated_at, sync_status",
+    });
+    this.version(3).stores({
+      inbody_records: "id, date, timing, updated_at",
     });
   }
 }

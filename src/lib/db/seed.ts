@@ -1,6 +1,7 @@
 import { db } from "./schema";
 import seedData from "./seed-data.json";
 import bwData from "./bodyweight-data.json";
+import inbodyData from "./inbody-data.json";
 import { runFullSync } from "./sync";
 
 export async function ensureDatabaseSeeded(): Promise<void> {
@@ -54,16 +55,28 @@ export async function ensureDatabaseSeeded(): Promise<void> {
     console.log("Database curated successfully!");
   }
 
-  // 檢查並載入歷史體重數據 (從 4/10 56.9kg 至 11/02 62.6kg)
+  // 檢查並載入歷史體重數據 (OKOK 93 筆晨起空腹未穿衣量測)
   const bwCount = await db.body_weight.count();
-  if (bwCount === 0 && bwData.length > 0) {
-    const formattedBw = bwData.map((b) => ({
+  if (bwCount < bwData.length) {
+    const formattedBw = bwData.map((b: any) => ({
       ...b,
-      created_at: `${b.date}T08:00:00.000Z`,
-      updated_at: `${b.date}T08:00:00.000Z`,
+      created_at: b.created_at || `${b.date}T08:00:00.000Z`,
+      updated_at: b.updated_at || `${b.date}T08:00:00.000Z`,
       sync_status: "synced" as const,
     }));
     await db.body_weight.bulkPut(formattedBw as any);
+  }
+
+  // 檢查並載入 InBody 里程碑身體組成檢測 (17 次多頻電極實測)
+  const inbodyCount = await db.inbody_records.count();
+  if (inbodyCount < inbodyData.length) {
+    const formattedInbody = inbodyData.map((ib: any) => ({
+      ...ib,
+      created_at: ib.created_at || `${ib.date}T${ib.time || "12:00"}:00.000Z`,
+      updated_at: ib.updated_at || `${ib.date}T${ib.time || "12:00"}:00.000Z`,
+      sync_status: "synced" as const,
+    }));
+    await db.inbody_records.bulkPut(formattedInbody as any);
   }
 
   // 嘗試在背景與 Supabase 雙向同步 (確保手機與電腦資料一致)

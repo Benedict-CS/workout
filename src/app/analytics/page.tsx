@@ -9,6 +9,13 @@ import {
   Scale,
   Plus,
   Trash2,
+  Award,
+  Activity,
+  Sparkles,
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  Info,
 } from "lucide-react";
 import {
   LineChart,
@@ -21,7 +28,14 @@ import {
 } from "recharts";
 import { db } from "@/lib/db/schema";
 import { runFullSync, deleteRemoteBodyWeight } from "@/lib/db/sync";
-import type { WorkoutSession, SetItem, Exercise, BigThreeRecord, BodyWeightRecord } from "@/lib/types";
+import type {
+  WorkoutSession,
+  SetItem,
+  Exercise,
+  BigThreeRecord,
+  BodyWeightRecord,
+  InBodyRecord,
+} from "@/lib/types";
 
 interface MonthBigThreeData {
   monthKey: string;
@@ -56,6 +70,22 @@ export default function AnalyticsPage() {
   const [bwSaving, setBwSaving] = useState(false);
   const [showBwList, setShowBwList] = useState(false);
 
+  // InBody 身體組成檢測狀態 (八點多頻電極實測)
+  const [inbodyList, setInbodyList] = useState<InBodyRecord[]>([]);
+  const [inbodyMetricTab, setInbodyMetricTab] = useState<"smm" | "pbf" | "weight">("smm");
+  const [showInbodyForm, setShowInbodyForm] = useState(false);
+  const [showAllInbody, setShowAllInbody] = useState(false);
+  const [inbodySaving, setInbodySaving] = useState(false);
+
+  // 新增 InBody 檢測表單欄位
+  const [newIbDate, setNewIbDate] = useState(new Date().toISOString().split("T")[0]);
+  const [newIbTime, setNewIbTime] = useState("09:00");
+  const [newIbWeight, setNewIbWeight] = useState("");
+  const [newIbSmm, setNewIbSmm] = useState("");
+  const [newIbFatPct, setNewIbFatPct] = useState("");
+  const [newIbScore, setNewIbScore] = useState("");
+  const [newIbTiming, setNewIbTiming] = useState<"morning" | "noon">("morning");
+
   useEffect(() => {
     setMounted(true);
     async function loadData() {
@@ -66,6 +96,10 @@ export default function AnalyticsPage() {
         // 讀取歷史體重數據
         const bwList = await db.body_weight.orderBy("date").toArray();
         setBodyWeights(bwList);
+
+        // 讀取 InBody 里程碑檢測紀錄
+        const ibList = await db.inbody_records.orderBy("date").toArray();
+        setInbodyList(ibList);
 
         const sessions = await db.sessions
           .filter((s) => !s.deleted_at)
@@ -190,6 +224,52 @@ export default function AnalyticsPage() {
     setBodyWeights(updatedList);
   }
 
+  async function handleAddInbody() {
+    const w = parseFloat(newIbWeight);
+    const smm = parseFloat(newIbSmm);
+    if (!w || !smm || !newIbDate) return;
+
+    setInbodySaving(true);
+    const fatPct = newIbFatPct ? parseFloat(newIbFatPct) : 17.0;
+    const score = newIbScore ? parseInt(newIbScore) : 78;
+    const fatMass = Math.round(((w * fatPct) / 100) * 10) / 10;
+    const estNet = Math.round((w - 0.7) * 10) / 10;
+
+    const newRec: InBodyRecord = {
+      id: `inbody-${newIbDate}-${newIbTime.replace(":", "")}`,
+      date: newIbDate,
+      time: newIbTime,
+      weight_kg: w,
+      skeletal_muscle_kg: smm,
+      body_fat_mass_kg: fatMass,
+      body_fat_pct: fatPct,
+      inbody_score: score,
+      timing: newIbTiming,
+      condition_label: newIbTiming === "morning" ? "早晨未吃 (有穿衣)" : "中午飯後 (有穿衣)",
+      estimated_net_weight_kg: estNet,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    };
+
+    await db.inbody_records.put(newRec);
+    const updated = await db.inbody_records.orderBy("date").toArray();
+    setInbodyList(updated);
+    setNewIbWeight("");
+    setNewIbSmm("");
+    setNewIbFatPct("");
+    setNewIbScore("");
+    setShowInbodyForm(false);
+    setInbodySaving(false);
+  }
+
+  async function handleDeleteInbody(id: string) {
+    if (!confirm("確定刪除此筆 InBody 檢測紀錄？")) return;
+    await db.inbody_records.delete(id);
+    const updated = await db.inbody_records.orderBy("date").toArray();
+    setInbodyList(updated);
+  }
+
   if (!mounted || loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] text-gray-400 gap-3">
@@ -218,6 +298,29 @@ export default function AnalyticsPage() {
     weight: b.weight_kg,
     bodyFat: b.body_fat_pct,
     muscle: b.skeletal_muscle_kg,
+  }));
+
+  // InBody 里程碑計算
+  const latestInbody = inbodyList.length > 0 ? inbodyList[inbodyList.length - 1] : null;
+  const firstInbody = inbodyList.length > 0 ? inbodyList[0] : null;
+  const smmDiff = latestInbody && firstInbody
+    ? Math.round((latestInbody.skeletal_muscle_kg - firstInbody.skeletal_muscle_kg) * 10) / 10
+    : 0;
+  const inbodyWeightDiff = latestInbody && firstInbody
+    ? Math.round((latestInbody.weight_kg - firstInbody.weight_kg) * 10) / 10
+    : 0;
+
+  const inbodyChartData = inbodyList.map((ib) => ({
+    date: ib.date.slice(5),
+    fullDate: `${ib.date} ${ib.time}`,
+    smm: ib.skeletal_muscle_kg,
+    bodyFatPct: ib.body_fat_pct,
+    fatMass: ib.body_fat_mass_kg,
+    weight: ib.weight_kg,
+    netWeight: ib.estimated_net_weight_kg,
+    score: ib.inbody_score,
+    timing: ib.timing,
+    condition: ib.condition_label,
   }));
 
   return (
@@ -496,6 +599,430 @@ export default function AnalyticsPage() {
                     type="button"
                     onClick={() => handleDeleteBodyWeight(b.id)}
                     className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* ⭐ InBody 身體組成檢測里程碑 (八點多頻電極實測專區) */}
+      <section className="bg-[#12141c] border border-emerald-500/30 rounded-2xl p-4 space-y-3.5 shadow-md">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2.5">
+          <div className="flex items-center gap-2">
+            <Award className="w-4 h-4 text-emerald-400" />
+            <h2 className="text-sm font-bold text-gray-100">
+              InBody 身體組成里程碑
+            </h2>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30 font-bold">
+              InBody 270 實測 ({inbodyList.length} 次)
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowInbodyForm(!showInbodyForm)}
+              className="text-[10px] text-emerald-300 hover:text-white bg-[#181b26] hover:bg-emerald-500/20 px-2 py-0.5 rounded border border-[#262b3d] flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              <Plus className="w-2.5 h-2.5 stroke-[3]" />
+              <span>新增紀錄</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Latest InBody Hero Highlight Card */}
+        {latestInbody && (
+          <div className="bg-gradient-to-br from-[#181b26] to-[#141824] border border-emerald-500/30 rounded-xl p-3.5 space-y-3">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-mono font-bold text-gray-200">
+                  {latestInbody.date} {latestInbody.time}
+                </span>
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    latestInbody.timing === "morning"
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                      : "bg-blue-500/20 text-blue-300 border border-blue-500/40"
+                  }`}
+                >
+                  {latestInbody.condition_label}
+                </span>
+              </div>
+              <span className="text-[11px] text-gray-400">
+                身體總評分：
+                <span className="text-emerald-400 font-black text-sm">
+                  {latestInbody.inbody_score}
+                </span>{" "}
+                分
+              </span>
+            </div>
+
+            {/* 4 Core Hero Stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+              <div className="bg-[#0f1118] p-2.5 rounded-lg border border-[#262b3d]">
+                <span className="text-[10px] text-gray-400 block mb-0.5">實測體重</span>
+                <span className="text-base font-black text-white">{latestInbody.weight_kg}</span>
+                <span className="text-[10px] text-gray-400 block mt-0.5">
+                  扣衣估淨重: <span className="text-gray-200 font-bold">{latestInbody.estimated_net_weight_kg}</span> kg
+                </span>
+              </div>
+
+              <div className="bg-[#0f1118] p-2.5 rounded-lg border border-emerald-500/40 bg-emerald-500/5">
+                <span className="text-[10px] text-emerald-400 block mb-0.5 font-bold">骨骼肌重 (SMM)</span>
+                <span className="text-base font-black text-emerald-300">{latestInbody.skeletal_muscle_kg}</span>
+                <span className="text-[10px] text-emerald-400 font-bold block mt-0.5">
+                  {smmDiff > 0 ? `+${smmDiff} kg (首測起)` : `${smmDiff} kg`}
+                </span>
+              </div>
+
+              <div className="bg-[#0f1118] p-2.5 rounded-lg border border-amber-500/30">
+                <span className="text-[10px] text-amber-400 block mb-0.5 font-bold">體脂肪率 (PBF)</span>
+                <span className="text-base font-black text-amber-300">{latestInbody.body_fat_pct}%</span>
+                <span className="text-[10px] text-gray-400 block mt-0.5">
+                  體脂重: <span className="text-gray-200 font-bold">{latestInbody.body_fat_mass_kg}</span> kg
+                </span>
+              </div>
+
+              <div className="bg-[#0f1118] p-2.5 rounded-lg border border-cyan-500/30">
+                <span className="text-[10px] text-cyan-400 block mb-0.5 font-bold">體重成長幅度</span>
+                <span className="text-base font-black text-cyan-300">
+                  {inbodyWeightDiff > 0 ? `+${inbodyWeightDiff}` : inbodyWeightDiff}
+                </span>
+                <span className="text-[10px] text-cyan-400/80 block mt-0.5">kg (首測 59.3kg)</span>
+              </div>
+            </div>
+
+            {/* Science & Context Callout */}
+            <div className="bg-[#0f1118]/80 border border-[#262b3d] rounded-lg p-2.5 text-[11px] text-gray-300 space-y-1">
+              <div className="flex items-start gap-1.5 text-emerald-400 font-bold">
+                <Sparkles className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>骨骼肌成長突破 30.0 kg 大關！</span>
+              </div>
+              <p className="text-[10px] text-gray-400 leading-relaxed pl-5">
+                從 8 月初 28.2kg ➔ 8 月底 29.6kg ➔ 11 月中正式突破 <strong className="text-emerald-300">30.0kg</strong>，純肌肉實質淨增 <strong className="text-emerald-300">+1.8 kg</strong>。
+              </p>
+              <div className="flex items-start gap-1.5 text-cyan-400 font-bold pt-1 border-t border-[#262b3d]/60 mt-1">
+                <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>秤盤量測 vs InBody 數據校正解析</span>
+              </div>
+              <p className="text-[10px] text-gray-400 leading-relaxed pl-5">
+                • <strong className="text-white">衣物重量影響</strong>：11/12 OKOK 秤盤早晨空腹裸量為 <strong className="text-white">63.6 kg</strong>，同一天早上 09:09 InBody 穿衣量測為 <strong className="text-white">64.2 kg</strong>，兩者恰相差 0.6 kg（衣物鞋重）。
+                <br />
+                • <strong className="text-white">中午量測差異</strong>：10 月至 11 月中午檢測包含早餐飲水與衣物，實測約比晨起空腹高 1.2~1.5kg；因此追蹤「純骨骼肌 (SMM)」比單純看體重更能精準掌握增肌成效。
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Tab Switcher */}
+        <div className="flex items-center justify-between pt-1">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setInbodyMetricTab("smm")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                inbodyMetricTab === "smm"
+                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                  : "bg-[#181b26] text-gray-400 hover:text-gray-200 border border-[#262b3d]"
+              }`}
+            >
+              骨骼肌 SMM (kg)
+            </button>
+            <button
+              type="button"
+              onClick={() => setInbodyMetricTab("pbf")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                inbodyMetricTab === "pbf"
+                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                  : "bg-[#181b26] text-gray-400 hover:text-gray-200 border border-[#262b3d]"
+              }`}
+            >
+              體脂率 PBF (%)
+            </button>
+            <button
+              type="button"
+              onClick={() => setInbodyMetricTab("weight")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                inbodyMetricTab === "weight"
+                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                  : "bg-[#181b26] text-gray-400 hover:text-gray-200 border border-[#262b3d]"
+              }`}
+            >
+              實測 vs 淨重 (kg)
+            </button>
+          </div>
+          <span className="text-[10px] text-gray-500 hidden sm:inline">
+            共 {inbodyList.length} 次檢測紀錄
+          </span>
+        </div>
+
+        {/* InBody Line Chart */}
+        <div className="h-44 w-full pt-1">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={inbodyChartData} margin={{ top: 5, right: 10, left: -25, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#262b3d" />
+              <XAxis dataKey="date" stroke="#6b7280" fontSize={10} tickLine={false} />
+              <YAxis
+                stroke="#6b7280"
+                fontSize={10}
+                domain={
+                  inbodyMetricTab === "smm"
+                    ? [27, 31]
+                    : inbodyMetricTab === "pbf"
+                    ? [13, 19]
+                    : [58, 66]
+                }
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#181b26",
+                  borderColor: "#374151",
+                  borderRadius: "0.75rem",
+                  fontSize: "11px",
+                  color: "#fff",
+                }}
+                formatter={(val: any, name: any) => {
+                  if (inbodyMetricTab === "smm") return [`${val} kg`, "骨骼肌 (SMM)"];
+                  if (inbodyMetricTab === "pbf") return [`${val} %`, "體脂率 (PBF)"];
+                  return [`${val} kg`, name === "weight" ? "實測體重" : "扣衣淨重"];
+                }}
+                labelFormatter={(lbl, items) => {
+                  const item = items[0]?.payload;
+                  return item ? `${item.fullDate} (${item.condition})` : lbl;
+                }}
+              />
+              {inbodyMetricTab === "smm" && (
+                <Line
+                  type="monotone"
+                  dataKey="smm"
+                  stroke="#10b981"
+                  strokeWidth={2.5}
+                  dot={{ r: 3, fill: "#10b981" }}
+                  activeDot={{ r: 5, fill: "#10b981" }}
+                />
+              )}
+              {inbodyMetricTab === "pbf" && (
+                <Line
+                  type="monotone"
+                  dataKey="bodyFatPct"
+                  stroke="#f59e0b"
+                  strokeWidth={2.5}
+                  dot={{ r: 3, fill: "#f59e0b" }}
+                  activeDot={{ r: 5, fill: "#f59e0b" }}
+                />
+              )}
+              {inbodyMetricTab === "weight" && (
+                <>
+                  <Line
+                    type="monotone"
+                    dataKey="weight"
+                    name="weight"
+                    stroke="#a855f7"
+                    strokeWidth={2}
+                    dot={{ r: 2.5, fill: "#a855f7" }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="netWeight"
+                    name="netWeight"
+                    stroke="#06b6d4"
+                    strokeWidth={2.5}
+                    strokeDasharray="3 3"
+                    dot={{ r: 3, fill: "#06b6d4" }}
+                  />
+                </>
+              )}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* 新增 InBody 檢測表單 (可收合) */}
+        {showInbodyForm && (
+          <div className="bg-[#181b26] border border-emerald-500/30 rounded-xl p-3.5 space-y-3">
+            <div className="flex items-center justify-between border-b border-[#262b3d] pb-2">
+              <span className="text-xs font-bold text-emerald-400">登錄新 InBody 270 檢測結果</span>
+              <button
+                type="button"
+                onClick={() => setShowInbodyForm(false)}
+                className="text-gray-400 hover:text-white text-xs cursor-pointer"
+              >
+                取消
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div>
+                <label className="text-[10px] text-gray-400 block mb-1">檢測日期 *</label>
+                <input
+                  type="date"
+                  value={newIbDate}
+                  onChange={(e) => setNewIbDate(e.target.value)}
+                  className="w-full bg-[#12141c] border border-[#262b3d] text-white text-xs rounded-xl px-2.5 py-1.5 outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-gray-400 block mb-1">時間 (時:分)</label>
+                <input
+                  type="text"
+                  placeholder="09:00"
+                  value={newIbTime}
+                  onChange={(e) => setNewIbTime(e.target.value)}
+                  className="w-full bg-[#12141c] border border-[#262b3d] text-white text-xs rounded-xl px-2.5 py-1.5 outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-cyan-400 font-bold block mb-1">實測體重 (kg) *</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  placeholder="如 64.0"
+                  value={newIbWeight}
+                  onChange={(e) => setNewIbWeight(e.target.value)}
+                  className="w-full bg-[#12141c] border border-[#262b3d] text-white text-xs rounded-xl px-2.5 py-1.5 outline-none focus:border-cyan-500 font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-emerald-400 font-bold block mb-1">骨骼肌 SMM (kg) *</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  placeholder="如 30.0"
+                  value={newIbSmm}
+                  onChange={(e) => setNewIbSmm(e.target.value)}
+                  className="w-full bg-[#12141c] border border-[#262b3d] text-white text-xs rounded-xl px-2.5 py-1.5 outline-none focus:border-emerald-500 font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-amber-400 block mb-1">體脂率 PBF (%)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  placeholder="如 17.0"
+                  value={newIbFatPct}
+                  onChange={(e) => setNewIbFatPct(e.target.value)}
+                  className="w-full bg-[#12141c] border border-[#262b3d] text-white text-xs rounded-xl px-2.5 py-1.5 outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-gray-400 block mb-1">InBody 評分</label>
+                <input
+                  type="number"
+                  placeholder="如 78"
+                  value={newIbScore}
+                  onChange={(e) => setNewIbScore(e.target.value)}
+                  className="w-full bg-[#12141c] border border-[#262b3d] text-white text-xs rounded-xl px-2.5 py-1.5 outline-none focus:border-gray-500"
+                />
+              </div>
+
+              <div className="col-span-2">
+                <label className="text-[10px] text-gray-400 block mb-1">量測時段與狀態</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewIbTiming("morning")}
+                    className={`py-1.5 px-2 rounded-xl text-xs font-medium border cursor-pointer ${
+                      newIbTiming === "morning"
+                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
+                        : "bg-[#12141c] text-gray-400 border-[#262b3d]"
+                    }`}
+                  >
+                    早晨未吃 (穿衣)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewIbTiming("noon")}
+                    className={`py-1.5 px-2 rounded-xl text-xs font-medium border cursor-pointer ${
+                      newIbTiming === "noon"
+                        ? "bg-blue-500/20 text-blue-300 border-blue-500/50"
+                        : "bg-[#12141c] text-gray-400 border-[#262b3d]"
+                    }`}
+                  >
+                    中午飯後 (穿衣)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[10px] text-gray-500">
+                系統將自動計算扣除衣物估算淨重 (約 -0.7kg)
+              </span>
+              <button
+                type="button"
+                onClick={handleAddInbody}
+                disabled={!newIbWeight || !newIbSmm || inbodySaving}
+                className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-black font-black px-4 py-2 rounded-xl text-xs transition-all flex items-center gap-1 shadow cursor-pointer active:scale-95"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                <span>儲存 InBody 紀錄</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 查看全部 17 次歷史明細開關 */}
+        <div className="pt-0.5 text-right">
+          <button
+            type="button"
+            onClick={() => setShowAllInbody(!showAllInbody)}
+            className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium cursor-pointer"
+          >
+            {showAllInbody ? "收合 InBody 清單" : `查看全部 ${inbodyList.length} 次 InBody 實測明細`}
+          </button>
+        </div>
+
+        {/* 17 次 InBody 歷史明細清單 */}
+        {showAllInbody && (
+          <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1 border-t border-[#262b3d]/40 pt-2">
+            {inbodyList.slice().reverse().map((ib) => (
+              <div
+                key={ib.id}
+                className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-gray-300 text-[11px] font-bold">
+                    {ib.date} {ib.time}
+                  </span>
+                  <span
+                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                      ib.timing === "morning"
+                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                        : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                    }`}
+                  >
+                    {ib.timing === "morning" ? "早晨未吃" : "中午飯後"}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between sm:justify-end gap-3 text-[11px]">
+                  <span className="text-gray-300">
+                    實測 <strong className="text-white">{ib.weight_kg}kg</strong>
+                    <span className="text-gray-500 text-[10px] ml-1">
+                      (淨 {ib.estimated_net_weight_kg}kg)
+                    </span>
+                  </span>
+                  <span className="text-emerald-400 font-bold">
+                    骨骼肌 {ib.skeletal_muscle_kg}kg
+                  </span>
+                  <span className="text-amber-400 font-medium">
+                    體脂 {ib.body_fat_pct}%
+                  </span>
+                  <span className="text-gray-400 bg-[#12141c] px-1.5 py-0.5 rounded text-[10px]">
+                    {ib.inbody_score} 分
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteInbody(ib.id)}
+                    className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer pl-1"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>

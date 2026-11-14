@@ -89,12 +89,33 @@ export interface BigThreeRecord {
   sync_status: SyncStatus;
 }
 
+export interface InBodyRecord {
+  id: string;
+  date: string;               // YYYY-MM-DD
+  time: string;               // HH:MM
+  weight_kg: number;          // 現場實測體重 (含衣服)
+  skeletal_muscle_kg: number; // 骨骼肌重 SMM (kg)
+  body_fat_mass_kg: number;   // 體脂肪重 (kg)
+  body_fat_pct: number;       // 體脂率 PBF (%)
+  inbody_score: number;       // InBody 身體評分
+  timing: "morning" | "noon"; // 早晨 / 中午
+  condition_label: string;    // "早晨未吃 (有穿衣)" | "中午飯後 (有穿衣)"
+  estimated_net_weight_kg: number; // 扣除衣物估算淨重 (約 -0.7kg)
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+  sync_status?: SyncStatus;
+}
+
 export interface BodyWeightRecord {
   id: string;
   date: string;       // YYYY-MM-DD
+  time?: string;      // HH:MM
   weight_kg: number;
   body_fat_pct?: number;       // 體脂率 (%)
   skeletal_muscle_kg?: number; // 骨骼肌重 (kg)
+  source?: "okok" | "inbody" | "manual";
+  condition?: string;
   note?: string;
   created_at: string;
   updated_at: string;

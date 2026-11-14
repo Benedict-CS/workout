@@ -1,0 +1,932 @@
+[
+  {
+    "id": "bw-okok-2026-11-12-0826",
+    "date": "2026-11-12",
+    "time": "08:26",
+    "weight_kg": 63.6,
+    "body_fat_pct": 17.75,
+    "skeletal_muscle_kg": 26.5,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-11-02-0823",
+    "date": "2026-11-02",
+    "time": "08:23",
+    "weight_kg": 62.6,
+    "body_fat_pct": 17.04,
+    "skeletal_muscle_kg": 26.3,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-10-31-1026",
+    "date": "2026-10-31",
+    "time": "10:26",
+    "weight_kg": 63.2,
+    "body_fat_pct": 17.44,
+    "skeletal_muscle_kg": 26.4,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-10-30-0826",
+    "date": "2026-10-30",
+    "time": "08:26",
+    "weight_kg": 63.8,
+    "body_fat_pct": 17.86,
+    "skeletal_muscle_kg": 26.5,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-10-29-0823",
+    "date": "2026-10-29",
+    "time": "08:23",
+    "weight_kg": 63.7,
+    "body_fat_pct": 17.82,
+    "skeletal_muscle_kg": 26.4,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-10-26-1147",
+    "date": "2026-10-26",
+    "time": "11:47",
+    "weight_kg": 62.3,
+    "body_fat_pct": 16.79,
+    "skeletal_muscle_kg": 26.2,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-10-25-1057",
+    "date": "2026-10-25",
+    "time": "10:57",
+    "weight_kg": 62.9,
+    "body_fat_pct": 17.22,
+    "skeletal_muscle_kg": 26.3,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-10-25-1056",
+    "date": "2026-10-25",
+    "time": "10:56",
+    "weight_kg": 63.4,
+    "body_fat_pct": 17.58,
+    "skeletal_muscle_kg": 26.4,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-10-23-1052",
+    "date": "2026-10-23",
+    "time": "10:52",
+    "weight_kg": 63.7,
+    "body_fat_pct": 17.79,
+    "skeletal_muscle_kg": 26.5,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-10-13-0821",
+    "date": "2026-10-13",
+    "time": "08:21",
+    "weight_kg": 61.7,
+    "body_fat_pct": 16.38,
+    "skeletal_muscle_kg": 26.1,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-10-09-0944",
+    "date": "2026-10-09",
+    "time": "09:44",
+    "weight_kg": 62.5,
+    "body_fat_pct": 16.97,
+    "skeletal_muscle_kg": 26.3,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-10-08-0820",
+    "date": "2026-10-08",
+    "time": "08:20",
+    "weight_kg": 62.1,
+    "body_fat_pct": 16.68,
+    "skeletal_muscle_kg": 26.2,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-10-02-0815",
+    "date": "2026-10-02",
+    "time": "08:15",
+    "weight_kg": 61.0,
+    "body_fat_pct": 15.86,
+    "skeletal_muscle_kg": 26.0,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-09-26-1001",
+    "date": "2026-09-26",
+    "time": "10:01",
+    "weight_kg": 60.2,
+    "body_fat_pct": 15.2,
+    "skeletal_muscle_kg": 25.9,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-09-24-0812",
+    "date": "2026-09-24",
+    "time": "08:12",
+    "weight_kg": 60.5,
+    "body_fat_pct": 15.48,
+    "skeletal_muscle_kg": 25.9,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-09-23-0810",
+    "date": "2026-09-23",
+    "time": "08:10",
+    "weight_kg": 59.7,
+    "body_fat_pct": 14.85,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-09-18-0809",
+    "date": "2026-09-18",
+    "time": "08:09",
+    "weight_kg": 59.9,
+    "body_fat_pct": 15.01,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-09-17-0807",
+    "date": "2026-09-17",
+    "time": "08:07",
+    "weight_kg": 59.2,
+    "body_fat_pct": 14.41,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-09-05-0922",
+    "date": "2026-09-05",
+    "time": "09:22",
+    "weight_kg": 59.4,
+    "body_fat_pct": 14.61,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-09-04-0804",
+    "date": "2026-09-04",
+    "time": "08:04",
+    "weight_kg": 59.1,
+    "body_fat_pct": 14.37,
+    "skeletal_muscle_kg": 25.6,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-09-03-0807",
+    "date": "2026-09-03",
+    "time": "08:07",
+    "weight_kg": 59.0,
+    "body_fat_pct": 14.25,
+    "skeletal_muscle_kg": 25.6,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-09-01-0754",
+    "date": "2026-09-01",
+    "time": "07:54",
+    "weight_kg": 58.8,
+    "body_fat_pct": 14.13,
+    "skeletal_muscle_kg": 25.6,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-08-31-0750",
+    "date": "2026-08-31",
+    "time": "07:50",
+    "weight_kg": 58.5,
+    "body_fat_pct": 13.88,
+    "skeletal_muscle_kg": 25.6,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-08-30-0956",
+    "date": "2026-08-30",
+    "time": "09:56",
+    "weight_kg": 58.5,
+    "body_fat_pct": 13.88,
+    "skeletal_muscle_kg": 25.6,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-08-23-1040",
+    "date": "2026-08-23",
+    "time": "10:40",
+    "weight_kg": 59.1,
+    "body_fat_pct": 14.33,
+    "skeletal_muscle_kg": 25.6,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-08-13-0902",
+    "date": "2026-08-13",
+    "time": "09:02",
+    "weight_kg": 58.7,
+    "body_fat_pct": 14.05,
+    "skeletal_muscle_kg": 25.6,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-08-12-0929",
+    "date": "2026-08-12",
+    "time": "09:29",
+    "weight_kg": 58.6,
+    "body_fat_pct": 13.96,
+    "skeletal_muscle_kg": 25.5,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-08-10-0949",
+    "date": "2026-08-10",
+    "time": "09:49",
+    "weight_kg": 59.1,
+    "body_fat_pct": 14.37,
+    "skeletal_muscle_kg": 25.6,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-08-01-0935",
+    "date": "2026-08-01",
+    "time": "09:35",
+    "weight_kg": 59.0,
+    "body_fat_pct": 14.29,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-08-01-0935",
+    "date": "2026-08-01",
+    "time": "09:35",
+    "weight_kg": 59.0,
+    "body_fat_pct": 14.29,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-31-0909",
+    "date": "2026-07-31",
+    "time": "09:09",
+    "weight_kg": 59.7,
+    "body_fat_pct": 14.81,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-29-0909",
+    "date": "2026-07-29",
+    "time": "09:09",
+    "weight_kg": 59.8,
+    "body_fat_pct": 14.89,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-27-0832",
+    "date": "2026-07-27",
+    "time": "08:32",
+    "weight_kg": 59.4,
+    "body_fat_pct": 14.57,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-24-1025",
+    "date": "2026-07-24",
+    "time": "10:25",
+    "weight_kg": 60.1,
+    "body_fat_pct": 15.17,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-22-1043",
+    "date": "2026-07-22",
+    "time": "10:43",
+    "weight_kg": 60.2,
+    "body_fat_pct": 15.2,
+    "skeletal_muscle_kg": 25.9,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-21-1047",
+    "date": "2026-07-21",
+    "time": "10:47",
+    "weight_kg": 60.5,
+    "body_fat_pct": 15.48,
+    "skeletal_muscle_kg": 25.9,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-18-1115",
+    "date": "2026-07-18",
+    "time": "11:15",
+    "weight_kg": 60.3,
+    "body_fat_pct": 15.32,
+    "skeletal_muscle_kg": 25.9,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-17-1117",
+    "date": "2026-07-17",
+    "time": "11:17",
+    "weight_kg": 60.1,
+    "body_fat_pct": 15.17,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-15-1109",
+    "date": "2026-07-15",
+    "time": "11:09",
+    "weight_kg": 60.4,
+    "body_fat_pct": 15.36,
+    "skeletal_muscle_kg": 25.9,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-14-1053",
+    "date": "2026-07-14",
+    "time": "10:53",
+    "weight_kg": 60.3,
+    "body_fat_pct": 15.28,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-13-1115",
+    "date": "2026-07-13",
+    "time": "11:15",
+    "weight_kg": 59.4,
+    "body_fat_pct": 14.61,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-12-1116",
+    "date": "2026-07-12",
+    "time": "11:16",
+    "weight_kg": 59.7,
+    "body_fat_pct": 14.81,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-11-1100",
+    "date": "2026-07-11",
+    "time": "11:00",
+    "weight_kg": 60.3,
+    "body_fat_pct": 15.32,
+    "skeletal_muscle_kg": 25.9,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-11-1059",
+    "date": "2026-07-11",
+    "time": "10:59",
+    "weight_kg": 59.3,
+    "body_fat_pct": 14.49,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-10-1054",
+    "date": "2026-07-10",
+    "time": "10:54",
+    "weight_kg": 60.4,
+    "body_fat_pct": 15.4,
+    "skeletal_muscle_kg": 25.9,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-09-0823",
+    "date": "2026-07-09",
+    "time": "08:23",
+    "weight_kg": 60.6,
+    "body_fat_pct": 15.55,
+    "skeletal_muscle_kg": 25.9,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-08-1010",
+    "date": "2026-07-08",
+    "time": "10:10",
+    "weight_kg": 60.0,
+    "body_fat_pct": 15.09,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-07-1021",
+    "date": "2026-07-07",
+    "time": "10:21",
+    "weight_kg": 60.4,
+    "body_fat_pct": 15.4,
+    "skeletal_muscle_kg": 25.9,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-06-1030",
+    "date": "2026-07-06",
+    "time": "10:30",
+    "weight_kg": 60.0,
+    "body_fat_pct": 15.05,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-05-1042",
+    "date": "2026-07-05",
+    "time": "10:42",
+    "weight_kg": 59.3,
+    "body_fat_pct": 14.49,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-04-1028",
+    "date": "2026-07-04",
+    "time": "10:28",
+    "weight_kg": 59.5,
+    "body_fat_pct": 14.65,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-07-03-1103",
+    "date": "2026-07-03",
+    "time": "11:03",
+    "weight_kg": 59.8,
+    "body_fat_pct": 14.93,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-30-1030",
+    "date": "2026-06-30",
+    "time": "10:30",
+    "weight_kg": 60.5,
+    "body_fat_pct": 15.44,
+    "skeletal_muscle_kg": 25.9,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-29-1024",
+    "date": "2026-06-29",
+    "time": "10:24",
+    "weight_kg": 60.1,
+    "body_fat_pct": 15.13,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-28-1129",
+    "date": "2026-06-28",
+    "time": "11:29",
+    "weight_kg": 59.9,
+    "body_fat_pct": 14.97,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-27-1028",
+    "date": "2026-06-27",
+    "time": "10:28",
+    "weight_kg": 60.0,
+    "body_fat_pct": 15.09,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-25-0929",
+    "date": "2026-06-25",
+    "time": "09:29",
+    "weight_kg": 60.3,
+    "body_fat_pct": 15.32,
+    "skeletal_muscle_kg": 25.9,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-24-1009",
+    "date": "2026-06-24",
+    "time": "10:09",
+    "weight_kg": 60.1,
+    "body_fat_pct": 15.17,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-23-0956",
+    "date": "2026-06-23",
+    "time": "09:56",
+    "weight_kg": 61.1,
+    "body_fat_pct": 15.9,
+    "skeletal_muscle_kg": 26.0,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-22-1017",
+    "date": "2026-06-22",
+    "time": "10:17",
+    "weight_kg": 60.1,
+    "body_fat_pct": 15.17,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-22-1016",
+    "date": "2026-06-22",
+    "time": "10:16",
+    "weight_kg": 60.1,
+    "body_fat_pct": 15.17,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-21-1034",
+    "date": "2026-06-21",
+    "time": "10:34",
+    "weight_kg": 59.8,
+    "body_fat_pct": 14.93,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-19-1034",
+    "date": "2026-06-19",
+    "time": "10:34",
+    "weight_kg": 59.7,
+    "body_fat_pct": 14.81,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-18-1009",
+    "date": "2026-06-18",
+    "time": "10:09",
+    "weight_kg": 59.7,
+    "body_fat_pct": 14.85,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-16-1026",
+    "date": "2026-06-16",
+    "time": "10:26",
+    "weight_kg": 59.9,
+    "body_fat_pct": 15.01,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-15-1023",
+    "date": "2026-06-15",
+    "time": "10:23",
+    "weight_kg": 58.9,
+    "body_fat_pct": 14.17,
+    "skeletal_muscle_kg": 25.6,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-14-1049",
+    "date": "2026-06-14",
+    "time": "10:49",
+    "weight_kg": 59.0,
+    "body_fat_pct": 14.25,
+    "skeletal_muscle_kg": 25.6,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-13-1144",
+    "date": "2026-06-13",
+    "time": "11:44",
+    "weight_kg": 59.3,
+    "body_fat_pct": 14.49,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-11-1152",
+    "date": "2026-06-11",
+    "time": "11:52",
+    "weight_kg": 59.0,
+    "body_fat_pct": 14.29,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-11-1122",
+    "date": "2026-06-11",
+    "time": "11:22",
+    "weight_kg": 59.0,
+    "body_fat_pct": 14.25,
+    "skeletal_muscle_kg": 25.6,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-07-1033",
+    "date": "2026-06-07",
+    "time": "10:33",
+    "weight_kg": 59.5,
+    "body_fat_pct": 14.69,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-06-1334",
+    "date": "2026-06-06",
+    "time": "13:34",
+    "weight_kg": 59.5,
+    "body_fat_pct": 14.69,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-05-1033",
+    "date": "2026-06-05",
+    "time": "10:33",
+    "weight_kg": 59.2,
+    "body_fat_pct": 14.41,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-06-04-1029",
+    "date": "2026-06-04",
+    "time": "10:29",
+    "weight_kg": 58.9,
+    "body_fat_pct": 14.17,
+    "skeletal_muscle_kg": 25.6,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-05-30-1020",
+    "date": "2026-05-30",
+    "time": "10:20",
+    "weight_kg": 59.8,
+    "body_fat_pct": 14.89,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-05-28-1022",
+    "date": "2026-05-28",
+    "time": "10:22",
+    "weight_kg": 59.3,
+    "body_fat_pct": 14.49,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-05-27-1015",
+    "date": "2026-05-27",
+    "time": "10:15",
+    "weight_kg": 59.6,
+    "body_fat_pct": 14.73,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-05-26-1019",
+    "date": "2026-05-26",
+    "time": "10:19",
+    "weight_kg": 59.3,
+    "body_fat_pct": 14.49,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-05-25-1006",
+    "date": "2026-05-25",
+    "time": "10:06",
+    "weight_kg": 59.4,
+    "body_fat_pct": 14.61,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-05-25-1006",
+    "date": "2026-05-25",
+    "time": "10:06",
+    "weight_kg": 59.4,
+    "body_fat_pct": 14.61,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-05-24-1327",
+    "date": "2026-05-24",
+    "time": "13:27",
+    "weight_kg": 59.3,
+    "body_fat_pct": 14.49,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-05-23-1039",
+    "date": "2026-05-23",
+    "time": "10:39",
+    "weight_kg": 59.9,
+    "body_fat_pct": 15.01,
+    "skeletal_muscle_kg": 25.8,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-05-22-1006",
+    "date": "2026-05-22",
+    "time": "10:06",
+    "weight_kg": 59.3,
+    "body_fat_pct": 14.53,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-05-19-1018",
+    "date": "2026-05-19",
+    "time": "10:18",
+    "weight_kg": 58.7,
+    "body_fat_pct": 14.0,
+    "skeletal_muscle_kg": 25.6,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-05-19-1018",
+    "date": "2026-05-19",
+    "time": "10:18",
+    "weight_kg": 59.6,
+    "body_fat_pct": 14.73,
+    "skeletal_muscle_kg": 25.7,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-05-13-1025",
+    "date": "2026-05-13",
+    "time": "10:25",
+    "weight_kg": 58.4,
+    "body_fat_pct": 13.76,
+    "skeletal_muscle_kg": 25.6,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-05-11-1100",
+    "date": "2026-05-11",
+    "time": "11:00",
+    "weight_kg": 58.1,
+    "body_fat_pct": 13.55,
+    "skeletal_muscle_kg": 25.5,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-05-07-1013",
+    "date": "2026-05-07",
+    "time": "10:13",
+    "weight_kg": 58.2,
+    "body_fat_pct": 13.59,
+    "skeletal_muscle_kg": 25.5,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-05-03-1059",
+    "date": "2026-05-03",
+    "time": "10:59",
+    "weight_kg": 57.9,
+    "body_fat_pct": 13.34,
+    "skeletal_muscle_kg": 25.5,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-04-28-0944",
+    "date": "2026-04-28",
+    "time": "09:44",
+    "weight_kg": 57.2,
+    "body_fat_pct": 12.74,
+    "skeletal_muscle_kg": 25.3,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-04-22-1003",
+    "date": "2026-04-22",
+    "time": "10:03",
+    "weight_kg": 57.2,
+    "body_fat_pct": 12.78,
+    "skeletal_muscle_kg": 25.3,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-04-14-1002",
+    "date": "2026-04-14",
+    "time": "10:02",
+    "weight_kg": 56.2,
+    "body_fat_pct": 11.9,
+    "skeletal_muscle_kg": 25.2,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  },
+  {
+    "id": "bw-okok-2026-04-10-1647",
+    "date": "2026-04-10",
+    "time": "16:47",
+    "weight_kg": 56.9,
+    "body_fat_pct": 12.52,
+    "skeletal_muscle_kg": 25.3,
+    "source": "okok",
+    "condition": "早晨空腹未穿衣"
+  }
+]
