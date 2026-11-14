@@ -158,6 +158,7 @@ function NewWorkoutForm() {
       monthly_index: monthlyIndex,
       location: finalLocation,
       notes: swimNotes.trim() || undefined,
+      status: finalMuscle === "游泳" ? "completed" : "in_progress",
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       sync_status: "pending",

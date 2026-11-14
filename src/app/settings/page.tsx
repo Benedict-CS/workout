@@ -7,7 +7,6 @@ import {
   CheckCircle,
   Database,
   Trophy,
-  MapPin,
   FileText,
   Trash2,
 } from "lucide-react";
@@ -18,12 +17,6 @@ import { parseWorkoutMarkdown } from "@/lib/parser/markdown-parser";
 import { runFullSync } from "@/lib/db/sync";
 import type { BigThreeRecord, WorkoutSession, SetItem, Exercise } from "@/lib/types";
 
-const LOCATION_OPTIONS = [
-  "三健客",
-  "交大健身房",
-  "交大游泳池",
-];
-
 export default function SettingsPage() {
   const [reseeded, setReseeded] = useState(false);
 
@@ -32,16 +25,11 @@ export default function SettingsPage() {
   const [restoreStatusMsg, setRestoreStatusMsg] = useState<string | null>(null);
 
   // 個人體重與三項設定
-  const [bodyWeight, setBodyWeight] = useState<string>("60");
+  const [bodyWeight, setBodyWeight] = useState<string>("62.6");
   const [benchKg, setBenchKg] = useState<string>("60");
   const [squatKg, setSquatKg] = useState<string>("85");
   const [deadliftKg, setDeadliftKg] = useState<string>("90");
   const [b3Saved, setB3Saved] = useState(false);
-
-  // 偏好設定 (預設三健客、休息 150 秒)
-  const [defaultGym, setDefaultGym] = useState<string>("三健客");
-  const [defaultRestTime, setDefaultRestTime] = useState<number>(150);
-  const [prefSaved, setPrefSaved] = useState(false);
 
   useEffect(() => {
     async function loadSettings() {
@@ -62,18 +50,24 @@ export default function SettingsPage() {
       } else if (latestScaleWeight) {
         setBodyWeight(latestScaleWeight.toString());
       }
-
-      // 讀取偏好
-      const storedGym = localStorage.getItem("workout_default_gym");
-      if (storedGym) setDefaultGym(storedGym);
-      const storedRest = localStorage.getItem("workout_default_rest");
-      if (storedRest) setDefaultRestTime(parseInt(storedRest, 10));
     }
     loadSettings();
   }, []);
 
+  // 即時動態計算體重倍數
+  const curBw = parseFloat(bodyWeight) || 0;
+  const curBench = parseFloat(benchKg) || 0;
+  const curSquat = parseFloat(squatKg) || 0;
+  const curDead = parseFloat(deadliftKg) || 0;
+  const curTotal = curBench + curSquat + curDead;
+
+  const benchMultiplier = curBw > 0 ? (curBench / curBw).toFixed(2) : "-";
+  const squatMultiplier = curBw > 0 ? (curSquat / curBw).toFixed(2) : "-";
+  const deadMultiplier = curBw > 0 ? (curDead / curBw).toFixed(2) : "-";
+  const totalMultiplier = curBw > 0 ? (curTotal / curBw).toFixed(2) : "-";
+
   async function handleSaveBigThree() {
-    const bw = parseFloat(bodyWeight) || 60;
+    const bw = parseFloat(bodyWeight) || 62.6;
     const b = parseFloat(benchKg) || 0;
     const s = parseFloat(squatKg) || 0;
     const d = parseFloat(deadliftKg) || 0;
@@ -101,13 +95,6 @@ export default function SettingsPage() {
     setB3Saved(true);
     setTimeout(() => setB3Saved(false), 2000);
     runFullSync().catch((err) => console.log("Sync error:", err));
-  }
-
-  function handleSavePreferences() {
-    localStorage.setItem("workout_default_gym", defaultGym);
-    localStorage.setItem("workout_default_rest", defaultRestTime.toString());
-    setPrefSaved(true);
-    setTimeout(() => setPrefSaved(false), 2000);
   }
 
   // 匯出 Markdown 檔案 (.md)
@@ -290,59 +277,37 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* 即時計算體重倍數卡片展示 */}
+        <div className="bg-[#181b26] p-3 rounded-xl border border-[#262b3d] grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+          <div className="p-1">
+            <span className="text-[11px] text-gray-400 block mb-0.5">臥推倍數</span>
+            <span className="text-base font-black text-red-400">{benchMultiplier}</span>
+            <span className="text-[10px] text-gray-500 block">x 體重</span>
+          </div>
+          <div className="p-1">
+            <span className="text-[11px] text-gray-400 block mb-0.5">深蹲倍數</span>
+            <span className="text-base font-black text-emerald-400">{squatMultiplier}</span>
+            <span className="text-[10px] text-gray-500 block">x 體重</span>
+          </div>
+          <div className="p-1">
+            <span className="text-[11px] text-gray-400 block mb-0.5">硬舉倍數</span>
+            <span className="text-base font-black text-blue-400">{deadMultiplier}</span>
+            <span className="text-[10px] text-gray-500 block">x 體重</span>
+          </div>
+          <div className="p-1 bg-[#202533]/40 rounded-lg border border-amber-500/20">
+            <span className="text-[11px] text-amber-400 font-bold block mb-0.5">三項總和</span>
+            <span className="text-base font-black text-amber-300">{totalMultiplier}</span>
+            <span className="text-[10px] text-amber-400/70 block">x 體重 ({curTotal}kg)</span>
+          </div>
+        </div>
+
         <button
           onClick={handleSaveBigThree}
-          className="w-full bg-amber-500 hover:bg-amber-400 text-black font-black py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow"
+          className="w-full bg-amber-500 hover:bg-amber-400 text-black font-black py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow active:scale-95 cursor-pointer"
         >
           {b3Saved ? <CheckCircle className="w-4 h-4" /> : null}
-          <span>{b3Saved ? "三項數據已成功儲存！" : "儲存三項數據與體重比"}</span>
+          <span>{b3Saved ? "三項數據已成功儲存！" : "儲存三項基準與體重倍數"}</span>
         </button>
-      </section>
-
-      {/* 偏好預設值 (預設場館與組間休息秒數) */}
-      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3">
-        <div className="flex items-center gap-2 border-b border-[#262b3d]/60 pb-2">
-          <MapPin className="w-4 h-4 text-emerald-400" />
-          <h2 className="text-sm font-bold text-gray-100">預設場館與計時器</h2>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-[11px] text-gray-400 block mb-1">常用預設場館</label>
-            <select
-              value={defaultGym}
-              onChange={(e) => setDefaultGym(e.target.value)}
-              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 outline-none focus:border-emerald-500"
-            >
-              {LOCATION_OPTIONS.map((loc) => (
-                <option key={loc} value={loc}>
-                  {loc}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-[11px] text-gray-400 block mb-1">預設組間休息時間</label>
-            <select
-              value={defaultRestTime}
-              onChange={(e) => setDefaultRestTime(parseInt(e.target.value, 10))}
-              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 outline-none focus:border-emerald-500"
-            >
-              <option value={120}>2 分鐘 (120 秒)</option>
-              <option value={150}>2 分半 (150 秒 - 常用)</option>
-              <option value={180}>3 分鐘 (180 秒)</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={handleSavePreferences}
-            className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-2.5 rounded-xl text-xs transition-all shadow"
-          >
-            {prefSaved ? "偏好已儲存！" : "儲存偏好設定"}
-          </button>
-        </div>
       </section>
 
       {/* Markdown 與備份匯入還原 */}

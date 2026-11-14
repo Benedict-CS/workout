@@ -506,6 +506,59 @@ export default function AnalyticsPage() {
         )}
       </section>
 
+      {/* 個人三項 PR 基準 & 體重倍數卡片 */}
+      {bigThree && (
+        <section className="bg-[#12141c] border border-amber-500/30 rounded-2xl p-4 space-y-2.5 shadow-md">
+          <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
+            <div className="flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-amber-400" />
+              <h2 className="text-sm font-bold text-gray-100">個人三項 PR 基準 & 體重倍數</h2>
+            </div>
+            <span className="text-[11px] text-gray-400">
+              基準體重：<span className="text-white font-bold">{bigThree.body_weight_kg || 62.6} kg</span>
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+            <div className="bg-[#181b26] p-2.5 rounded-xl border border-red-500/20">
+              <span className="text-[11px] text-gray-400 block mb-0.5">臥推 PR</span>
+              <span className="text-base font-black text-red-300">{bigThree.bench_press_kg} kg</span>
+              <span className="text-[10px] text-red-400 font-bold block mt-0.5">
+                {bigThree.body_weight_kg ? (bigThree.bench_press_kg / bigThree.body_weight_kg).toFixed(2) : "-"}x 體重
+              </span>
+            </div>
+
+            <div className="bg-[#181b26] p-2.5 rounded-xl border border-emerald-500/20">
+              <span className="text-[11px] text-gray-400 block mb-0.5">深蹲 PR</span>
+              <span className="text-base font-black text-emerald-300">{bigThree.squat_kg} kg</span>
+              <span className="text-[10px] text-emerald-400 font-bold block mt-0.5">
+                {bigThree.body_weight_kg ? (bigThree.squat_kg / bigThree.body_weight_kg).toFixed(2) : "-"}x 體重
+              </span>
+            </div>
+
+            <div className="bg-[#181b26] p-2.5 rounded-xl border border-blue-500/20">
+              <span className="text-[11px] text-gray-400 block mb-0.5">硬舉 PR</span>
+              <span className="text-base font-black text-blue-300">{bigThree.deadlift_kg} kg</span>
+              <span className="text-[10px] text-blue-400 font-bold block mt-0.5">
+                {bigThree.body_weight_kg ? (bigThree.deadlift_kg / bigThree.body_weight_kg).toFixed(2) : "-"}x 體重
+              </span>
+            </div>
+
+            <div className="bg-[#181b26] p-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5">
+              <span className="text-[11px] text-amber-400 font-bold block mb-0.5">三項總和</span>
+              <span className="text-base font-black text-amber-300">
+                {bigThree.bench_press_kg + bigThree.squat_kg + bigThree.deadlift_kg} kg
+              </span>
+              <span className="text-[10px] text-amber-400 font-bold block mt-0.5">
+                {bigThree.body_weight_kg
+                  ? ((bigThree.bench_press_kg + bigThree.squat_kg + bigThree.deadlift_kg) / bigThree.body_weight_kg).toFixed(2)
+                  : "-"}x 體重
+              </span>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* 每月三項實測最高重量走勢圖 */}
       <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3 shadow-md">
         <div className="flex items-center justify-between">

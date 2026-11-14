@@ -192,7 +192,9 @@ export default function HomePage() {
         let maxDeadlift = 0;
 
         const sessIds = new Set(sessList.map((s) => s.id));
-        const monthSets = allSets.filter((st) => sessIds.has(st.session_id) && st.weight_kg > 0);
+        const monthSets = allSets.filter(
+          (st) => sessIds.has(st.session_id) && st.weight_kg > 0 && st.is_completed !== false
+        );
 
         for (const st of monthSets) {
           if (benchExIds.includes(st.exercise_id) && st.weight_kg > maxBench) {
@@ -474,9 +476,16 @@ export default function HomePage() {
                     >
                       {/* 主行：部位 badge + 標題 + 展開箭頭 */}
                       <div className="flex items-start gap-2">
-                        <span className={`px-2 py-0.5 rounded font-black text-xs border shrink-0 mt-0.5 ${badgeColor}`}>
-                          {sess.target_muscle}
-                        </span>
+                        <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                          <span className={`px-2 py-0.5 rounded font-black text-xs border ${badgeColor}`}>
+                            {sess.target_muscle}
+                          </span>
+                          {sess.status === "in_progress" && (
+                            <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                              進行中
+                            </span>
+                          )}
+                        </div>
 
                         <span
                           className="font-bold text-gray-100 hover:text-emerald-400 transition-colors flex-1 min-w-0 break-words select-text cursor-text text-[13px] sm:text-sm leading-snug"
@@ -520,15 +529,21 @@ export default function HomePage() {
                       </div>
 
                       {/* 副行：場地 + 組數 */}
-                      <div className="flex items-center gap-2 mt-1 ml-[calc(1.75rem+0.5rem)]">
+                      <div className="flex items-center gap-2 mt-1 ml-[calc(1.75rem+0.5rem)] flex-wrap">
                         {sess.location && (
                           <span className="text-[11px] sm:text-xs text-gray-400 font-medium">
                             📍 {sess.location}
                           </span>
                         )}
-                        <span className="text-[11px] sm:text-xs bg-[#090a0f] text-gray-300 px-2 py-0.5 rounded border border-[#262b3d] font-semibold">
-                          {sessSets.length} 組
-                        </span>
+                        {sess.status === "in_progress" ? (
+                          <span className="text-[11px] sm:text-xs bg-amber-950/40 text-amber-300 px-2 py-0.5 rounded border border-amber-500/40 font-bold">
+                            已做 {sessSets.filter((s) => s.is_completed !== false).length}/{sessSets.length} 組
+                          </span>
+                        ) : (
+                          <span className="text-[11px] sm:text-xs bg-[#090a0f] text-gray-300 px-2 py-0.5 rounded border border-[#262b3d] font-semibold">
+                            {sessSets.length} 組
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -584,12 +599,21 @@ export default function HomePage() {
                                         displayText = `set ${formalIndex}: ${cleanBody}`;
                                       }
 
+                                      const isPending = sess.status === "in_progress" && st.is_completed === false;
+
                                       return (
                                         <div
                                           key={st.id || sIdx}
-                                          className="text-xs text-gray-200 font-mono tracking-tight font-medium"
+                                          className={`text-xs font-mono tracking-tight font-medium flex items-center justify-between ${
+                                            isPending ? "text-gray-500 italic" : "text-gray-200"
+                                          }`}
                                         >
-                                          - {displayText}
+                                          <span>- {displayText}</span>
+                                          {isPending && (
+                                            <span className="text-[10px] text-amber-400/90 font-sans font-bold not-italic">
+                                              (未完成)
+                                            </span>
+                                          )}
                                         </div>
                                       );
                                     })}
@@ -624,10 +648,14 @@ export default function HomePage() {
 
                           <Link
                             href={`/workout/${sess.id}`}
-                            className="flex items-center justify-center gap-1.5 text-emerald-400 hover:text-emerald-300 py-2 px-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 font-bold transition-all active:scale-95 text-center"
+                            className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg font-bold transition-all active:scale-95 text-center ${
+                              sess.status === "in_progress"
+                                ? "text-amber-300 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 shadow-sm"
+                                : "text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 border border-emerald-500/30"
+                            }`}
                           >
                             <Pencil className="w-3.5 h-3.5" />
-                            <span>進入記錄 / 修改組數</span>
+                            <span>{sess.status === "in_progress" ? "▶ 繼續本次訓練" : "進入記錄 / 修改組數"}</span>
                           </Link>
                         </div>
                       </div>

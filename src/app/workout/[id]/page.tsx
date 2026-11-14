@@ -26,6 +26,7 @@ import {
   RefreshCw,
   Search,
   Zap,
+  AlertTriangle,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import {
@@ -68,6 +69,10 @@ export default function WorkoutDetailPage({
   // Markdown Modal
   const [showMarkdownModal, setShowMarkdownModal] = useState(false);
   const [copyToast, setCopyToast] = useState(false);
+
+  // 離開與結算確認對話框
+  const [showExitModal, setShowExitModal] = useState(false);
+  const [showFinishModal, setShowFinishModal] = useState(false);
 
   // 單組編輯狀態 (支援多欄位)
   const [editingSet, setEditingSet] = useState<SetItem | null>(null);
@@ -652,22 +657,195 @@ export default function WorkoutDetailPage({
     return `${s.weight_kg}Kg x ${s.reps}`;
   }
 
-  // 結束 / 完成本次訓練並返回首頁
-  async function handleFinishWorkout() {
-    // 1. 自動清除任何誤加的空組數 (0Kg x 0下)
+  // 快捷結算整場為已完成 (無未做組數時)
+  async function handleCompleteSessionQuick() {
+    if (!session) {
+      router.push("/");
+      return;
+    }
     const emptySets = sets.filter(
-      (s) => s.weight_kg === 0 && s.reps === 0 && !s.sub_fields?.length && session?.target_muscle !== "游泳"
+      (s) => s.weight_kg === 0 && s.reps === 0 && !s.sub_fields?.length && session.target_muscle !== "游泳"
     );
     if (emptySets.length > 0) {
       await db.sets.bulkDelete(emptySets.map((s) => s.id));
-      setSets((prev) => prev.filter((s) => !emptySets.some((e) => e.id === s.id)));
+      emptySets.forEach((s) => deleteRemoteSet(s.id).catch(() => {}));
+    }
+    const updated: WorkoutSession = {
+      ...session,
+      status: "completed",
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    };
+    await db.sessions.put(updated);
+    runFullSync().catch(() => {});
+    router.push("/");
+  }
+
+  // 點擊返回鍵：檢查當前訓練進度，彈出確認選項，避免預設將未做完場次當作完整保存
+  function handleExitClick() {
+    if (!session) {
+      router.push("/");
+      return;
     }
 
-    // 2. 觸發完整同步
-    runFullSync().catch(() => {});
+    const uncompleted = sets.filter((s) => !isSetCompleted(s, session.date));
 
-    // 3. 返回首頁
+    // 若歷史紀錄本身已完成，且現場沒有遺留未做的草稿組數，直接返回首頁
+    if (session.status === "completed" && uncompleted.length === 0) {
+      router.push("/");
+      return;
+    }
+
+    // 若全部組數皆已完成打勾
+    if (sets.length > 0 && uncompleted.length === 0) {
+      handleCompleteSessionQuick();
+      return;
+    }
+
+    // 0 組完成，或有未做完組數 -> 開啟離開確認對話框
+    setShowExitModal(true);
+  }
+
+  // 結束並只保留已完成組數（自動清除未執行的計劃組數，真實反映訓練紀錄）
+  async function handlePruneAndFinish() {
+    if (!session) {
+      router.push("/");
+      return;
+    }
+
+    const uncompletedSets = sets.filter((s) => !isSetCompleted(s, session.date));
+    const emptySets = sets.filter(
+      (s) => s.weight_kg === 0 && s.reps === 0 && !s.sub_fields?.length && session.target_muscle !== "游泳"
+    );
+
+    const idsToDelete = Array.from(new Set([...uncompletedSets.map((s) => s.id), ...emptySets.map((s) => s.id)]));
+    if (idsToDelete.length > 0) {
+      await db.sets.bulkDelete(idsToDelete);
+      idsToDelete.forEach((sId) => deleteRemoteSet(sId).catch(() => {}));
+    }
+
+    // 重整剩餘已完成組數的 set_order
+    const remainingSets = sets.filter((s) => !idsToDelete.includes(s.id));
+    let order = 1;
+    const reordered: SetItem[] = remainingSets.map((s) => ({
+      ...s,
+      set_order: order++,
+      updated_at: new Date().toISOString(),
+      sync_status: "pending" as const,
+    }));
+    if (reordered.length > 0) {
+      await db.sets.bulkPut(reordered);
+    }
+
+    const updatedSession: WorkoutSession = {
+      ...session,
+      status: "completed",
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    };
+
+    await db.sessions.put(updatedSession);
+    runFullSync().catch(() => {});
     router.push("/");
+  }
+
+  // 放棄本次訓練：徹底刪除此場訓練紀錄與所有組數（不留假紀錄）
+  async function handleAbandonSessionAndExit() {
+    if (!session) {
+      router.push("/");
+      return;
+    }
+
+    await db.transaction("rw", [db.sessions, db.sets], async () => {
+      await db.sets.where("session_id").equals(id).delete();
+      await db.sessions.delete(id);
+    });
+    deleteRemoteSession(id).catch(() => {});
+    runFullSync().catch(() => {});
+    router.push("/");
+  }
+
+  // 保留為進行中草稿（稍後繼續訓練）
+  async function handleSaveAsDraftAndExit() {
+    if (!session) {
+      router.push("/");
+      return;
+    }
+
+    const updatedSession: WorkoutSession = {
+      ...session,
+      status: "in_progress",
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    };
+
+    await db.sessions.put(updatedSession);
+    runFullSync().catch(() => {});
+    router.push("/");
+  }
+
+  // 將所有組數皆標記為已完成並結束
+  async function handleMarkAllCompletedAndFinish() {
+    if (!session) {
+      router.push("/");
+      return;
+    }
+
+    const emptySets = sets.filter(
+      (s) => s.weight_kg === 0 && s.reps === 0 && !s.sub_fields?.length && session.target_muscle !== "游泳"
+    );
+    if (emptySets.length > 0) {
+      await db.sets.bulkDelete(emptySets.map((s) => s.id));
+      emptySets.forEach((s) => deleteRemoteSet(s.id).catch(() => {}));
+    }
+
+    const validSets = sets.filter(
+      (s) => !(s.weight_kg === 0 && s.reps === 0 && !s.sub_fields?.length && session.target_muscle !== "游泳")
+    );
+
+    const allCompletedSets = validSets.map((s) => ({
+      ...s,
+      is_completed: true,
+      feedback: s.feedback
+        ? (s.feedback.includes("completed") ? s.feedback : `${s.feedback}|completed`)
+        : "completed",
+      updated_at: new Date().toISOString(),
+      sync_status: "pending" as const,
+    }));
+
+    if (allCompletedSets.length > 0) {
+      await db.sets.bulkPut(allCompletedSets);
+    }
+
+    const updatedSession: WorkoutSession = {
+      ...session,
+      status: "completed",
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    };
+
+    await db.sessions.put(updatedSession);
+    runFullSync().catch(() => {});
+    router.push("/");
+  }
+
+  // 結束 / 完成本次訓練（點擊上方或下方完成按鈕）
+  async function handleFinishWorkout() {
+    if (!session) {
+      router.push("/");
+      return;
+    }
+
+    const uncompleted = sets.filter((s) => !isSetCompleted(s, session.date));
+
+    // 若還有未完成組數，詢問使用者如何處理
+    if (uncompleted.length > 0) {
+      setShowFinishModal(true);
+      return;
+    }
+
+    // 全部皆已完成，直接完成並結算
+    await handlePruneAndFinish();
   }
 
   // 記錄游泳 (3 個快選：早上游、下午游、晚上游)
@@ -899,12 +1077,14 @@ export default function WorkoutDetailPage({
       <div className="space-y-2">
         {/* 第一列：返回 + 標題 */}
         <div className="flex items-start gap-2.5">
-          <Link
-            href="/"
-            className="p-2.5 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] rounded-xl text-gray-300 shrink-0 mt-0.5 active:scale-95 transition-all"
+          <button
+            type="button"
+            onClick={handleExitClick}
+            className="p-2.5 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] rounded-xl text-gray-300 shrink-0 mt-0.5 active:scale-95 transition-all cursor-pointer"
+            title="返回首頁"
           >
             <ArrowLeft className="w-5 h-5" />
-          </Link>
+          </button>
           <div className="min-w-0 flex-1">
             <h1 className="text-lg font-black text-white leading-tight break-words">{session.display_title}</h1>
             <div className="flex items-center gap-2 text-xs text-gray-300 mt-1 relative flex-wrap font-medium">
@@ -1334,13 +1514,14 @@ export default function WorkoutDetailPage({
           </div>
 
           <div className="pt-2">
-            <Link
-              href="/"
-              className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-black py-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow transition-all active:scale-98"
+            <button
+              type="button"
+              onClick={handleFinishWorkout}
+              className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-black py-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow transition-all active:scale-98 cursor-pointer"
             >
               <Check className="w-4 h-4 stroke-[3]" />
               <span>完成並返回訓練日誌</span>
-            </Link>
+            </button>
           </div>
         </div>
       ) : (
@@ -1919,6 +2100,193 @@ export default function WorkoutDetailPage({
                 className="w-full bg-[#181b26] text-gray-300 py-2.5 rounded-xl text-xs font-bold hover:bg-[#202533] cursor-pointer"
               >
                 取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 退出確認 Modal */}
+      {showExitModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-[#262b3d] pb-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+                <h3 className="font-bold text-white text-base">
+                  {completedSetsCount === 0 ? "尚未開始訓練" : "訓練尚未全部完成"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowExitModal(false)}
+                className="text-gray-400 hover:text-white p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="text-xs text-gray-300 space-y-2">
+              {completedSetsCount === 0 ? (
+                <p>
+                  本次訓練尚未完成任何組數。若現在退出，您可以選擇直接放棄刪除，或保留為待辦草稿。
+                </p>
+              ) : (
+                <p>
+                  本次訓練預排了 <span className="text-white font-bold">{totalSetsCount}</span> 組，目前已打勾完成{" "}
+                  <span className="text-emerald-400 font-bold">{completedSetsCount}</span> 組，還有{" "}
+                  <span className="text-amber-400 font-bold">{totalSetsCount - completedSetsCount}</span> 組尚未完成。
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2 pt-1">
+              {completedSetsCount === 0 ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleAbandonSessionAndExit}
+                    className="w-full text-left p-3 rounded-xl bg-red-950/40 hover:bg-red-900/60 border border-red-500/40 transition-all flex items-center justify-between group cursor-pointer"
+                  >
+                    <div>
+                      <span className="text-xs font-bold text-red-300 block">放棄並刪除本次訓練</span>
+                      <span className="text-[11px] text-gray-400">清除此場次，不留下任何空白假紀錄</span>
+                    </div>
+                    <span className="text-xs text-red-400 font-bold shrink-0">確認放棄 ➔</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveAsDraftAndExit}
+                    className="w-full text-left p-3 rounded-xl bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] transition-all flex items-center justify-between group cursor-pointer"
+                  >
+                    <div>
+                      <span className="text-xs font-bold text-amber-300 block">保留為進行中草稿</span>
+                      <span className="text-[11px] text-gray-400">保留在日誌首頁標記為「進行中」，稍後隨時繼續</span>
+                    </div>
+                    <span className="text-xs text-amber-400 font-bold shrink-0">存為草稿 ➔</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handlePruneAndFinish}
+                    className="w-full text-left p-3 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-500/40 transition-all flex items-center justify-between group cursor-pointer"
+                  >
+                    <div>
+                      <span className="text-xs font-black text-emerald-300 block">
+                        結束訓練，只儲存已做的 {completedSetsCount} 組
+                      </span>
+                      <span className="text-[11px] text-gray-400">
+                        自動清除未做的 {totalSetsCount - completedSetsCount} 組預排組數，忠實記錄訓練
+                      </span>
+                    </div>
+                    <span className="text-xs text-emerald-400 font-bold shrink-0">結算保存 ➔</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveAsDraftAndExit}
+                    className="w-full text-left p-3 rounded-xl bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] transition-all flex items-center justify-between group cursor-pointer"
+                  >
+                    <div>
+                      <span className="text-xs font-bold text-amber-300 block">
+                        保留為進行中草稿（稍後繼續訓練）
+                      </span>
+                      <span className="text-[11px] text-gray-400">
+                        保留未做組數，首頁標記為「進行中」，方便稍後接續完成
+                      </span>
+                    </div>
+                    <span className="text-xs text-amber-400 font-bold shrink-0">暫存草稿 ➔</span>
+                  </button>
+                </>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setShowExitModal(false)}
+                className="w-full bg-[#181b26] text-gray-300 py-2.5 rounded-xl text-xs font-bold hover:bg-[#202533] cursor-pointer mt-1"
+              >
+                繼續訓練
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 完成訓練確認 Modal (有未完成組數時) */}
+      {showFinishModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#12141c] border border-emerald-500/40 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-[#262b3d] pb-3">
+              <div className="flex items-center gap-2">
+                <Check className="w-5 h-5 text-emerald-400 stroke-[3] shrink-0" />
+                <h3 className="font-bold text-white text-base">結算本次訓練</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFinishModal(false)}
+                className="text-gray-400 hover:text-white p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="text-xs text-gray-300 space-y-1.5">
+              <p>
+                規劃組數共 <span className="text-white font-bold">{totalSetsCount}</span> 組，目前已完成打勾{" "}
+                <span className="text-emerald-400 font-bold">{completedSetsCount}</span> 組，尚有{" "}
+                <span className="text-amber-400 font-bold">{totalSetsCount - completedSetsCount}</span> 組未完成。
+              </p>
+              <p className="text-gray-400 text-[11px]">
+                請選擇本次訓練的結算方式：
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={handlePruneAndFinish}
+                className="w-full text-left p-3 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-500/40 transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-black text-emerald-300 block">
+                      清除未做組數，只儲存已完成的 {completedSetsCount} 組
+                    </span>
+                    <span className="text-[10px] bg-emerald-500 text-black px-1.5 py-0.5 rounded font-black">
+                      推薦
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-gray-400 block mt-0.5">
+                    不會把沒做的組數算進紀錄，真實反映今天訓練量
+                  </span>
+                </div>
+                <span className="text-xs text-emerald-400 font-bold shrink-0">確認結算 ➔</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleMarkAllCompletedAndFinish}
+                className="w-full text-left p-3 rounded-xl bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div>
+                  <span className="text-xs font-bold text-gray-200 block">
+                    將全部 {totalSetsCount} 組標記為已完成
+                  </span>
+                  <span className="text-[11px] text-gray-400 block mt-0.5">
+                    若現場已全部做完但剛剛忘記打勾，一鍵全部打勾結算
+                  </span>
+                </div>
+                <span className="text-xs text-gray-300 font-bold shrink-0">全部完成 ➔</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowFinishModal(false)}
+                className="w-full bg-[#181b26] text-gray-300 py-2.5 rounded-xl text-xs font-bold hover:bg-[#202533] cursor-pointer mt-1"
+              >
+                返回繼續記錄
               </button>
             </div>
           </div>

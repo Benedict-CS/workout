@@ -67,6 +67,7 @@ export interface WorkoutSession {
   monthly_index: number;      // 當月第幾次
   location?: string;          // 訓練場地 e.g. "三健客", "交大健身房", "交大游泳池"
   notes?: string;
+  status?: "in_progress" | "completed"; // ⭐ 訓練狀態：進行中草稿 vs 已完成訓練
   user_id?: string;
   created_at: string;
   updated_at: string;
