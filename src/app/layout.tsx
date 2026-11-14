@@ -70,45 +70,45 @@ export default function RootLayout({
         <AutoSyncManager />
 
         {/* 底部 5 鍵導航 Bar (支援 iPhone Home Bar 安全區域與單手操作) */}
-        <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#12141c]/95 backdrop-blur-lg border-t border-[#262b3d] px-2 sm:px-3 pt-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] flex items-center justify-around text-[11px] font-medium text-gray-400">
+        <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#12141c]/95 backdrop-blur-lg border-t border-[#262b3d] px-2 sm:px-3 pt-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] flex items-center justify-around text-xs font-semibold text-gray-400">
           <Link
             href="/"
-            className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors p-1"
+            className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors py-1 px-2"
           >
-            <Activity className="w-4 h-4" />
-            <span>訓練日誌</span>
+            <Activity className="w-[18px] h-[18px]" />
+            <span className="text-[11px] sm:text-xs">訓練日誌</span>
           </Link>
 
           <Link
             href="/exercises"
-            className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors p-1"
+            className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors py-1 px-2"
           >
-            <Dumbbell className="w-4 h-4" />
-            <span>動作庫</span>
+            <Dumbbell className="w-[18px] h-[18px]" />
+            <span className="text-[11px] sm:text-xs">動作庫</span>
           </Link>
 
           {/* 中央突出開新訓練鈕 */}
           <Link
             href="/workout/new"
-            className="flex flex-col items-center -mt-4 bg-emerald-500 hover:bg-emerald-400 text-black p-2.5 rounded-full shadow-xl active:scale-90 transition-all font-black"
+            className="flex flex-col items-center -mt-4 bg-emerald-500 hover:bg-emerald-400 text-black p-3 rounded-full shadow-xl active:scale-90 transition-all font-black"
           >
             <PlusCircle className="w-6 h-6 stroke-[2.5]" />
           </Link>
 
           <Link
             href="/analytics"
-            className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors p-1"
+            className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors py-1 px-2"
           >
-            <TrendingUp className="w-4 h-4" />
-            <span>訓練分析</span>
+            <TrendingUp className="w-[18px] h-[18px]" />
+            <span className="text-[11px] sm:text-xs">訓練分析</span>
           </Link>
 
           <Link
             href="/settings"
-            className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors p-1"
+            className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors py-1 px-2"
           >
-            <Settings className="w-4 h-4" />
-            <span>設定</span>
+            <Settings className="w-[18px] h-[18px]" />
+            <span className="text-[11px] sm:text-xs">設定</span>
           </Link>
         </nav>
 

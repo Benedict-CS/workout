@@ -285,32 +285,32 @@ export default function AnalyticsPage() {
         </div>
 
         {/* 3 大指標卡 (若有體脂數據則並列顯示，手機版 2 欄整齊排列不擠壓) */}
-        <div className={`grid ${latestFat !== null ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"} gap-2 text-center`}>
-          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
-            <span className="text-[10px] text-gray-400 block mb-0.5">起始體重</span>
-            <span className="text-base font-black text-gray-200">{startBw}</span>
-            <span className="text-[10px] text-gray-500 block">kg</span>
+        <div className={`grid ${latestFat !== null ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"} gap-2.5 text-center`}>
+          <div className="bg-[#181b26] p-3 rounded-xl border border-[#262b3d]/70">
+            <span className="text-xs text-gray-400 block mb-1 font-medium">起始體重</span>
+            <span className="text-lg font-black text-gray-200">{startBw}</span>
+            <span className="text-xs text-gray-500 block mt-0.5">kg</span>
           </div>
 
-          <div className="bg-[#181b26] p-2.5 rounded-xl border border-cyan-500/30">
-            <span className="text-[10px] text-cyan-400 block mb-0.5">最新體重</span>
-            <span className="text-base font-black text-white">{latestBw}</span>
-            <span className="text-[10px] text-cyan-400/80 block">kg</span>
+          <div className="bg-[#181b26] p-3 rounded-xl border border-cyan-500/30">
+            <span className="text-xs text-cyan-400 block mb-1 font-semibold">最新體重</span>
+            <span className="text-lg font-black text-white">{latestBw}</span>
+            <span className="text-xs text-cyan-400/80 block mt-0.5">kg</span>
           </div>
 
-          <div className="bg-[#181b26] p-2.5 rounded-xl border border-emerald-500/30">
-            <span className="text-[10px] text-emerald-400 block mb-0.5">淨增減</span>
-            <span className="text-base font-black text-emerald-300">
+          <div className="bg-[#181b26] p-3 rounded-xl border border-emerald-500/30">
+            <span className="text-xs text-emerald-400 block mb-1 font-semibold">淨增減</span>
+            <span className="text-lg font-black text-emerald-300">
               {netDiff > 0 ? `+${netDiff}` : netDiff}
             </span>
-            <span className="text-[10px] text-emerald-400/80 block">kg</span>
+            <span className="text-xs text-emerald-400/80 block mt-0.5">kg</span>
           </div>
 
           {latestFat !== null && (
-            <div className="bg-[#181b26] p-2.5 rounded-xl border border-amber-500/30">
-              <span className="text-[10px] text-amber-400 block mb-0.5">最新體脂</span>
-              <span className="text-base font-black text-amber-300">{latestFat}%</span>
-              <span className="text-[10px] text-amber-400/80 block">
+            <div className="bg-[#181b26] p-3 rounded-xl border border-amber-500/30">
+              <span className="text-xs text-amber-400 block mb-1 font-semibold">最新體脂</span>
+              <span className="text-lg font-black text-amber-300">{latestFat}%</span>
+              <span className="text-xs text-amber-400/80 block mt-0.5">
                 {fatDiff !== null ? (fatDiff > 0 ? `+${fatDiff}%` : `${fatDiff}%`) : "空腹量測"}
               </span>
             </div>

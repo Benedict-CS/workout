@@ -264,8 +264,8 @@ function NewWorkoutForm() {
 
         {/* 主攻部位 (僅 4 大項：胸、背、腿、游泳) */}
         <div>
-          <label className="text-xs font-bold text-gray-400 block mb-1.5 flex items-center gap-1.5">
-            <Dumbbell className="w-3.5 h-3.5 text-emerald-400" />
+          <label className="text-xs font-bold text-gray-300 block mb-1.5 flex items-center gap-1.5">
+            <Dumbbell className="w-4 h-4 text-emerald-400" />
             <span>主攻部位 (大項)</span>
           </label>
           <div className="grid grid-cols-4 gap-2">
@@ -280,13 +280,13 @@ function NewWorkoutForm() {
                   key={p}
                   type="button"
                   onClick={() => setTargetMuscle(p)}
-                  className={`py-3 px-2 text-xs rounded-xl border font-bold text-center transition-all flex flex-col items-center gap-1 ${
+                  className={`py-3 px-2 text-sm rounded-xl border font-bold text-center transition-all flex flex-col items-center gap-1 cursor-pointer active:scale-95 ${
                     targetMuscle === p
                       ? "bg-emerald-500 text-black border-emerald-400 shadow-lg scale-[1.02] font-black"
                       : "bg-[#181b26] border-[#262b3d] text-gray-300 hover:border-gray-600"
                   }`}
                 >
-                  <span className="text-sm">{icon}</span>
+                  <span className="text-base">{icon}</span>
                   <span>{p}</span>
                 </button>
               );
@@ -296,11 +296,11 @@ function NewWorkoutForm() {
 
         {/* 訓練場地 */}
         <div>
-          <label className="text-xs font-bold text-gray-400 block mb-1.5 flex items-center gap-1.5">
-            <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+          <label className="text-xs font-bold text-gray-300 block mb-1.5 flex items-center gap-1.5">
+            <MapPin className="w-4 h-4 text-emerald-400" />
             <span>訓練場地</span>
           </label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2.5">
             {(targetMuscle === "游泳" ? ["交大游泳池", "清大游泳池"] : ["三健客", "交大健身房"]).map((loc) => {
               const isSelected = location === loc;
               return (
@@ -308,7 +308,7 @@ function NewWorkoutForm() {
                   key={loc}
                   type="button"
                   onClick={() => setLocation(loc)}
-                  className={`py-2.5 px-2 text-xs rounded-xl border font-bold transition-all text-center ${
+                  className={`py-3 px-2 text-sm rounded-xl border font-bold transition-all text-center cursor-pointer active:scale-95 ${
                     isSelected
                       ? targetMuscle === "游泳"
                         ? "bg-cyan-500/20 border-cyan-500 text-cyan-300 shadow-sm font-black"

@@ -329,11 +329,11 @@ export default function HomePage() {
           <div className="flex flex-col items-center">
             <div className="flex items-center gap-1.5">
               <Calendar className="w-4 h-4 text-emerald-400" />
-              <span className="text-sm font-black text-white">
+              <span className="text-base font-black text-white">
                 {currentGroup?.monthTitle || "訓練月份"}
               </span>
             </div>
-            <span className="text-[11px] text-gray-400">
+            <span className="text-xs text-gray-400 mt-0.5">
               當月共 {currentGroup?.stats.total || 0} 場訓練 <span className="hidden sm:inline">• 可按鍵盤 ← → 切換</span><span className="sm:hidden">• 滑動換月</span>
             </span>
           </div>
@@ -358,59 +358,59 @@ export default function HomePage() {
             className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-3.5 sm:p-4 space-y-3.5 shadow-md transition-all"
           >
             {/* 該月統計：部位頻率 + 該月 3 項最高重量 (直觀看每個月力量進步) */}
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="grid grid-cols-2 gap-2.5 text-xs">
               {/* 部位頻率 */}
-              <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70 space-y-1">
-                <span className="text-[10px] text-gray-400 font-bold block mb-1">
+              <div className="bg-[#181b26] p-2.5 sm:p-3 rounded-xl border border-[#262b3d]/70 space-y-1.5">
+                <span className="text-[11px] sm:text-xs text-gray-300 font-bold block">
                   部位頻率
                 </span>
                 <div className={`grid ${(currentGroup.stats["肩"] || 0) > 0 ? "grid-cols-5" : "grid-cols-4"} gap-1 text-center`}>
                   <div>
-                    <span className="text-[10px] text-gray-400 block">胸</span>
-                    <span className="font-black text-white">{currentGroup.stats["胸"]}</span>
+                    <span className="text-[11px] text-gray-400 block">胸</span>
+                    <span className="text-sm font-black text-white">{currentGroup.stats["胸"]}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-gray-400 block">背</span>
-                    <span className="font-black text-white">{currentGroup.stats["背"]}</span>
+                    <span className="text-[11px] text-gray-400 block">背</span>
+                    <span className="text-sm font-black text-white">{currentGroup.stats["背"]}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-gray-400 block">腿</span>
-                    <span className="font-black text-white">{currentGroup.stats["腿"]}</span>
+                    <span className="text-[11px] text-gray-400 block">腿</span>
+                    <span className="text-sm font-black text-white">{currentGroup.stats["腿"]}</span>
                   </div>
                   {(currentGroup.stats["肩"] || 0) > 0 && (
                     <div>
-                      <span className="text-[10px] text-amber-400 block">肩</span>
-                      <span className="font-black text-amber-300">{currentGroup.stats["肩"]}</span>
+                      <span className="text-[11px] text-amber-400 block">肩</span>
+                      <span className="text-sm font-black text-amber-300">{currentGroup.stats["肩"]}</span>
                     </div>
                   )}
                   <div>
-                    <span className="text-[10px] text-gray-400 block">游</span>
-                    <span className="font-black text-white">{currentGroup.stats["游泳"]}</span>
+                    <span className="text-[11px] text-gray-400 block">游</span>
+                    <span className="text-sm font-black text-white">{currentGroup.stats["游泳"]}</span>
                   </div>
                 </div>
               </div>
 
               {/* 該月 3 項最高重量 */}
-              <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70 space-y-1">
-                <span className="text-[10px] text-emerald-400 font-bold block mb-1">
+              <div className="bg-[#181b26] p-2.5 sm:p-3 rounded-xl border border-[#262b3d]/70 space-y-1.5">
+                <span className="text-[11px] sm:text-xs text-emerald-400 font-bold block">
                   當月三項最高
                 </span>
                 <div className="grid grid-cols-3 gap-1 text-center">
                   <div>
-                    <span className="text-[10px] text-gray-400 block">臥推</span>
-                    <span className="font-black text-white">
+                    <span className="text-[11px] text-gray-400 block">臥推</span>
+                    <span className="text-sm font-black text-white">
                       {currentGroup.bigThreeMax.bench > 0 ? `${currentGroup.bigThreeMax.bench}k` : "-"}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-gray-400 block">深蹲</span>
-                    <span className="font-black text-white">
+                    <span className="text-[11px] text-gray-400 block">深蹲</span>
+                    <span className="text-sm font-black text-white">
                       {currentGroup.bigThreeMax.squat > 0 ? `${currentGroup.bigThreeMax.squat}k` : "-"}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-gray-400 block">硬舉</span>
-                    <span className="font-black text-white">
+                    <span className="text-[11px] text-gray-400 block">硬舉</span>
+                    <span className="text-sm font-black text-white">
                       {currentGroup.bigThreeMax.deadlift > 0 ? `${currentGroup.bigThreeMax.deadlift}k` : "-"}
                     </span>
                   </div>
@@ -419,15 +419,15 @@ export default function HomePage() {
             </div>
 
             {/* 該月份日誌清單 (點擊 title 直接展開詳情，不跳轉新頁面) */}
-            <div className="space-y-2 pt-1">
+            <div className="space-y-2.5 pt-1">
               <div className="flex items-center justify-between px-1">
-                <span className="text-xs font-bold text-gray-400">
+                <span className="text-[13px] sm:text-sm font-bold text-gray-300">
                   訓練日誌清單 ({currentGroup.sessions.length} 場)
                 </span>
                 <button
                   type="button"
                   onClick={() => toggleExpandAll(currentGroup.sessions)}
-                  className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium cursor-pointer"
+                  className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer"
                 >
                   {allCurrentExpanded ? "全部收合" : "全部展開"}
                 </button>
@@ -474,12 +474,12 @@ export default function HomePage() {
                     >
                       {/* 主行：部位 badge + 標題 + 展開箭頭 */}
                       <div className="flex items-start gap-2">
-                        <span className={`px-2 py-0.5 rounded font-black text-[11px] border shrink-0 mt-0.5 ${badgeColor}`}>
+                        <span className={`px-2 py-0.5 rounded font-black text-xs border shrink-0 mt-0.5 ${badgeColor}`}>
                           {sess.target_muscle}
                         </span>
 
                         <span
-                          className="font-bold text-gray-100 hover:text-emerald-400 transition-colors flex-1 min-w-0 break-words select-text cursor-text leading-snug"
+                          className="font-bold text-gray-100 hover:text-emerald-400 transition-colors flex-1 min-w-0 break-words select-text cursor-text text-[13px] sm:text-sm leading-snug"
                           title="可直接選取複製文字"
                         >
                           {sess.display_title}
@@ -495,7 +495,7 @@ export default function HomePage() {
                               setCopyToast(`已複製標題：${sess.display_title}`);
                               setTimeout(() => setCopyToast(null), 2000);
                             }}
-                            className="p-1 text-gray-500 hover:text-emerald-400 hover:bg-[#262b3d] rounded transition-all cursor-pointer"
+                            className="p-1.5 text-gray-400 hover:text-emerald-400 hover:bg-[#262b3d] rounded transition-all cursor-pointer"
                             title="一鍵複製此場訓練標題文字"
                           >
                             <Copy className="w-3.5 h-3.5" />
@@ -505,7 +505,7 @@ export default function HomePage() {
                           <button
                             type="button"
                             onClick={(e) => handleDeleteSession(e, sess)}
-                            className="p-1 text-gray-500 hover:text-red-400 hover:bg-red-950/40 rounded transition-all cursor-pointer"
+                            className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-950/40 rounded transition-all cursor-pointer"
                             title="刪除此場訓練"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -522,11 +522,11 @@ export default function HomePage() {
                       {/* 副行：場地 + 組數 */}
                       <div className="flex items-center gap-2 mt-1 ml-[calc(1.75rem+0.5rem)]">
                         {sess.location && (
-                          <span className="text-[10px] text-gray-400">
+                          <span className="text-[11px] sm:text-xs text-gray-400 font-medium">
                             📍 {sess.location}
                           </span>
                         )}
-                        <span className="text-[10px] bg-[#090a0f] text-gray-400 px-2 py-0.5 rounded border border-[#262b3d]">
+                        <span className="text-[11px] sm:text-xs bg-[#090a0f] text-gray-300 px-2 py-0.5 rounded border border-[#262b3d] font-semibold">
                           {sessSets.length} 組
                         </span>
                       </div>
@@ -540,7 +540,7 @@ export default function HomePage() {
                             尚無詳細組數紀錄
                           </div>
                         ) : (
-                          <div className="space-y-2.5">
+                          <div className="space-y-3">
                             {exOrder.map((exId) => {
                               const ex = exercises.find((e) => e.id === exId);
                               const exSets = exMap.get(exId) || [];
@@ -548,11 +548,11 @@ export default function HomePage() {
 
                               return (
                                 <div key={exId} className="space-y-1">
-                                  <div className="font-bold text-emerald-400 text-xs flex items-center gap-1.5">
+                                  <div className="font-bold text-emerald-400 text-[13px] sm:text-sm flex items-center gap-1.5">
                                     <span>•</span>
                                     <span>{exName}：</span>
                                   </div>
-                                  <div className="pl-4 space-y-0.5">
+                                  <div className="pl-4 space-y-1">
                                     {exSets.map((st, sIdx) => {
                                       // 乾淨移除 raw_text 內可能殘留的舊 set 編號，依動作內順序重新格式化
                                       const cleanBody = st.raw_text
@@ -587,7 +587,7 @@ export default function HomePage() {
                                       return (
                                         <div
                                           key={st.id || sIdx}
-                                          className="text-[11px] text-gray-300 font-mono tracking-tight"
+                                          className="text-xs text-gray-200 font-mono tracking-tight font-medium"
                                         >
                                           - {displayText}
                                         </div>

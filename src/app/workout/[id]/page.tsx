@@ -901,34 +901,34 @@ export default function WorkoutDetailPage({
         <div className="flex items-start gap-2.5">
           <Link
             href="/"
-            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] rounded-xl text-gray-300 shrink-0 mt-0.5"
+            className="p-2.5 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] rounded-xl text-gray-300 shrink-0 mt-0.5 active:scale-95 transition-all"
           >
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div className="min-w-0 flex-1">
-            <h1 className="text-base font-black text-white leading-tight break-words">{session.display_title}</h1>
-            <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5 relative flex-wrap">
+            <h1 className="text-lg font-black text-white leading-tight break-words">{session.display_title}</h1>
+            <div className="flex items-center gap-2 text-xs text-gray-300 mt-1 relative flex-wrap font-medium">
               <span>{session.date}</span>
               <span>•</span>
               <button
                 type="button"
                 onClick={() => setShowLocationQuickPicker((p) => !p)}
-                className="flex items-center gap-1 text-emerald-400 font-bold bg-[#181b26] px-2 py-0.5 rounded-lg border border-[#262b3d]"
+                className="flex items-center gap-1 text-emerald-400 font-bold bg-[#181b26] px-2.5 py-0.5 rounded-lg border border-[#262b3d] active:scale-95"
               >
-                <MapPin className="w-3 h-3" />
+                <MapPin className="w-3.5 h-3.5" />
                 <span>{session.location || "三健客"}</span>
                 <ChevronDown className="w-3 h-3 opacity-60" />
               </button>
 
               {/* 切換場地下拉 */}
               {showLocationQuickPicker && (
-                <div className="absolute top-6 left-12 z-30 bg-[#12141c] border border-emerald-500/40 rounded-xl p-1.5 shadow-2xl space-y-1 text-xs min-w-[130px]">
+                <div className="absolute top-7 left-12 z-30 bg-[#12141c] border border-emerald-500/40 rounded-xl p-1.5 shadow-2xl space-y-1 text-xs min-w-[130px]">
                   {LOCATION_OPTIONS.map((loc) => (
                     <button
                       key={loc}
                       type="button"
                       onClick={() => handleQuickUpdateLocation(loc)}
-                      className={`w-full text-left px-2 py-1 rounded-lg text-xs ${
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs ${
                         session.location === loc
                           ? "bg-emerald-500 text-black font-black"
                           : "text-gray-300 hover:bg-[#181b26]"
@@ -944,11 +944,11 @@ export default function WorkoutDetailPage({
         </div>
 
         {/* 第二列：操作按鈕群 — 均分排列，手機完整顯示 */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 pt-0.5">
           <button
             type="button"
             onClick={handleFinishWorkout}
-            className="flex-1 px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-black rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow active:scale-95 cursor-pointer"
+            className="flex-1 px-3 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 shadow active:scale-95 cursor-pointer"
             title="完成本次訓練並返回首頁"
           >
             <Check className="w-4 h-4 stroke-[3]" />
@@ -982,7 +982,7 @@ export default function WorkoutDetailPage({
       </div>
 
       {copyToast && (
-        <div className="bg-emerald-500 text-black px-4 py-2 rounded-xl text-xs font-black shadow-2xl flex items-center gap-2">
+        <div className="bg-emerald-500 text-black px-4 py-2.5 rounded-xl text-xs font-black shadow-2xl flex items-center gap-2">
           <Check className="w-4 h-4 stroke-[3]" />
           <span>已複製 Markdown！</span>
         </div>
@@ -990,30 +990,30 @@ export default function WorkoutDetailPage({
 
       {/* 休息計時器控制列 (重訓專用，手動點擊觸發) — 手機版自適應換行 */}
       {session.target_muscle !== "游泳" && (
-        <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-3 text-xs shadow-sm space-y-2">
+        <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-3 sm:p-3.5 text-xs shadow-sm space-y-2.5">
           {/* 狀態列 */}
           <div className="flex items-center gap-2">
             <Timer className={`w-4 h-4 shrink-0 ${timerActive ? "text-amber-400 animate-pulse" : "text-gray-400"}`} />
-            <span className="font-bold text-gray-200 shrink-0">休息計時：</span>
+            <span className="font-bold text-gray-200 shrink-0 text-xs sm:text-sm">休息計時：</span>
             {timerActive && timerSeconds !== null && timerSeconds > 0 ? (
-              <span className="text-amber-400 font-mono font-black text-sm animate-pulse">
+              <span className="text-amber-400 font-mono font-black text-base animate-pulse">
                 {Math.floor(timerSeconds / 60)}:{(timerSeconds % 60).toString().padStart(2, "0")}
               </span>
             ) : timerSeconds === 0 ? (
-              <span className="text-emerald-400 font-bold">時間到！</span>
+              <span className="text-emerald-400 font-bold text-xs sm:text-sm">時間到！</span>
             ) : (
-              <span className="text-gray-500">手動點擊啟動</span>
+              <span className="text-gray-500 text-xs">手動點擊啟動</span>
             )}
           </div>
 
-          {/* 按鈕列 — 均分排列，手機不溢出 */}
+          {/* 按鈕列 — 均分排列，加大觸控面積 */}
           <div className="flex items-center gap-1.5">
             {timerActive ? (
               <>
                 <button
                   type="button"
                   onClick={() => addRestSeconds(30)}
-                  className="flex-1 py-1.5 bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 rounded-lg text-[11px] font-bold active:scale-95 cursor-pointer text-center"
+                  className="flex-1 py-2 bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 rounded-xl text-xs font-bold active:scale-95 cursor-pointer text-center"
                   title="延長 30 秒休息"
                 >
                   +30秒
@@ -1021,7 +1021,7 @@ export default function WorkoutDetailPage({
                 <button
                   type="button"
                   onClick={stopRestTimer}
-                  className="flex-1 py-1.5 bg-red-950/30 hover:bg-red-900/50 border border-red-500/30 text-red-300 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 active:scale-95 cursor-pointer"
+                  className="flex-1 py-2 bg-red-950/30 hover:bg-red-900/50 border border-red-500/30 text-red-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1 active:scale-95 cursor-pointer"
                   title="結束休息計時"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -1033,28 +1033,28 @@ export default function WorkoutDetailPage({
                 <button
                   type="button"
                   onClick={() => startRestTimer(90)}
-                  className="flex-1 py-1.5 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-lg text-[11px] font-bold active:scale-95 cursor-pointer text-center"
+                  className="flex-1 py-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-xl text-xs font-bold active:scale-95 cursor-pointer text-center"
                 >
                   1.5分
                 </button>
                 <button
                   type="button"
                   onClick={() => startRestTimer(120)}
-                  className="flex-1 py-1.5 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-lg text-[11px] font-bold active:scale-95 cursor-pointer text-center"
+                  className="flex-1 py-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-xl text-xs font-bold active:scale-95 cursor-pointer text-center"
                 >
                   2分
                 </button>
                 <button
                   type="button"
                   onClick={() => startRestTimer(150)}
-                  className="flex-1 py-1.5 bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 rounded-lg text-[11px] font-black active:scale-95 shadow-sm cursor-pointer text-center"
+                  className="flex-1 py-2 bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 rounded-xl text-xs font-black active:scale-95 shadow-sm cursor-pointer text-center"
                 >
                   2.5分
                 </button>
                 <button
                   type="button"
                   onClick={() => startRestTimer(180)}
-                  className="flex-1 py-1.5 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-lg text-[11px] font-bold active:scale-95 cursor-pointer text-center"
+                  className="flex-1 py-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-xl text-xs font-bold active:scale-95 cursor-pointer text-center"
                 >
                   3分
                 </button>
@@ -1184,7 +1184,7 @@ export default function WorkoutDetailPage({
                     return (
                       <div
                         key={s.id}
-                        className={`px-3 py-2.5 rounded-xl border text-xs transition-all ${
+                        className={`px-3 py-2.5 rounded-xl border transition-all ${
                           isCurrent
                             ? "bg-[#14261f] border-emerald-500 shadow-md shadow-emerald-950/40 ring-1 ring-emerald-500/50"
                             : isDone
@@ -1193,12 +1193,12 @@ export default function WorkoutDetailPage({
                         }`}
                       >
                         {/* 主行：勾 + 序號 + 重量文字 + 右側按鈕 */}
-                        <div className="flex items-center gap-2 min-w-0">
-                          {/* 打勾按鈕 */}
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {/* 打勾按鈕 — 加大為 w-7 h-7 提升健身房單手點擊體驗 */}
                           <button
                             type="button"
                             onClick={() => handleToggleSetCompleted(s.id)}
-                            className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 transition-all cursor-pointer ${
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all cursor-pointer ${
                               isDone
                                 ? "bg-emerald-500 text-black border border-emerald-400 shadow"
                                 : isCurrent
@@ -1207,28 +1207,28 @@ export default function WorkoutDetailPage({
                             }`}
                             title={isDone ? "點擊取消完成" : "點擊標記此組完成"}
                           >
-                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                            <Check className="w-4 h-4 stroke-[3]" />
                           </button>
 
                           {/* 序號標記 */}
                           {isWarmup ? (
                             <span
-                              className="font-mono text-[10px] font-black px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 shrink-0"
+                              className="font-mono text-[11px] font-black px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 shrink-0"
                               title="熱身/準備組 (不計入正式組序號)"
                             >
                               {warmupLabel}
                             </span>
                           ) : (
                             <span
-                              className={`font-mono font-bold ${isCurrent ? "text-emerald-400 font-black" : "text-gray-400"} w-5 shrink-0 text-xs`}
+                              className={`font-mono font-bold ${isCurrent ? "text-emerald-400 font-black" : "text-gray-400"} w-5 shrink-0 text-xs sm:text-sm`}
                               title={`第 ${formalIndex} 正式組`}
                             >
                               #{formalIndex}
                             </span>
                           )}
 
-                          {/* 重量文字：允許換行，不截斷 */}
-                          <span className={`font-bold flex-1 min-w-0 break-words ${isDone ? "text-gray-400 line-through decoration-emerald-500/50" : isCurrent ? "text-white font-black" : "text-gray-100"}`}>
+                          {/* 重量文字：稍微放大至 text-sm，允許換行不截斷 */}
+                          <span className={`text-[13px] sm:text-sm font-bold flex-1 min-w-0 break-words ${isDone ? "text-gray-400 line-through decoration-emerald-500/50" : isCurrent ? "text-white font-black" : "text-gray-100"}`}>
                             {cleanSetDisplay(s)}
                           </span>
 
@@ -1246,14 +1246,14 @@ export default function WorkoutDetailPage({
                             )}
                             <button
                               onClick={() => handleStartEditSet(s)}
-                              className="text-gray-400 hover:text-amber-400 p-1 sm:p-1.5 rounded-lg hover:bg-[#202533] transition-colors"
+                              className="text-gray-400 hover:text-amber-400 p-1.5 rounded-lg hover:bg-[#202533] transition-colors"
                               title="修改此組"
                             >
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleDeleteSet(s.id)}
-                              className="text-gray-400 hover:text-red-400 p-1 sm:p-1.5 rounded-lg hover:bg-red-950/30 transition-colors"
+                              className="text-gray-400 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-950/30 transition-colors"
                               title="刪除"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1261,13 +1261,13 @@ export default function WorkoutDetailPage({
                           </div>
                         </div>
 
-                        {/* 副行：上次紀錄 + PR + 進行中/完成 徽章 — 只有存在時才顯示，避免空白 */}
+                        {/* 副行：上次紀錄 + PR + 進行中/完成 徽章 */}
                         {(matchingGhost || isSetNewPR(s) || isCurrent || isDone || s.set_type === "drop") && (
-                          <div className="flex items-center gap-1.5 mt-1 ml-8 flex-wrap">
+                          <div className="flex items-center gap-2 mt-1.5 ml-9 flex-wrap text-xs">
                             {matchingGhost && (
                               <span
-                                className={`text-[10px] font-medium ${
-                                  isCurrent ? "text-amber-300 font-bold" : "text-gray-500"
+                                className={`text-[11px] font-medium ${
+                                  isCurrent ? "text-amber-300 font-bold" : "text-gray-400"
                                 }`}
                                 title={`上次此組實測：${cleanSetDisplay(matchingGhost)}`}
                               >
@@ -1276,7 +1276,7 @@ export default function WorkoutDetailPage({
                             )}
                             {isSetNewPR(s) && (
                               <span
-                                className="px-1.5 py-0.5 rounded text-[10px] font-black bg-gradient-to-r from-amber-500/25 to-red-500/25 text-amber-300 border border-amber-500/50 flex items-center gap-0.5 shadow-sm animate-pulse"
+                                className="px-1.5 py-0.5 rounded text-[11px] font-black bg-gradient-to-r from-amber-500/25 to-red-500/25 text-amber-300 border border-amber-500/50 flex items-center gap-0.5 shadow-sm animate-pulse"
                                 title={`突破個人歷史紀錄！(歷史最高：${prMap[s.exercise_id]?.maxWeight}Kg x${prMap[s.exercise_id]?.maxReps}下)`}
                               >
                                 <span>🔥</span>
@@ -1284,17 +1284,17 @@ export default function WorkoutDetailPage({
                               </span>
                             )}
                             {s.set_type === "drop" && (
-                              <span className="bg-amber-500/20 text-amber-300 text-[10px] px-1.5 py-0.5 rounded font-bold">
+                              <span className="bg-amber-500/20 text-amber-300 text-[11px] px-1.5 py-0.5 rounded font-bold">
                                 遞減
                               </span>
                             )}
                             {isCurrent && (
-                              <span className="bg-emerald-500 text-black text-[10px] font-black px-1.5 py-0.5 rounded-md animate-pulse">
+                              <span className="bg-emerald-500 text-black text-[11px] font-black px-1.5 py-0.5 rounded-md animate-pulse">
                                 進行中
                               </span>
                             )}
                             {isDone && (
-                              <span className="text-[10px] text-emerald-400 font-bold">
+                              <span className="text-[11px] text-emerald-400 font-bold">
                                 已完成 ✓
                               </span>
                             )}
@@ -1371,7 +1371,7 @@ export default function WorkoutDetailPage({
                   key={ex.id}
                   type="button"
                   onClick={() => handleSelectExercise(ex.id)}
-                  className={`text-xs px-3 py-1.5 rounded-xl border shrink-0 transition-all font-bold ${
+                  className={`text-xs sm:text-sm px-3.5 py-2 rounded-xl border shrink-0 transition-all font-bold ${
                     selectedExId === ex.id
                       ? "bg-emerald-500 text-black border-emerald-400 shadow-md font-black"
                       : "bg-[#181b26] border-[#262b3d] text-gray-300 hover:text-white"
@@ -1388,7 +1388,7 @@ export default function WorkoutDetailPage({
             <button
               type="button"
               onClick={() => setInputType("normal")}
-              className={`py-1.5 rounded-xl text-xs font-bold border transition-all ${
+              className={`py-2 rounded-xl text-xs sm:text-sm font-bold border transition-all ${
                 inputType === "normal"
                   ? "bg-emerald-500 text-black border-emerald-400 font-black shadow-sm"
                   : "bg-[#181b26] text-gray-400 border-[#262b3d]"
@@ -1399,7 +1399,7 @@ export default function WorkoutDetailPage({
             <button
               type="button"
               onClick={() => setInputType("warmup")}
-              className={`py-1.5 rounded-xl text-xs font-bold border transition-all ${
+              className={`py-2 rounded-xl text-xs sm:text-sm font-bold border transition-all ${
                 inputType === "warmup"
                   ? "bg-blue-600 text-white border-blue-400 font-black shadow-sm"
                   : "bg-[#181b26] text-gray-400 border-[#262b3d]"
@@ -1410,7 +1410,7 @@ export default function WorkoutDetailPage({
             <button
               type="button"
               onClick={() => setInputType("drop")}
-              className={`py-1.5 rounded-xl text-xs font-bold border transition-all ${
+              className={`py-2 rounded-xl text-xs sm:text-sm font-bold border transition-all ${
                 inputType === "drop"
                   ? "bg-amber-500 text-black border-amber-400 font-black shadow-sm"
                   : "bg-[#181b26] text-gray-400 border-[#262b3d]"
@@ -1421,27 +1421,27 @@ export default function WorkoutDetailPage({
           </div>
 
           {/* 主輸入框：重量 (Kg) 與 次數 (次) - 直接輸入，無步進廢鍵 */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
-              <label className="text-[11px] text-gray-400 block mb-1 font-bold">重量 (Kg)</label>
+              <label className="text-xs text-gray-300 block mb-1 font-bold">重量 (Kg)</label>
               <input
                 type="number"
                 step="any"
                 placeholder="60"
                 value={inputWeight}
                 onChange={(e) => setInputWeight(e.target.value)}
-                className="w-full bg-[#181b26] border border-[#262b3d] text-white text-lg font-black rounded-xl p-2.5 text-center focus:border-emerald-500 outline-none"
+                className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xl font-black rounded-xl p-3 text-center focus:border-emerald-500 outline-none"
               />
             </div>
 
             <div>
-              <label className="text-[11px] text-gray-400 block mb-1 font-bold">次數 (下)</label>
+              <label className="text-xs text-gray-300 block mb-1 font-bold">次數 (下)</label>
               <input
                 type="number"
                 placeholder="8"
                 value={inputReps}
                 onChange={(e) => setInputReps(e.target.value)}
-                className="w-full bg-[#181b26] border border-[#262b3d] text-white text-lg font-black rounded-xl p-2.5 text-center focus:border-emerald-500 outline-none"
+                className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xl font-black rounded-xl p-3 text-center focus:border-emerald-500 outline-none"
               />
             </div>
           </div>
@@ -1574,7 +1574,7 @@ export default function WorkoutDetailPage({
             type="button"
             onClick={handleAddSet}
             disabled={!inputReps || parseInt(inputReps, 10) <= 0}
-            className="w-full bg-[#181b26] hover:bg-[#202533] border border-emerald-500/40 text-emerald-300 disabled:opacity-40 font-bold py-3 rounded-xl transition-all active:scale-[0.98] text-xs flex items-center justify-center gap-2 mt-2 cursor-pointer disabled:cursor-not-allowed"
+            className="w-full bg-[#181b26] hover:bg-[#202533] border border-emerald-500/40 text-emerald-300 disabled:opacity-40 font-bold py-3.5 rounded-xl transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2 mt-2 cursor-pointer disabled:cursor-not-allowed shadow-sm"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
             <span>＋ 加入此組至紀錄</span>
@@ -1587,12 +1587,12 @@ export default function WorkoutDetailPage({
         <button
           type="button"
           onClick={handleFinishWorkout}
-          className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-4 rounded-2xl shadow-2xl transition-all active:scale-[0.98] text-base flex items-center justify-center gap-2 cursor-pointer"
+          className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-4 rounded-2xl shadow-2xl transition-all active:scale-[0.98] text-base sm:text-lg flex items-center justify-center gap-2 cursor-pointer"
         >
           <Check className="w-5 h-5 stroke-[3]" />
           <span>完成本次訓練並儲存 (返回日誌)</span>
         </button>
-        <p className="text-center text-[11px] text-gray-500 font-medium">
+        <p className="text-center text-xs text-gray-400 font-medium">
           點擊後自動儲存所有組數進度並同步雲端，返回訓練日誌首頁
         </p>
       </div>

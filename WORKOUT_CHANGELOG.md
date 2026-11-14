@@ -192,6 +192,7 @@ body_weight: "id, date, weight_kg, updated_at, sync_status"
   * 底部導覽列加入 `pb-[max(0.6rem,env(safe-area-inset-bottom))]`，防 iPhone Home Bar 遮蔽導航圖標。
   * 浮動休息計時器自適應底部安全邊距。
   * 更新 Service Worker 快取版本為 `v3`，納入 `/workout/new` 確保完整離線運作。
-* **卡片自適應 Grid**：
+* **卡片自適應 Grid 與字體微調（易讀性全面提升）**：
   * 分析頁體重指標卡由強制 4 欄改為 `grid-cols-2 sm:grid-cols-4`，標籤由「體重淨增減」精簡為「淨增減」，避免數值溢出。
   * 設定頁個人三項改為 `grid-cols-2 sm:grid-cols-4`，按鈕改為手機友善全寬排列。
+  * **字體微調（適度加大）**：微調各卡片 `text-[10px]` 至 `text-[11px]` 或 `text-xs`，日誌做組文字與標題微幅調大至 `text-xs` / `text-sm`，底部導航圖標微調為 `18px`，在健身房單手手持距離下清晰可讀，兼顧精緻度與易讀性。

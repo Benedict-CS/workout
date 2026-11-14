@@ -363,7 +363,7 @@ export default function ExercisesPage() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleToggleFavorite(item.exercise)}
-                      className="p-1 hover:scale-110 transition-transform"
+                      className="p-1 hover:scale-110 transition-transform cursor-pointer"
                       title={item.exercise.is_favorite ? "取消常用釘選" : "加入常用固定動作"}
                     >
                       <Star
@@ -374,11 +374,11 @@ export default function ExercisesPage() {
                         }`}
                       />
                     </button>
-                    <h3 className="font-bold text-gray-100 text-sm">{item.exercise.name}</h3>
+                    <h3 className="font-black text-gray-100 text-[15px]">{item.exercise.name}</h3>
                   </div>
 
-                  <div className="flex items-center gap-2 text-[10px] text-gray-400 mt-0.5 ml-6">
-                    <span className="text-emerald-400 font-medium">
+                  <div className="flex items-center gap-2 text-[11px] sm:text-xs text-gray-400 mt-0.5 ml-6">
+                    <span className="text-emerald-400 font-semibold">
                       {item.exercise.muscle_group}
                     </span>
                     <span>•</span>
@@ -388,27 +388,27 @@ export default function ExercisesPage() {
 
                 <div className="flex items-center gap-2">
                   <div className="text-right">
-                    <span className="text-[10px] text-gray-400 block">實測最高</span>
-                    <span className="text-sm font-black text-white">
+                    <span className="text-[11px] text-gray-400 block">實測最高</span>
+                    <span className="text-base font-black text-white">
                       {item.maxWeight > 0 ? `${item.maxWeight} Kg` : "-"}
                     </span>
                   </div>
 
                   <button
                     onClick={() => handleStartEdit(item.exercise)}
-                    className="p-1.5 text-gray-400 hover:text-white rounded-lg transition-colors ml-1"
+                    className="p-1.5 text-gray-400 hover:text-white rounded-lg transition-colors ml-1 active:scale-95 cursor-pointer"
                     title="編輯此動作"
                   >
-                    <Pencil className="w-3.5 h-3.5" />
+                    <Pencil className="w-4 h-4" />
                   </button>
 
                   {item.exercise.id.startsWith("custom-") && (
                     <button
                       onClick={() => handleDeleteExercise(item.exercise)}
-                      className="p-1.5 text-gray-400 hover:text-red-400 rounded-lg transition-colors"
+                      className="p-1.5 text-gray-400 hover:text-red-400 rounded-lg transition-colors active:scale-95 cursor-pointer"
                       title="刪除"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   )}
                 </div>
@@ -417,8 +417,8 @@ export default function ExercisesPage() {
               {/* 最佳紀錄 */}
               {item.maxWeight > 0 && (
                 <div className="bg-[#181b26] px-3 py-1.5 rounded-xl border border-[#262b3d]/60 flex items-center justify-between text-xs">
-                  <span className="text-[11px] text-gray-400">歷史最佳做組：</span>
-                  <span className="font-bold text-emerald-300">{item.bestSet}</span>
+                  <span className="text-xs text-gray-400">歷史最佳做組：</span>
+                  <span className="font-bold text-emerald-300 text-xs sm:text-[13px]">{item.bestSet}</span>
                 </div>
               )}
             </div>
