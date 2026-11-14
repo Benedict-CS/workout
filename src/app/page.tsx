@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   ChevronRight,
@@ -58,6 +58,8 @@ export default function HomePage() {
   // 單月分頁檢視 (順序排列：6月 -> 11月，鎖定僅透過按鈕左右切換或點選切換，絕不允許手勢滑動誤觸)
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(0);
   const [showMonthDropdown, setShowMonthDropdown] = useState(false);
+  const hasInitializedMonthRef = useRef(false);
+  const selectedMonthKeyRef = useRef<string | null>(null);
   const currentGroup = monthGroups[selectedMonthIndex] || monthGroups[0];
 
   // 鍵盤 ← / → 鍵左右切換月份 (防在輸入框中誤觸)
@@ -75,18 +77,24 @@ export default function HomePage() {
 
       if (e.key === "ArrowLeft") {
         e.preventDefault();
-        setSelectedMonthIndex((prev) => Math.max(0, prev - 1));
+        setSelectedMonthIndex((prev) => {
+          const next = Math.max(0, prev - 1);
+          selectedMonthKeyRef.current = monthGroups[next]?.monthKey || null;
+          return next;
+        });
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
-        setSelectedMonthIndex((prev) =>
-          Math.min(monthGroups.length > 0 ? monthGroups.length - 1 : 0, prev + 1)
-        );
+        setSelectedMonthIndex((prev) => {
+          const next = Math.min(monthGroups.length > 0 ? monthGroups.length - 1 : 0, prev + 1);
+          selectedMonthKeyRef.current = monthGroups[next]?.monthKey || null;
+          return next;
+        });
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [monthGroups.length]);
+  }, [monthGroups]);
 
   // 單場點擊切換展開/收合
   function toggleExpand(sessionId: string) {
@@ -145,6 +153,12 @@ export default function HomePage() {
           monthMap.set(sess.month_key, []);
         }
         monthMap.get(sess.month_key)!.push(sess);
+      }
+
+      // 確保當前月份必然存在於選單與分頁中
+      const currentMonthKey = new Date().toISOString().slice(0, 7);
+      if (!monthMap.has(currentMonthKey)) {
+        monthMap.set(currentMonthKey, []);
       }
 
       // 順序排列：6月 -> 7月 -> 8月 -> 9月 -> 10月 -> 11月
@@ -217,9 +231,19 @@ export default function HomePage() {
       }
 
       setMonthGroups(groups);
-      // 預設進入最新月份 (最後一個月：11月)
-      if (groups.length > 0) {
-        setSelectedMonthIndex((prev) => (prev > 0 ? Math.min(prev, groups.length - 1) : groups.length - 1));
+      // 預設進入最新月份 (最後一個月：11月)，初次載入鎖定；後續背景同步不覆蓋使用者正在瀏覽的月份
+      if (!hasInitializedMonthRef.current && groups.length > 0) {
+        hasInitializedMonthRef.current = true;
+        const lastIdx = groups.length - 1;
+        setSelectedMonthIndex(lastIdx);
+        selectedMonthKeyRef.current = groups[lastIdx]?.monthKey || null;
+      } else if (selectedMonthKeyRef.current && groups.length > 0) {
+        const foundIdx = groups.findIndex((g) => g.monthKey === selectedMonthKeyRef.current);
+        if (foundIdx !== -1) {
+          setSelectedMonthIndex(foundIdx);
+        } else {
+          setSelectedMonthIndex(Math.max(0, groups.length - 1));
+        }
       }
     } catch (err) {
       console.error("Failed to load dashboard data:", err);
@@ -348,12 +372,16 @@ export default function HomePage() {
           <button
             type="button"
             disabled={selectedMonthIndex <= 0}
-            onClick={() => setSelectedMonthIndex((prev) => Math.max(0, prev - 1))}
-            className="p-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 disabled:opacity-30 disabled:pointer-events-none rounded-xl text-xs font-bold flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+            onClick={() => {
+              const next = Math.max(0, selectedMonthIndex - 1);
+              setSelectedMonthIndex(next);
+              selectedMonthKeyRef.current = monthGroups[next]?.monthKey || null;
+            }}
+            className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-200 hover:text-white disabled:opacity-30 disabled:pointer-events-none rounded-xl text-xs font-bold flex items-center gap-1 active:scale-95 transition-all cursor-pointer shrink-0 shadow-sm"
             title="查看上個月 (可按鍵盤 ← 鍵)"
           >
-            <ChevronLeft className="w-4 h-4 text-emerald-400" />
-            <span className="hidden sm:inline">上個月</span>
+            <ChevronLeft className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="shrink-0">上個月</span>
           </button>
 
           <div className="relative flex flex-col items-center">
@@ -381,6 +409,7 @@ export default function HomePage() {
                       type="button"
                       onClick={() => {
                         setSelectedMonthIndex(idx);
+                        selectedMonthKeyRef.current = mg.monthKey;
                         setShowMonthDropdown(false);
                       }}
                       className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer transition-colors ${
@@ -407,12 +436,16 @@ export default function HomePage() {
           <button
             type="button"
             disabled={selectedMonthIndex >= monthGroups.length - 1}
-            onClick={() => setSelectedMonthIndex((prev) => Math.min(monthGroups.length - 1, prev + 1))}
-            className="p-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 disabled:opacity-30 disabled:pointer-events-none rounded-xl text-xs font-bold flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+            onClick={() => {
+              const next = Math.min(monthGroups.length - 1, selectedMonthIndex + 1);
+              setSelectedMonthIndex(next);
+              selectedMonthKeyRef.current = monthGroups[next]?.monthKey || null;
+            }}
+            className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-200 hover:text-white disabled:opacity-30 disabled:pointer-events-none rounded-xl text-xs font-bold flex items-center gap-1 active:scale-95 transition-all cursor-pointer shrink-0 shadow-sm"
             title="查看下個月 (可按鍵盤 → 鍵)"
           >
-            <span className="hidden sm:inline">下個月</span>
-            <ChevronRight className="w-4 h-4 text-emerald-400" />
+            <span className="shrink-0">下個月</span>
+            <ChevronRight className="w-4 h-4 text-emerald-400 shrink-0" />
           </button>
         </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import {
   Search,
@@ -56,6 +56,7 @@ export default function HistoryPage() {
   const [calendarMonth, setCalendarMonth] = useState<string>(todayStr.slice(0, 7));
   const [selectedCalDate, setSelectedCalDate] = useState<string>(todayStr);
   const [showMonthDropdown, setShowMonthDropdown] = useState(false);
+  const hasInitializedMonthRef = useRef(false);
 
   // 檢視模式：預設直接就是日曆檢視 (匹配記帳 app 使用體驗)
   const [viewMode, setViewMode] = useState<"calendar" | "list">("calendar");
@@ -94,13 +95,14 @@ export default function HistoryPage() {
     const b3 = await db.big_three.toArray();
     if (b3.length > 0) setBigThree(b3[0]);
 
-    const distinctMonths = Array.from(new Set(allSessions.map((s) => s.month_key)))
-      .sort()
-      .reverse();
+    const monthsSet = new Set(allSessions.map((s) => s.month_key));
+    monthsSet.add(todayStr.slice(0, 7));
+    const distinctMonths = Array.from(monthsSet).sort().reverse();
     setMonthKeys(distinctMonths);
 
-    // 若有當前最新月份，設定預設月曆月份
-    if (distinctMonths.length > 0) {
+    // 僅在初次載入時設定預設月曆月份，避免後續背景同步重置使用者正在瀏覽的月份！
+    if (!hasInitializedMonthRef.current && distinctMonths.length > 0) {
+      hasInitializedMonthRef.current = true;
       if (distinctMonths.includes(todayStr.slice(0, 7))) {
         setCalendarMonth(todayStr.slice(0, 7));
       } else {
@@ -189,23 +191,44 @@ export default function HistoryPage() {
   }
 
   function handlePrevMonth() {
-    const [y, m] = calendarMonth.split("-").map(Number);
-    const prevDate = new Date(y, m - 2, 1);
-    const prevY = prevDate.getFullYear();
-    const prevM = String(prevDate.getMonth() + 1).padStart(2, "0");
-    const newMonth = `${prevY}-${prevM}`;
+    const [y, m] = (calendarMonth || todayStr.slice(0, 7)).split("-").map(Number);
+    let prevYear = y;
+    let prevMonth = m - 1;
+    if (prevMonth < 1) {
+      prevMonth = 12;
+      prevYear -= 1;
+    }
+    const newMonth = `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
     setCalendarMonth(newMonth);
-    setSelectedCalDate(`${newMonth}-01`);
+
+    // 智慧預選：若該月有訓練紀錄，自動選中該月份最新一天的訓練；否則選該月 1 號
+    const monthSessions = sessions.filter((s) => s.month_key === newMonth);
+    if (monthSessions.length > 0) {
+      const sorted = [...monthSessions].sort((a, b) => b.date.localeCompare(a.date));
+      setSelectedCalDate(sorted[0].date);
+    } else {
+      setSelectedCalDate(`${newMonth}-01`);
+    }
   }
 
   function handleNextMonth() {
-    const [y, m] = calendarMonth.split("-").map(Number);
-    const nextDate = new Date(y, m, 1);
-    const nextY = nextDate.getFullYear();
-    const nextM = String(nextDate.getMonth() + 1).padStart(2, "0");
-    const newMonth = `${nextY}-${nextM}`;
+    const [y, m] = (calendarMonth || todayStr.slice(0, 7)).split("-").map(Number);
+    let nextYear = y;
+    let nextMonth = m + 1;
+    if (nextMonth > 12) {
+      nextMonth = 1;
+      nextYear += 1;
+    }
+    const newMonth = `${nextYear}-${String(nextMonth).padStart(2, "0")}`;
     setCalendarMonth(newMonth);
-    setSelectedCalDate(`${newMonth}-01`);
+
+    const monthSessions = sessions.filter((s) => s.month_key === newMonth);
+    if (monthSessions.length > 0) {
+      const sorted = [...monthSessions].sort((a, b) => b.date.localeCompare(a.date));
+      setSelectedCalDate(sorted[0].date);
+    } else {
+      setSelectedCalDate(`${newMonth}-01`);
+    }
   }
 
   async function handleImportMarkdown() {
@@ -427,21 +450,23 @@ export default function HistoryPage() {
         <div className="space-y-3.5">
           {/* 日曆主卡片 */}
           <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-3 sm:p-4 shadow-lg space-y-3">
-            {/* 月份切換列 (< 2026 年 11 月 ▾ >) */}
+            {/* 月份切換列 (← 上個月 2026 年 11 月 ▾ 下個月 →) */}
             <div className="flex items-center justify-between px-1">
               <button
+                type="button"
                 onClick={handlePrevMonth}
-                className="w-8 h-8 flex items-center justify-center rounded-xl bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white transition-colors cursor-pointer active:scale-95"
-                title="上一個月份"
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-200 hover:text-white transition-all cursor-pointer active:scale-95 flex items-center gap-1 text-xs font-bold shrink-0 shadow-sm"
+                title="查看上個月"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="shrink-0">上個月</span>
               </button>
 
               <div className="relative">
                 <button
                   type="button"
                   onClick={() => setShowMonthDropdown(!showMonthDropdown)}
-                  className="flex items-center gap-1.5 font-black text-base text-white hover:text-emerald-400 transition-colors cursor-pointer py-1 px-2.5 rounded-xl hover:bg-[#181b26]"
+                  className="flex items-center gap-1.5 font-black text-sm sm:text-base text-white hover:text-emerald-400 transition-colors cursor-pointer py-1.5 px-3 rounded-xl hover:bg-[#181b26]"
                 >
                   <span>
                     {calYear} 年 {calMonth} 月
@@ -459,9 +484,16 @@ export default function HistoryPage() {
                       return (
                         <button
                           key={mk}
+                          type="button"
                           onClick={() => {
                             setCalendarMonth(mk);
-                            setSelectedCalDate(`${mk}-01`);
+                            const monthSessions = sessions.filter((s) => s.month_key === mk);
+                            if (monthSessions.length > 0) {
+                              const sorted = [...monthSessions].sort((a, b) => b.date.localeCompare(a.date));
+                              setSelectedCalDate(sorted[0].date);
+                            } else {
+                              setSelectedCalDate(`${mk}-01`);
+                            }
                             setShowMonthDropdown(false);
                           }}
                           className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer transition-colors ${
@@ -484,11 +516,13 @@ export default function HistoryPage() {
               </div>
 
               <button
+                type="button"
                 onClick={handleNextMonth}
-                className="w-8 h-8 flex items-center justify-center rounded-xl bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white transition-colors cursor-pointer active:scale-95"
-                title="下一個月份"
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-200 hover:text-white transition-all cursor-pointer active:scale-95 flex items-center gap-1 text-xs font-bold shrink-0 shadow-sm"
+                title="查看下個月"
               >
-                <ChevronRight className="w-4 h-4" />
+                <span className="shrink-0">下個月</span>
+                <ChevronRight className="w-4 h-4 text-emerald-400 shrink-0" />
               </button>
             </div>
 
