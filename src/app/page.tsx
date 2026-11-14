@@ -12,6 +12,7 @@ import {
   Pencil,
   Trash2,
   Play,
+  Plus,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
@@ -494,7 +495,19 @@ export default function HomePage() {
                 </button>
               </div>
 
-              {currentGroup.sessions.map((sess) => {
+              {currentGroup.sessions.length === 0 ? (
+                <div className="text-center py-10 space-y-2.5 bg-[#181b26]/50 border border-[#262b3d]/60 rounded-xl">
+                  <p className="text-xs text-gray-400">這個月還沒有訓練紀錄</p>
+                  <Link
+                    href={`/workout/new?date=${currentGroup.monthKey}-01`}
+                    className="inline-flex items-center gap-1.5 bg-[#181b26] hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all active:scale-95"
+                  >
+                    <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>開始此月的訓練</span>
+                  </Link>
+                </div>
+              ) : (
+                currentGroup.sessions.map((sess) => {
                 const sessSets = sessionSetsMap[sess.id] || [];
                 const isExpanded = expandedSessionIds.has(sess.id);
 
@@ -734,7 +747,7 @@ export default function HomePage() {
                     )}
                   </div>
                 );
-              })}
+              }))}
             </div>
           </section>
         )}

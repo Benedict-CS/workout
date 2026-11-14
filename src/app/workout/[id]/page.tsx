@@ -2934,7 +2934,7 @@ export default function WorkoutDetailPage({
       )}
 
       {/* 做組打勾完成後，螢幕底部大拇指極速快捷休息氣泡 (5秒自動消失) */}
-      {restPromptSetId && !timerActive && (
+      {restPromptSetId && !timerActive && session?.target_muscle !== "游泳" && (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 pointer-events-auto max-w-[92vw]">
           <button
             type="button"
@@ -2961,7 +2961,7 @@ export default function WorkoutDetailPage({
       )}
 
       {/* 🚀 浮動吸底休息倒數膠囊 (無論滑到哪裡，隨時直覺掌握剩餘休息秒數，緊湊防換行) */}
-      {timerActive && timerSeconds !== null && timerSeconds > 0 && (
+      {timerActive && timerSeconds !== null && timerSeconds > 0 && session?.target_muscle !== "游泳" && (
         <div className="fixed bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 z-50 pointer-events-auto max-w-[94vw]">
           <div className="bg-[#12141c]/95 border-2 border-amber-400 backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-2xl shadow-amber-500/30 flex items-center gap-2 text-white whitespace-nowrap shrink-0 select-none">
             <div className="flex items-center gap-1.5 text-amber-400 font-mono font-black text-sm shrink-0">

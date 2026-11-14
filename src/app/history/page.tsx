@@ -505,9 +505,7 @@ export default function HistoryPage() {
                 <span>胸 <strong className="text-white font-black">{curMonthMuscleCounts["胸"]}</strong></span>
                 <span>背 <strong className="text-white font-black">{curMonthMuscleCounts["背"]}</strong></span>
                 <span>腿 <strong className="text-white font-black">{curMonthMuscleCounts["腿"]}</strong></span>
-                {curMonthMuscleCounts["肩"] > 0 && (
-                  <span>肩 <strong className="text-white font-black">{curMonthMuscleCounts["肩"]}</strong></span>
-                )}
+                <span>肩 <strong className="text-white font-black">{curMonthMuscleCounts["肩"] || 0}</strong></span>
                 <span>游 <strong className="text-white font-black">{curMonthMuscleCounts["游泳"]}</strong></span>
               </div>
             </div>
