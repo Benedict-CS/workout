@@ -92,7 +92,8 @@ export default function WorkoutDetailPage({
   const [inputSubFields, setInputSubFields] = useState<SetSubField[]>([]);
   const [inputNotes, setInputNotes] = useState<string>("");
 
-  // 動作列表過濾與搜尋
+  // 動作列表過濾與搜尋 (支援在訓練中自由跨部位選動作，如練腿加練肩)
+  const [dockMuscleFilter, setDockMuscleFilter] = useState<string>("default");
   const [dockExerciseSearch, setDockExerciseSearch] = useState<string>("");
 
   // 休息計時器狀態 (純視覺，無音效震動)
@@ -401,8 +402,8 @@ export default function WorkoutDetailPage({
     };
   }, [id, router]);
 
-  // 切換動作時智慧預填 (若為全新動作，清空重量避免誤填上一動作的重量)
-  function handleSelectExercise(exId: string) {
+  // 切換動作時智慧預填 (若為全新動作或跨部位動作，自動即時從歷史紀錄抓取上次重量與次數預填)
+  async function handleSelectExercise(exId: string) {
     setSelectedExId(exId);
     setInputSubFields([]);
     const existingSets = sets.filter((s) => s.exercise_id === exId);
@@ -410,14 +411,32 @@ export default function WorkoutDetailPage({
       const last = existingSets[existingSets.length - 1];
       setInputWeight(last.weight_kg > 0 ? last.weight_kg.toString() : "");
       setInputReps(last.reps > 0 ? last.reps.toString() : "");
-    } else if (ghostMap[exId] && ghostMap[exId].length > 0) {
+      return;
+    }
+
+    if (ghostMap[exId] && ghostMap[exId].length > 0) {
       const firstNormal = ghostMap[exId].find((s) => s.set_type === "normal") || ghostMap[exId][0];
       setInputWeight(firstNormal.weight_kg > 0 ? firstNormal.weight_kg.toString() : "");
       setInputReps(firstNormal.reps > 0 ? firstNormal.reps.toString() : "");
-    } else {
-      setInputWeight("");
-      setInputReps("");
+      return;
     }
+
+    // ⭐ 若 ghostMap 尚未快取 (如在練腿時跨部位點選啞鈴側平舉)，即時向歷史訓練 DB 查詢該動作上次實測！
+    try {
+      const res = await getLastExerciseSets(exId, session?.id);
+      if (res && res.sets.length > 0) {
+        setGhostMap((prev) => ({ ...prev, [exId]: res.sets }));
+        const firstNormal = res.sets.find((s) => s.set_type === "normal") || res.sets[0];
+        setInputWeight(firstNormal.weight_kg > 0 ? firstNormal.weight_kg.toString() : "");
+        setInputReps(firstNormal.reps > 0 ? firstNormal.reps.toString() : "");
+        return;
+      }
+    } catch (e) {
+      console.error("Failed to query last exercise sets:", e);
+    }
+
+    setInputWeight("");
+    setInputReps("");
   }
 
   // 判定是否為熱身或激發/試重組 (不佔用正式組序號)
@@ -1452,14 +1471,19 @@ export default function WorkoutDetailPage({
   const completedSetsCount = formalSets.filter((s) => isSetCompleted(s, session.date)).length;
   const nextUpSet = sets.find((s) => !isSetCompleted(s, session.date));
 
-  // 動作過濾（排除繩索夾胸，只顯示對應部位或搜尋，並依動作名稱去重）
+  // 動作過濾（排除繩索夾胸，支援推薦部位/全部/指定部位篩選，並依動作名稱去重）
   const seenExNames = new Set<string>();
   const displayExercises = exercises.filter((e) => {
     if (e.name.includes("繩索夾胸")) return false;
     if (dockExerciseSearch.trim()) {
       if (!e.name.toLowerCase().includes(dockExerciseSearch.trim().toLowerCase())) return false;
-    } else if (e.muscle_group !== session.target_muscle) {
-      return false;
+    } else if (dockMuscleFilter === "default") {
+      const target = (session.target_muscle || "").replace("部", "").slice(0, 1);
+      if (e.muscle_group !== target && !session.target_muscle.includes(e.muscle_group)) {
+        return false;
+      }
+    } else if (dockMuscleFilter !== "all") {
+      if (e.muscle_group !== dockMuscleFilter) return false;
     }
     if (seenExNames.has(e.name)) return false;
     seenExNames.add(e.name);
@@ -2000,15 +2024,77 @@ export default function WorkoutDetailPage({
             </button>
           </div>
 
-          {/* 動作切換膠囊 */}
-          <div className="space-y-1.5">
+          {/* 部位篩選標籤 + 搜尋 */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-1.5 flex-wrap">
+              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
+                <button
+                  type="button"
+                  onClick={() => setDockMuscleFilter("default")}
+                  className={`text-xs px-2.5 py-1 rounded-lg font-bold shrink-0 transition-all cursor-pointer ${
+                    dockMuscleFilter === "default"
+                      ? "bg-emerald-500 text-black shadow-sm font-black"
+                      : "bg-[#181b26] text-gray-400 hover:text-white border border-[#262b3d]"
+                  }`}
+                >
+                  推薦 ({session.target_muscle})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDockMuscleFilter("all")}
+                  className={`text-xs px-2.5 py-1 rounded-lg font-bold shrink-0 transition-all cursor-pointer ${
+                    dockMuscleFilter === "all"
+                      ? "bg-emerald-500 text-black shadow-sm font-black"
+                      : "bg-[#181b26] text-gray-400 hover:text-white border border-[#262b3d]"
+                  }`}
+                >
+                  全部
+                </button>
+                {(["胸", "背", "腿", "肩"] as const).map((mg) => (
+                  <button
+                    key={mg}
+                    type="button"
+                    onClick={() => setDockMuscleFilter(mg)}
+                    className={`text-xs px-2.5 py-1 rounded-lg font-bold shrink-0 transition-all cursor-pointer ${
+                      dockMuscleFilter === mg
+                        ? "bg-emerald-500 text-black shadow-sm font-black"
+                        : "bg-[#181b26] text-gray-400 hover:text-white border border-[#262b3d]"
+                    }`}
+                  >
+                    {mg}
+                  </button>
+                ))}
+              </div>
+
+              {/* 動作快速搜尋 */}
+              <div className="relative shrink-0">
+                <input
+                  type="text"
+                  placeholder="搜尋動作..."
+                  value={dockExerciseSearch}
+                  onChange={(e) => setDockExerciseSearch(e.target.value)}
+                  className="w-24 sm:w-28 bg-[#181b26] border border-[#262b3d] text-white text-[11px] rounded-lg pl-2 pr-5 py-1 outline-none focus:border-emerald-500 placeholder-gray-500"
+                />
+                {dockExerciseSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setDockExerciseSearch("")}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 動作切換膠囊 */}
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
               {displayExercises.map((ex) => (
                 <button
                   key={ex.id}
                   type="button"
                   onClick={() => handleSelectExercise(ex.id)}
-                  className={`text-xs sm:text-sm px-3.5 py-2 rounded-xl border shrink-0 transition-all font-bold ${
+                  className={`text-xs sm:text-sm px-3.5 py-2 rounded-xl border shrink-0 transition-all font-bold cursor-pointer ${
                     selectedExId === ex.id
                       ? "bg-emerald-500 text-black border-emerald-400 shadow-md font-black"
                       : "bg-[#181b26] border-[#262b3d] text-gray-300 hover:text-white"
@@ -2021,7 +2107,10 @@ export default function WorkoutDetailPage({
               <button
                 type="button"
                 onClick={() => {
-                  const m = (session.target_muscle || "").replace("部", "").slice(0, 1) as MuscleGroup;
+                  const m =
+                    dockMuscleFilter !== "default" && dockMuscleFilter !== "all"
+                      ? (dockMuscleFilter as MuscleGroup)
+                      : ((session.target_muscle || "").replace("部", "").slice(0, 1) as MuscleGroup);
                   const validM: MuscleGroup = ["胸", "背", "腿", "肩"].includes(m) ? m : "胸";
                   setNewExMuscle(validM);
                   setShowNewExerciseModal(true);

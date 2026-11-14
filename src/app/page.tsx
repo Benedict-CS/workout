@@ -441,8 +441,8 @@ export default function HomePage() {
                   </div>
                   {(currentGroup.stats["肩"] || 0) > 0 && (
                     <div>
-                      <span className="text-[11px] text-amber-400 block">肩</span>
-                      <span className="text-sm font-black text-amber-300">{currentGroup.stats["肩"]}</span>
+                      <span className="text-[11px] text-gray-400 block">肩</span>
+                      <span className="text-sm font-black text-white">{currentGroup.stats["肩"]}</span>
                     </div>
                   )}
                   <div>

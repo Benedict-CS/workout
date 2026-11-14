@@ -407,9 +407,11 @@ export async function ensureDatabaseSeeded(): Promise<void> {
       await db.sets.where("session_id").equals(sess.id).delete();
       const updatedCleanSets = CLEAN_NOV14_SETS.map((st) => ({ ...st, session_id: sess.id }));
       await db.sets.bulkPut(updatedCleanSets as any);
+    }
+    if (sess.target_muscle !== "腿" || sess.display_title !== "11/14 (腿) - 交大健身房 - 第 10 次") {
       await db.sessions.update(sess.id, {
-        display_title: "11/14 (腿·肩) - 交大健身房 - 第 10 次",
-        target_muscle: "腿·肩",
+        display_title: "11/14 (腿) - 交大健身房 - 第 10 次",
+        target_muscle: "腿",
       });
     }
   }

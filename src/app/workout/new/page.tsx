@@ -26,6 +26,7 @@ const MUSCLE_PRESETS = [
   "胸",
   "背",
   "腿",
+  "肩",
   "游泳",
 ];
 
@@ -59,10 +60,11 @@ function NewWorkoutForm() {
     }
     const urlMuscle = searchParams.get("muscle");
     if (urlMuscle) {
-      // 標準化部位至 4 大項
+      // 標準化部位至 5 大項
       if (urlMuscle.includes("胸")) setTargetMuscle("胸");
       else if (urlMuscle.includes("背")) setTargetMuscle("背");
       else if (urlMuscle.includes("腿")) setTargetMuscle("腿");
+      else if (urlMuscle.includes("肩")) setTargetMuscle("肩");
       else if (urlMuscle.includes("泳")) {
         setTargetMuscle("游泳");
         setLocation("交大游泳池");
