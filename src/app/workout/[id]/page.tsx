@@ -116,6 +116,7 @@ export default function WorkoutDetailPage({
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [swapSourceExercise, setSwapSourceExercise] = useState<Exercise | null>(null);
   const [swapSearchQuery, setSwapSearchQuery] = useState("");
+  const [sessionNotFound, setSessionNotFound] = useState(false);
 
   // 歷史各動作 PR (最高重量與次數) 對照表
   const [prMap, setPrMap] = useState<Record<string, { maxWeight: number; maxReps: number }>>({});
@@ -210,20 +211,64 @@ export default function WorkoutDetailPage({
     }
   }
 
-  // 載入當前 session 與數據
+  // 載入當前 session 與數據 (手機鎖屏喚醒與重試保護)
   useEffect(() => {
+    let isCancelled = false;
+
     async function load() {
       try {
-        const sess = await db.sessions.get(id);
+        if (!db.isOpen()) {
+          await db.open();
+        }
+
+        let sess = await db.sessions.get(id);
+
+        // 防呆重試機制：手機鎖屏喚醒或冷開機時，IndexedDB 可能需 100~300ms 就緒，切勿立即跳頁
         if (!sess) {
-          router.push("/");
+          for (let retry = 0; retry < 3; retry++) {
+            await new Promise((r) => setTimeout(r, 250));
+            if (isCancelled) return;
+            sess = await db.sessions.get(id);
+            if (sess) break;
+          }
+        }
+
+        // 若仍未讀到，嘗試向 Supabase 撈取
+        if (!sess) {
+          try {
+            await runFullSync();
+            sess = await db.sessions.get(id);
+          } catch {}
+        }
+
+        if (!sess) {
+          if (!isCancelled) {
+            setSessionNotFound(true);
+            setLoading(false);
+          }
           return;
         }
+
+        if (isCancelled) return;
+        setSessionNotFound(false);
         setSession(sess);
+
+        // 記錄正在進行中的訓練 ID，供首頁置頂即時恢復
+        if (sess.status === "in_progress") {
+          localStorage.setItem("active_workout_session_id", id);
+          localStorage.setItem("active_workout_session_title", sess.display_title);
+        } else {
+          const curActive = localStorage.getItem("active_workout_session_id");
+          if (curActive === id) {
+            localStorage.removeItem("active_workout_session_id");
+            localStorage.removeItem("active_workout_session_title");
+          }
+        }
+
         setEditTitle(sess.display_title);
         setEditDate(sess.date);
         setEditTargetMuscle(sess.target_muscle);
-        setEditLocation(sess.location || "三健客");
+        setEditLocation(sess.location || "交大健身房");
 
         // 讀取所有動作，並排除「繩索夾胸」
         const allEx = await db.exercises
@@ -303,25 +348,42 @@ export default function WorkoutDetailPage({
       } catch (err) {
         console.error("Failed to load workout:", err);
       } finally {
-        setLoading(false);
+        if (!isCancelled) setLoading(false);
       }
     }
+
     load();
+
+    // 監聽手機鎖屏喚醒與切回視窗，自動保持同步
+    function handleVisibility() {
+      if (document.visibilityState === "visible") {
+        load();
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      isCancelled = true;
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [id, router]);
 
-  // 切換動作時智慧預填
+  // 切換動作時智慧預填 (若為全新動作，清空重量避免誤填上一動作的重量)
   function handleSelectExercise(exId: string) {
     setSelectedExId(exId);
     setInputSubFields([]);
     const existingSets = sets.filter((s) => s.exercise_id === exId);
     if (existingSets.length > 0) {
       const last = existingSets[existingSets.length - 1];
-      setInputWeight(last.weight_kg.toString());
-      setInputReps(last.reps.toString());
+      setInputWeight(last.weight_kg > 0 ? last.weight_kg.toString() : "");
+      setInputReps(last.reps > 0 ? last.reps.toString() : "");
     } else if (ghostMap[exId] && ghostMap[exId].length > 0) {
       const firstNormal = ghostMap[exId].find((s) => s.set_type === "normal") || ghostMap[exId][0];
-      setInputWeight(firstNormal.weight_kg.toString());
-      setInputReps(firstNormal.reps.toString());
+      setInputWeight(firstNormal.weight_kg > 0 ? firstNormal.weight_kg.toString() : "");
+      setInputReps(firstNormal.reps > 0 ? firstNormal.reps.toString() : "");
+    } else {
+      setInputWeight("");
+      setInputReps("");
     }
   }
 
@@ -373,7 +435,7 @@ export default function WorkoutDetailPage({
     setShowSwapModal(true);
   }
 
-  // 確認替換動作：將原動作所有組數直接移轉至新動作
+  // 確認替換動作：將原動作替換為新動作，智慧重設組數重量為新動作的歷史水準，防止把推蹬機 90Kg 誤套到腿彎舉
   async function handleConfirmSwapExercise(newEx: Exercise) {
     if (!swapSourceExercise || swapSourceExercise.id === newEx.id) {
       setShowSwapModal(false);
@@ -387,54 +449,88 @@ export default function WorkoutDetailPage({
       return;
     }
 
-    const updatedSets: SetItem[] = targetSets.map((s) => ({
-      ...s,
-      exercise_id: newEx.id,
-      updated_at: new Date().toISOString(),
-      sync_status: "pending" as const,
-    }));
+    // 防呆：禁止替換為當前訓練已存在的動作（防止把兩個動作的組數攪拌在一起）
+    const alreadyExists = sets.some((s) => s.exercise_id === newEx.id && s.exercise_id !== oldExId);
+    if (alreadyExists) {
+      alert(`【${newEx.name}】已存在於本次訓練中！\n請選擇其他尚未加入菜單的器材或動作進行替換。`);
+      return;
+    }
+
+    // 取得新動作的歷史做組水準 (避免沿用舊動作的過重重量)
+    let newExGhostSets: SetItem[] = [];
+    try {
+      const res = await getLastExerciseSets(newEx.id, id);
+      if (res && res.sets.length > 0) {
+        newExGhostSets = res.sets;
+        setGhostMap((prev) => ({ ...prev, [newEx.id]: res.sets }));
+      }
+    } catch {}
+
+    const updatedSets: SetItem[] = targetSets.map((s, idx) => {
+      // 若新動作有做組歷史，帶入新動作的對應組數重量；若無歷史，重量歸零防誤測 PR！
+      const ghostForThis = newExGhostSets[idx] || newExGhostSets[newExGhostSets.length - 1];
+      const newWeight = ghostForThis ? ghostForThis.weight_kg : 0;
+      const newReps = ghostForThis ? ghostForThis.reps : s.reps;
+      const raw = formatSetRawText(idx + 1, s.set_type, newWeight, newReps, [], s.notes || "");
+
+      return {
+        ...s,
+        exercise_id: newEx.id,
+        weight_kg: newWeight,
+        reps: newReps,
+        raw_text: raw,
+        sub_fields: undefined, // 清除上一動作的特殊加減組欄位
+        is_completed: false, // 換動作後組數重設為未打勾，等待現場重新輸入打勾
+        updated_at: new Date().toISOString(),
+        sync_status: "pending" as const,
+      };
+    });
 
     await db.sets.bulkPut(updatedSets);
     setSets((prev) =>
-      prev.map((s) =>
-        s.exercise_id === oldExId
-          ? { ...s, exercise_id: newEx.id, updated_at: new Date().toISOString(), sync_status: "pending" }
-          : s
-      )
+      prev.map((s) => {
+        const found = updatedSets.find((u) => u.id === s.id);
+        return found || s;
+      })
     );
 
-    // 載入新動作上次做組歷史與歷史 PR
-    getLastExerciseSets(newEx.id, id).then((res) => {
-      if (res && res.sets.length > 0) {
-        setGhostMap((prev) => ({ ...prev, [newEx.id]: res.sets }));
-      }
-    });
-
-    db.sets
+    // 載入新動作歷史 PR
+    const exObj = exercises.find((e) => e.id === newEx.id);
+    const historySets = await db.sets
       .filter(
         (s) =>
           !s.deleted_at &&
           s.session_id !== id &&
           s.weight_kg > 0 &&
-          Boolean(s.exercise_id === newEx.id || exercises.find((e) => e.id === s.exercise_id)?.name === newEx.name)
+          !isWarmupOrActivation(s) &&
+          s.is_completed !== false &&
+          Boolean(s.exercise_id === newEx.id || (exObj && exercises.find((e) => e.id === s.exercise_id)?.name === exObj.name))
       )
-      .toArray()
-      .then((historySets) => {
-        let maxW = 0;
-        let maxR = 0;
-        for (const s of historySets) {
-          if (s.weight_kg > maxW || (s.weight_kg === maxW && s.reps > maxR)) {
-            maxW = s.weight_kg;
-            maxR = s.reps;
-          }
-        }
-        if (maxW > 0) {
-          setPrMap((prev) => ({ ...prev, [newEx.id]: { maxWeight: maxW, maxReps: maxR } }));
-        }
-      });
+      .toArray();
+
+    let maxW = 0;
+    let maxR = 0;
+    for (const s of historySets) {
+      if (s.weight_kg > maxW || (s.weight_kg === maxW && s.reps > maxR)) {
+        maxW = s.weight_kg;
+        maxR = s.reps;
+      }
+    }
+    if (maxW > 0) {
+      setPrMap((prev) => ({ ...prev, [newEx.id]: { maxWeight: maxW, maxReps: maxR } }));
+    }
 
     if (!exercises.some((e) => e.id === newEx.id)) {
       setExercises((prev) => [...prev, newEx]);
+    }
+
+    // 若底欄正選中該動作，同步更新預設重量
+    if (selectedExId === oldExId) {
+      setSelectedExId(newEx.id);
+      if (updatedSets.length > 0) {
+        setInputWeight(updatedSets[0].weight_kg > 0 ? updatedSets[0].weight_kg.toString() : "");
+        setInputReps(updatedSets[0].reps > 0 ? updatedSets[0].reps.toString() : "");
+      }
     }
 
     runFullSync().catch(() => {});
@@ -809,6 +905,8 @@ export default function WorkoutDetailPage({
       sync_status: "pending",
     };
     await db.sessions.put(updated);
+    localStorage.removeItem("active_workout_session_id");
+    localStorage.removeItem("active_workout_session_title");
     runFullSync().catch(() => {});
     router.push("/");
   }
@@ -877,6 +975,8 @@ export default function WorkoutDetailPage({
     };
 
     await db.sessions.put(updatedSession);
+    localStorage.removeItem("active_workout_session_id");
+    localStorage.removeItem("active_workout_session_title");
     runFullSync().catch(() => {});
     router.push("/");
   }
@@ -892,6 +992,8 @@ export default function WorkoutDetailPage({
       await db.sets.where("session_id").equals(id).delete();
       await db.sessions.delete(id);
     });
+    localStorage.removeItem("active_workout_session_id");
+    localStorage.removeItem("active_workout_session_title");
     deleteRemoteSession(id).catch(() => {});
     runFullSync().catch(() => {});
     router.push("/");
@@ -912,6 +1014,8 @@ export default function WorkoutDetailPage({
     };
 
     await db.sessions.put(updatedSession);
+    localStorage.removeItem("active_workout_session_id");
+    localStorage.removeItem("active_workout_session_title");
     runFullSync().catch(() => {});
     router.push("/");
   }
@@ -957,6 +1061,8 @@ export default function WorkoutDetailPage({
     };
 
     await db.sessions.put(updatedSession);
+    localStorage.removeItem("active_workout_session_id");
+    localStorage.removeItem("active_workout_session_title");
     runFullSync().catch(() => {});
     router.push("/");
   }
@@ -1157,15 +1263,49 @@ export default function WorkoutDetailPage({
       await db.sets.where("session_id").equals(id).delete();
       await db.sessions.delete(id);
     });
+    localStorage.removeItem("active_workout_session_id");
+    localStorage.removeItem("active_workout_session_title");
     deleteRemoteSession(id).catch(() => {});
     runFullSync().catch(() => {});
     router.push("/");
   }
 
-  if (loading || !session) {
+  if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-[50vh] text-gray-400">
-        載入中...
+      <div className="flex flex-col items-center justify-center min-h-[50vh] text-gray-400 gap-2">
+        <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+        <span className="text-xs">正在載入訓練紀錄...</span>
+      </div>
+    );
+  }
+
+  if (sessionNotFound || !session) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4 px-4 text-center">
+        <div className="w-12 h-12 rounded-2xl bg-[#181b26] border border-[#262b3d] flex items-center justify-center text-amber-400">
+          <AlertTriangle className="w-6 h-6" />
+        </div>
+        <div className="space-y-1">
+          <h3 className="font-black text-white text-base">未找到此場訓練紀錄</h3>
+          <p className="text-xs text-gray-400 max-w-xs">
+            訓練可能已移轉、已刪除或尚未從雲端同步
+          </p>
+        </div>
+        <div className="flex items-center gap-2 pt-2">
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-white rounded-xl text-xs font-bold cursor-pointer"
+          >
+            重新整理
+          </button>
+          <Link
+            href="/"
+            className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black rounded-xl text-xs font-black"
+          >
+            返回訓練首頁
+          </Link>
+        </div>
       </div>
     );
   }
@@ -2207,8 +2347,10 @@ export default function WorkoutDetailPage({
             <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
               {(() => {
                 const query = swapSearchQuery.trim().toLowerCase();
+                const currentSessionExIds = new Set(sets.map((s) => s.exercise_id));
                 const available = exercises.filter((e) => {
                   if (e.id === swapSourceExercise.id) return false;
+                  if (currentSessionExIds.has(e.id)) return false; // 嚴格排除本次訓練已包含的動作，防組數混雜
                   if (e.name.includes("繩索夾胸")) return false;
                   if (query) {
                     return e.name.toLowerCase().includes(query) || e.muscle_group.toLowerCase().includes(query);

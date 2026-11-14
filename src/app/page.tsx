@@ -11,6 +11,7 @@ import {
   Check,
   Pencil,
   Trash2,
+  Play,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
@@ -45,6 +46,9 @@ export default function HomePage() {
   const [sessionSetsMap, setSessionSetsMap] = useState<Record<string, SetItem[]>>({});
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [copyToast, setCopyToast] = useState<string | null>(null);
+
+  // 當前正在進行中的訓練 (若有，置頂醒目顯示防止鎖屏跳出後找不到)
+  const [activeSession, setActiveSession] = useState<WorkoutSession | null>(null);
 
   // 展開的訓練場次 ID 集合 (點擊 title 展開/收合，不跳轉新頁面)
   const [expandedSessionIds, setExpandedSessionIds] = useState<Set<string>>(new Set());
@@ -115,6 +119,10 @@ export default function HomePage() {
       const allSessions = await db.sessions
         .filter((s) => !s.deleted_at)
         .sortBy("date");
+
+      // 檢查是否有進行中的訓練場次
+      const inProgress = allSessions.slice().reverse().find((s) => s.status === "in_progress");
+      setActiveSession(inProgress || null);
 
       const allSets = await db.sets
         .filter((s) => !s.deleted_at)
@@ -293,6 +301,43 @@ export default function HomePage() {
 
       {/* PWA 加入主畫面提示 Banner */}
       <PWAInstallBanner />
+
+      {/* ⚡ 正在進行中的訓練置頂橫幅 (防止手機鎖屏或切換頁面後迷路找不到訓練) */}
+      {activeSession && (
+        <div className="bg-gradient-to-r from-emerald-950/80 via-[#13221b] to-emerald-950/80 border-2 border-emerald-500 rounded-2xl p-4 shadow-2xl shadow-emerald-500/20 animate-in slide-in-from-top-2 duration-200 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+              <span className="text-xs font-black text-emerald-400 uppercase tracking-wider">
+                正在進行中的訓練
+              </span>
+            </div>
+            <span className="text-[10px] bg-emerald-500 text-black px-2 py-0.5 rounded-md font-black tracking-wider">
+              LIVE 進行中
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h3 className="font-black text-white text-base truncate">
+                {activeSession.display_title}
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {(sessionSetsMap[activeSession.id] || []).filter((s) => s.is_completed).length} /{" "}
+                {(sessionSetsMap[activeSession.id] || []).length} 組已完成 • 點擊立即恢復現場記錄
+              </p>
+            </div>
+
+            <Link
+              href={`/workout/${activeSession.id}`}
+              className="bg-emerald-500 hover:bg-emerald-400 text-black px-4 py-2.5 rounded-xl font-black text-xs flex items-center gap-1.5 shadow-lg active:scale-95 transition-all shrink-0 cursor-pointer"
+            >
+              <Play className="w-3.5 h-3.5 fill-black stroke-none" />
+              <span>繼續訓練 ➔</span>
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* 月份分頁導航列 (順序排列，支援鍵盤左右鍵 ← → 與點選切換) */}
       <div className="space-y-2.5">
