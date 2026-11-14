@@ -27,6 +27,8 @@ import {
   Search,
   Zap,
   AlertTriangle,
+  Trophy,
+  Sparkles,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import {
@@ -117,6 +119,16 @@ export default function WorkoutDetailPage({
 
   // 歷史各動作 PR (最高重量與次數) 對照表
   const [prMap, setPrMap] = useState<Record<string, { maxWeight: number; maxReps: number }>>({});
+
+  // 🏆 PR 突破個人紀錄即時高光慶祝
+  const [prCelebration, setPrCelebration] = useState<{
+    exerciseName: string;
+    weight: number;
+    reps: number;
+    diffText: string;
+    prevText: string;
+  } | null>(null);
+  const prCelebrationTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // 計時器倒數邏輯 (手動觸發，結束時輕微震動提醒)
   useEffect(() => {
@@ -242,6 +254,8 @@ export default function WorkoutDetailPage({
                 !s.deleted_at &&
                 s.session_id !== id &&
                 s.weight_kg > 0 &&
+                !isWarmupOrActivation(s) &&
+                s.is_completed !== false &&
                 Boolean(s.exercise_id === exId || (exObj && allEx.find((e) => e.id === s.exercise_id)?.name === exObj.name))
             )
             .toArray();
@@ -428,21 +442,48 @@ export default function WorkoutDetailPage({
     setSwapSourceExercise(null);
   }
 
-  // 判斷某組是否突破個人歷史紀錄 (新 PR)
-  function isSetNewPR(s: SetItem): boolean {
-    if (s.weight_kg <= 0 || !s.reps || s.reps <= 0) return false;
-    if (isWarmupOrActivation(s)) return false; // 熱身組不計入 PR
+  // 取得某組 PR 突破詳情 (重量新高、次數新高)
+  function getSetPRDetails(s: SetItem): { isPR: boolean; type: "weight" | "reps" | null; diffText: string; prevText: string } {
+    if (s.weight_kg <= 0 || !s.reps || s.reps <= 0) {
+      return { isPR: false, type: null, diffText: "", prevText: "" };
+    }
+    if (isWarmupOrActivation(s)) {
+      return { isPR: false, type: null, diffText: "", prevText: "" }; // 熱身組不計入 PR
+    }
 
     const historyPR = prMap[s.exercise_id];
-    if (!historyPR || historyPR.maxWeight <= 0) return false;
+    if (!historyPR || historyPR.maxWeight <= 0) {
+      return { isPR: false, type: null, diffText: "", prevText: "" };
+    }
 
-    // 重量直接突破歷史最高重量
-    if (s.weight_kg > historyPR.maxWeight) return true;
+    // 1. 重量直接突破歷史最高
+    if (s.weight_kg > historyPR.maxWeight) {
+      const diff = Math.round((s.weight_kg - historyPR.maxWeight) * 10) / 10;
+      return {
+        isPR: true,
+        type: "weight",
+        diffText: `+${diff}Kg`,
+        prevText: `${historyPR.maxWeight}Kg × ${historyPR.maxReps}下`,
+      };
+    }
 
-    // 重量同歷史最高，但次數超越歷史最高次數
-    if (s.weight_kg === historyPR.maxWeight && s.reps > historyPR.maxReps) return true;
+    // 2. 重量同歷史最高，但次數超越歷史最高次數
+    if (s.weight_kg === historyPR.maxWeight && s.reps > historyPR.maxReps) {
+      const diff = s.reps - historyPR.maxReps;
+      return {
+        isPR: true,
+        type: "reps",
+        diffText: `+${diff}下`,
+        prevText: `${historyPR.maxWeight}Kg × ${historyPR.maxReps}下`,
+      };
+    }
 
-    return false;
+    return { isPR: false, type: null, diffText: "", prevText: "" };
+  }
+
+  // 判斷某組是否突破個人歷史紀錄 (新 PR)
+  function isSetNewPR(s: SetItem): boolean {
+    return getSetPRDetails(s).isPR;
   }
 
   // 格式化組數 raw_text
@@ -609,6 +650,33 @@ export default function WorkoutDetailPage({
     await db.sets.put(updated);
     setSets((prev) => prev.map((s) => (s.id === setId ? updated : s)));
     runFullSync().catch(() => {});
+
+    // 若剛標記為已完成，檢查是否打破個人紀錄 (PR) 並彈出高光慶祝
+    if (newStatus) {
+      const prDetails = getSetPRDetails(target);
+      if (prDetails.isPR) {
+        const exObj = exercises.find((e) => e.id === target.exercise_id);
+        setPrCelebration({
+          exerciseName: exObj?.name || "此動作",
+          weight: target.weight_kg,
+          reps: target.reps,
+          diffText: prDetails.diffText,
+          prevText: prDetails.prevText,
+        });
+
+        // 手機震動反饋節奏
+        if (typeof window !== "undefined" && "vibrate" in navigator) {
+          try {
+            navigator.vibrate([100, 60, 150, 60, 300]);
+          } catch {}
+        }
+
+        if (prCelebrationTimerRef.current) clearTimeout(prCelebrationTimerRef.current);
+        prCelebrationTimerRef.current = setTimeout(() => {
+          setPrCelebration(null);
+        }, 5500);
+      }
+    }
 
     // 若剛標記為已完成，且非游泳訓練，立即彈出快速休息氣泡（5秒不點擊自動隱藏）
     if (newStatus && session?.target_muscle !== "游泳") {
@@ -1336,9 +1404,9 @@ export default function WorkoutDetailPage({
                       {exercise?.name}
                     </h3>
                     {exSets.some((s) => isSetNewPR(s)) && (
-                      <span className="text-[10px] font-black text-amber-300 bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shrink-0 animate-pulse">
-                        <span>🔥</span>
-                        <span>PR</span>
+                      <span className="text-[10px] font-black text-amber-300 bg-amber-500/20 border border-amber-400/50 px-2 py-0.5 rounded-lg flex items-center gap-1 shrink-0 shadow-sm animate-pulse">
+                        <Trophy className="w-3.5 h-3.5 text-amber-300" />
+                        <span>破紀錄 PR</span>
                       </span>
                     )}
                   </div>
@@ -1533,15 +1601,21 @@ export default function WorkoutDetailPage({
                                 上次: {cleanSetDisplay(matchingGhost)}
                               </span>
                             )}
-                            {isSetNewPR(s) && (
-                              <span
-                                className="px-1.5 py-0.5 rounded text-[11px] font-black bg-gradient-to-r from-amber-500/25 to-red-500/25 text-amber-300 border border-amber-500/50 flex items-center gap-0.5 shadow-sm animate-pulse"
-                                title={`突破個人歷史紀錄！(歷史最高：${prMap[s.exercise_id]?.maxWeight}Kg x${prMap[s.exercise_id]?.maxReps}下)`}
-                              >
-                                <span>🔥</span>
-                                <span>新 PR</span>
-                              </span>
-                            )}
+                            {(() => {
+                              const prDetails = getSetPRDetails(s);
+                              if (prDetails.isPR) {
+                                return (
+                                  <span
+                                    className="px-2 py-0.5 rounded-lg text-[11px] font-black bg-gradient-to-r from-amber-500/25 via-yellow-500/30 to-amber-500/25 text-amber-300 border border-amber-400/60 flex items-center gap-1 shadow-md shadow-amber-500/10 animate-pulse"
+                                    title={`突破個人歷史紀錄！(原最高：${prDetails.prevText})`}
+                                  >
+                                    <Trophy className="w-3 h-3 text-amber-300 shrink-0" />
+                                    <span>PR 新高 {prDetails.diffText}</span>
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
                             {s.set_type === "drop" && (
                               <span className="bg-amber-500/20 text-amber-300 text-[11px] px-1.5 py-0.5 rounded font-bold">
                                 遞減
@@ -2381,6 +2455,45 @@ export default function WorkoutDetailPage({
               >
                 返回繼續記錄
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🏆 PR 突破個人紀錄即時高光慶祝橫幅 (自動浮現 5.5 秒或手動關閉) */}
+      {prCelebration && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-sm animate-in zoom-in-95 duration-200">
+          <div className="bg-gradient-to-b from-[#241a06] via-[#1a1408] to-[#120e06] border-2 border-amber-400/90 backdrop-blur-md rounded-2xl p-4 shadow-2xl shadow-amber-500/30 space-y-2 text-center relative overflow-hidden">
+            {/* 金色光暈背板 */}
+            <div className="absolute -top-10 left-1/2 -translate-x-1/2 w-48 h-48 bg-amber-400/15 rounded-full blur-2xl pointer-events-none" />
+
+            <div className="flex items-center justify-between relative">
+              <div className="flex items-center gap-1.5 text-amber-300 font-black text-xs tracking-wider">
+                <Trophy className="w-4 h-4 text-amber-300 animate-bounce" />
+                <span>突破個人新高 (PR)！🎉</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPrCelebration(null)}
+                className="text-gray-400 hover:text-white p-1 rounded-lg cursor-pointer"
+                title="關閉提示"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="relative space-y-0.5">
+              <h4 className="text-white font-black text-base">
+                {prCelebration.exerciseName}
+              </h4>
+              <div className="text-2xl font-black text-amber-300 tracking-tight">
+                {prCelebration.weight}Kg × {prCelebration.reps}下
+              </div>
+            </div>
+
+            <div className="inline-flex items-center gap-1 bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-bold px-3 py-1 rounded-full relative">
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <span>實質突破 {prCelebration.diffText}（歷史原最高：{prCelebration.prevText}）</span>
             </div>
           </div>
         </div>
