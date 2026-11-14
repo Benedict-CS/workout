@@ -666,7 +666,7 @@ export default function HistoryPage() {
                             )}
                             <span className="text-gray-500">•</span>
                             <span className="text-gray-300 font-medium text-[11px]">
-                              共 {formalSets.length} 組
+                              {s.target_muscle === "游泳" ? "游泳紀錄" : `共 ${formalSets.length} 組`}
                             </span>
                           </div>
                         </Link>
@@ -710,7 +710,9 @@ export default function HistoryPage() {
                             >
                               <strong className="text-white">{name}</strong>
                               {data.maxWeight > 0 ? ` ${data.maxWeight}Kg` : ""}
-                              <span className="text-gray-500 ml-1">({data.setCount > 0 ? `${data.setCount}組` : "熱身"})</span>
+                              {s.target_muscle !== "游泳" && (
+                                <span className="text-gray-500 ml-1">({data.setCount > 0 ? `${data.setCount}組` : "熱身"})</span>
+                              )}
                             </span>
                           ))}
                         </div>
@@ -836,17 +838,26 @@ export default function HistoryPage() {
                         <span className={`font-black px-1.5 py-0.5 rounded border text-[10px] ${getMuscleBadgeColor(s.target_muscle)}`}>
                           {getPrimaryMuscle(s.target_muscle)}
                         </span>
-                        <span>•</span>
-                        <span>{distinctEx} 個動作</span>
-                        <span>•</span>
-                        <span>
-                          {sessSets.filter((st) => {
-                            if (st.set_type === "warmup") return false;
-                            const r = st.raw_text || "";
-                            const n = st.notes || "";
-                            return !(r.includes("熱身") || r.includes("激發") || r.includes("試重") || n.includes("熱身"));
-                          }).length} 組
-                        </span>
+                        {s.target_muscle === "游泳" ? (
+                          <>
+                            <span>•</span>
+                            <span className="text-cyan-400 font-medium">游泳紀錄</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>•</span>
+                            <span>{distinctEx} 個動作</span>
+                            <span>•</span>
+                            <span>
+                              {sessSets.filter((st) => {
+                                if (st.set_type === "warmup") return false;
+                                const r = st.raw_text || "";
+                                const n = st.notes || "";
+                                return !(r.includes("熱身") || r.includes("激發") || r.includes("試重") || n.includes("熱身"));
+                              }).length} 組
+                            </span>
+                          </>
+                        )}
                         {s.location && (
                           <>
                             <span>•</span>

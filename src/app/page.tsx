@@ -427,28 +427,26 @@ export default function HomePage() {
                 <span className="text-[11px] sm:text-xs text-gray-300 font-bold block">
                   部位頻率
                 </span>
-                <div className={`grid ${(currentGroup.stats["肩"] || 0) > 0 ? "grid-cols-5" : "grid-cols-4"} gap-1 text-center`}>
+                <div className="grid grid-cols-5 gap-1 text-center">
                   <div>
                     <span className="text-[11px] text-gray-400 block">胸</span>
-                    <span className="text-sm font-black text-white">{currentGroup.stats["胸"]}</span>
+                    <span className="text-sm font-black text-white">{currentGroup.stats["胸"] || 0}</span>
                   </div>
                   <div>
                     <span className="text-[11px] text-gray-400 block">背</span>
-                    <span className="text-sm font-black text-white">{currentGroup.stats["背"]}</span>
+                    <span className="text-sm font-black text-white">{currentGroup.stats["背"] || 0}</span>
                   </div>
                   <div>
                     <span className="text-[11px] text-gray-400 block">腿</span>
-                    <span className="text-sm font-black text-white">{currentGroup.stats["腿"]}</span>
+                    <span className="text-sm font-black text-white">{currentGroup.stats["腿"] || 0}</span>
                   </div>
-                  {(currentGroup.stats["肩"] || 0) > 0 && (
-                    <div>
-                      <span className="text-[11px] text-gray-400 block">肩</span>
-                      <span className="text-sm font-black text-white">{currentGroup.stats["肩"]}</span>
-                    </div>
-                  )}
+                  <div>
+                    <span className="text-[11px] text-gray-400 block">肩</span>
+                    <span className="text-sm font-black text-white">{currentGroup.stats["肩"] || 0}</span>
+                  </div>
                   <div>
                     <span className="text-[11px] text-gray-400 block">游</span>
-                    <span className="text-sm font-black text-white">{currentGroup.stats["游泳"]}</span>
+                    <span className="text-sm font-black text-white">{currentGroup.stats["游泳"] || 0}</span>
                   </div>
                 </div>
               </div>
@@ -568,7 +566,11 @@ export default function HomePage() {
                                 📍 {sess.location}
                               </span>
                             )}
-                            {sess.status === "in_progress" ? (
+                            {sess.target_muscle === "游泳" ? (
+                              <span className="text-[11px] sm:text-xs bg-cyan-950/40 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/30 font-medium">
+                                游泳紀錄
+                              </span>
+                            ) : sess.status === "in_progress" ? (
                               <span className="text-[11px] sm:text-xs bg-amber-950/40 text-amber-300 px-2 py-0.5 rounded border border-amber-500/40 font-bold">
                                 已做 {formalSets.filter((s) => s.is_completed !== false).length}/{formalSets.length} 組
                               </span>
@@ -649,7 +651,9 @@ export default function HomePage() {
                                         cleanBody.includes("激發") ||
                                         cleanBody.includes("試重");
 
-                                      if (isWarmupOrTest) {
+                                      if (sess.target_muscle === "游泳") {
+                                        displayText = cleanBody;
+                                      } else if (isWarmupOrTest) {
                                         displayText = cleanBody.includes("熱身") || cleanBody.includes("激發") || cleanBody.includes("試重")
                                           ? cleanBody
                                           : `${cleanBody} 熱身`;

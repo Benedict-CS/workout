@@ -392,32 +392,30 @@ export default function AnalyticsPage() {
           </span>
         </div>
 
-        <div className={`grid ${allTimeStats["肩"] > 0 ? "grid-cols-5" : "grid-cols-4"} gap-2 text-center`}>
+        <div className="grid grid-cols-5 gap-2 text-center">
           <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
             <span className="text-[11px] text-gray-400 block mb-0.5">練胸</span>
-            <span className="text-lg font-black text-white">{allTimeStats["胸"]}</span>
+            <span className="text-lg font-black text-white">{allTimeStats["胸"] || 0}</span>
             <span className="text-[10px] text-gray-500 block">次</span>
           </div>
           <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
             <span className="text-[11px] text-gray-400 block mb-0.5">練背</span>
-            <span className="text-lg font-black text-white">{allTimeStats["背"]}</span>
+            <span className="text-lg font-black text-white">{allTimeStats["背"] || 0}</span>
             <span className="text-[10px] text-gray-500 block">次</span>
           </div>
           <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
             <span className="text-[11px] text-gray-400 block mb-0.5">練腿</span>
-            <span className="text-lg font-black text-white">{allTimeStats["腿"]}</span>
+            <span className="text-lg font-black text-white">{allTimeStats["腿"] || 0}</span>
             <span className="text-[10px] text-gray-500 block">次</span>
           </div>
-          {allTimeStats["肩"] > 0 && (
-            <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
-              <span className="text-[11px] text-gray-400 block mb-0.5">練肩</span>
-              <span className="text-lg font-black text-white">{allTimeStats["肩"]}</span>
-              <span className="text-[10px] text-gray-500 block">次</span>
-            </div>
-          )}
+          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
+            <span className="text-[11px] text-gray-400 block mb-0.5">練肩</span>
+            <span className="text-lg font-black text-white">{allTimeStats["肩"] || 0}</span>
+            <span className="text-[10px] text-gray-500 block">次</span>
+          </div>
           <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
             <span className="text-[11px] text-gray-400 block mb-0.5">游泳</span>
-            <span className="text-lg font-black text-white">{allTimeStats["游泳"]}</span>
+            <span className="text-lg font-black text-white">{allTimeStats["游泳"] || 0}</span>
             <span className="text-[10px] text-gray-500 block">次</span>
           </div>
         </div>
@@ -778,7 +776,7 @@ export default function AnalyticsPage() {
                   : "bg-[#181b26] text-gray-400 hover:text-gray-200 border border-[#262b3d]"
               }`}
             >
-              實測 vs 淨重 (kg)
+              實測體重 (kg)
             </button>
           </div>
           <span className="text-[10px] text-gray-500 hidden sm:inline">
@@ -842,25 +840,15 @@ export default function AnalyticsPage() {
                 />
               )}
               {inbodyMetricTab === "weight" && (
-                <>
-                  <Line
-                    type="monotone"
-                    dataKey="weight"
-                    name="weight"
-                    stroke="#a855f7"
-                    strokeWidth={2}
-                    dot={{ r: 2.5, fill: "#a855f7" }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="netWeight"
-                    name="netWeight"
-                    stroke="#06b6d4"
-                    strokeWidth={2.5}
-                    strokeDasharray="3 3"
-                    dot={{ r: 3, fill: "#06b6d4" }}
-                  />
-                </>
+                <Line
+                  type="monotone"
+                  dataKey="weight"
+                  name="weight"
+                  stroke="#06b6d4"
+                  strokeWidth={2.5}
+                  dot={{ r: 3, fill: "#06b6d4" }}
+                  activeDot={{ r: 5, fill: "#06b6d4" }}
+                />
               )}
             </LineChart>
           </ResponsiveContainer>

@@ -1708,6 +1708,13 @@ export default function WorkoutDetailPage({
                     {/* 組數標籤：區分正式組與熱身組 */}
                     <div>
                       {(() => {
+                        if (session.target_muscle === "游泳") {
+                          return (
+                            <span className="text-xs bg-cyan-950/40 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/30 font-medium">
+                              游泳紀錄
+                            </span>
+                          );
+                        }
                         const warmupCount = exSets.filter((s) => isWarmupOrActivation(s)).length;
                         const formalCount = exSets.length - warmupCount;
                         if (warmupCount > 0) {
@@ -1815,7 +1822,9 @@ export default function WorkoutDetailPage({
                           </button>
 
                           {/* 序號標記 */}
-                          {isWarmup ? (
+                          {session.target_muscle === "游泳" ? (
+                            <span className="text-xs text-cyan-400 shrink-0">🏊</span>
+                          ) : isWarmup ? (
                             <span
                               className="font-mono text-[11px] font-black px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 shrink-0"
                               title="熱身/準備組 (不計入正式組序號)"
