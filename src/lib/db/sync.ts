@@ -221,7 +221,7 @@ export async function runFullSync(): Promise<SyncResult> {
           set_order: st.set_order,
           set_type: st.set_type,
           weight_kg: st.weight_kg,
-          reps: st.reps,
+          reps: Math.round(st.reps ?? 0),
           raw_text: st.raw_text || null,
           rest_pause_detail: st.sub_fields ? JSON.stringify(st.sub_fields) : (st.rest_pause_detail || null),
           forced_reps: st.forced_reps || null,

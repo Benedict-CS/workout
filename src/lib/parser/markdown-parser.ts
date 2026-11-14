@@ -257,7 +257,7 @@ export function parseWorkoutMarkdown(markdown: string, defaultYear = 2026): Pars
 
       const sessNum = (sessionCountByDate[dateStr] || 0) + 1;
       sessionCountByDate[dateStr] = sessNum;
-      const sessionId = `session-${dateStr}-${sessNum}`;
+      const sessionId = idxMatch ? `session-${dateStr}-${monthlyIndex}` : `session-${dateStr}-${sessNum}`;
 
       let displayTitle = `${m}/${d} (${rawTarget})`;
       if (location) displayTitle += ` - ${location}`;

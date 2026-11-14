@@ -23,6 +23,7 @@ import {
   Clock,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
+import { ensureDatabaseSeeded } from "@/lib/db/seed";
 import {
   formatSessionToMarkdown,
   exportAllSessionsToMarkdown,
@@ -72,6 +73,10 @@ export default function HistoryPage() {
   const [importSuccessMsg, setImportSuccessMsg] = useState<string | null>(null);
 
   async function loadData() {
+    try {
+      await ensureDatabaseSeeded();
+    } catch {}
+
     const allSessions = await db.sessions
       .filter((s) => !s.deleted_at)
       .reverse()
@@ -563,7 +568,7 @@ export default function HistoryPage() {
                       </span>
                     </div>
 
-                    {/* 訓練項目標籤 (紅/藍/綠/黃清晰部位色) */}
+                    {/* 訓練項目標籤 (紅/藍/綠/黃清晰部位色，顯示核心動作如引體、臥推) */}
                     <div className="space-y-0.5 overflow-hidden w-full">
                       {daySessions.map((ds) => {
                         let badgeStyle = "bg-rose-500/20 text-rose-300 border-rose-500/30";
@@ -578,12 +583,25 @@ export default function HistoryPage() {
 
                         const shortLabel = ds.target_muscle.replace("部", "").slice(0, 2);
 
+                        // 判斷此場訓練是否有引體向上、臥推、深蹲、硬舉
+                        const sessSets = sets.filter((st) => st.session_id === ds.id && !st.deleted_at);
+                        const hasPullup = sessSets.some((st) => st.exercise_id === "ex-pullup" || st.exercise_id === "ex-assisted-pullup");
+                        const hasBench = sessSets.some((st) => st.exercise_id === "ex-bench");
+                        const hasSquat = sessSets.some((st) => st.exercise_id === "ex-squat");
+                        const hasDeadlift = sessSets.some((st) => st.exercise_id === "ex-deadlift" || st.exercise_id === "ex-trap-bar-deadlift");
+
+                        let keyAction = "";
+                        if (hasPullup) keyAction = "引體";
+                        else if (hasBench) keyAction = "臥推";
+                        else if (hasSquat) keyAction = "深蹲";
+                        else if (hasDeadlift) keyAction = "硬舉";
+
                         return (
                           <div
                             key={ds.id}
-                            className={`text-[10px] font-black px-1 py-0.5 rounded border text-center truncate ${badgeStyle}`}
+                            className={`text-[9px] sm:text-[10px] font-black px-1 py-0.5 rounded border text-center truncate ${badgeStyle}`}
                           >
-                            {shortLabel}
+                            {keyAction ? `${shortLabel}·${keyAction}` : shortLabel}
                           </div>
                         );
                       })}
@@ -691,16 +709,23 @@ export default function HistoryPage() {
                       {/* 動作精華列表 */}
                       {seenEx.size > 0 && (
                         <div className="flex flex-wrap gap-1.5 pt-1 border-t border-[#262b3d]/60">
-                          {Array.from(seenEx.entries()).map(([name, data]) => (
-                            <span
-                              key={name}
-                              className="text-[11px] bg-[#12141c] border border-[#262b3d] px-2 py-0.5 rounded-lg text-gray-300"
-                            >
-                              <strong className="text-white">{name}</strong>
-                              {data.maxWeight > 0 ? ` ${data.maxWeight}Kg` : ""}
-                              <span className="text-gray-500 ml-1">({data.setCount}組)</span>
-                            </span>
-                          ))}
+                          {Array.from(seenEx.entries()).map(([name, data]) => {
+                            const isPullup = name.includes("引體");
+                            return (
+                              <span
+                                key={name}
+                                className={`text-[11px] border px-2 py-0.5 rounded-lg flex items-center gap-1 ${
+                                  isPullup
+                                    ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-200 font-bold"
+                                    : "bg-[#12141c] border-[#262b3d] text-gray-300"
+                                }`}
+                              >
+                                <strong className={isPullup ? "text-cyan-300" : "text-white"}>{name}</strong>
+                                {data.maxWeight > 0 ? ` ${data.maxWeight}Kg` : ""}
+                                <span className={isPullup ? "text-cyan-400/80 ml-0.5" : "text-gray-500 ml-0.5"}>({data.setCount}組)</span>
+                              </span>
+                            );
+                          })}
                         </div>
                       )}
 

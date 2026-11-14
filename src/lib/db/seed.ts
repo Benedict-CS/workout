@@ -23,12 +23,14 @@ export async function ensureDatabaseSeeded(): Promise<void> {
   const updatedSessionCount = await db.sessions.count();
   const currentSetCount = await db.sets.count();
   const pullupSetCount = await db.sets.where("exercise_id").equals("ex-pullup").count();
+  const hasOldNovSession = (await db.sessions.where("id").equals("session-2026-11-10-1").count()) > 0;
 
-  // 若尚未初始化，或組數不完整 (全庫共 1503 組) / 引體向上組數缺漏，則自動更新為 100% 完整歷史資料
+  // 若尚未初始化，或組數不完整 (全庫共 1503 組) / 引體向上組數缺漏 / 舊版 session ID 不匹配，則自動更新為 100% 完整歷史資料
   if (
     updatedSessionCount === 0 ||
     currentSetCount < seedData.sets.length ||
-    pullupSetCount < 50 ||
+    pullupSetCount < 80 ||
+    hasOldNovSession ||
     !hasSwimSession
   ) {
     console.log("Seeding / Migrating to 100% complete full-history exercises & sets (including all pull-ups)...");
