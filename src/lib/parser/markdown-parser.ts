@@ -184,9 +184,9 @@ export function parseWorkoutMarkdown(markdown: string, defaultYear = 2026): Pars
           bigThree = {
             id: "big-three-latest",
             bench_press_kg: 60,
-            squat_kg: 85,
+            squat_kg: 90,
             deadlift_kg: 90,
-            total_kg: 235,
+            total_kg: 240,
             updated_at: new Date().toISOString(),
             sync_status: "synced",
           };

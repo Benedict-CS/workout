@@ -52,6 +52,20 @@ function NewWorkoutForm() {
   const [clonePrevMenu, setClonePrevMenu] = useState(false);
   const [exercisesMap, setExercisesMap] = useState<Record<string, Exercise>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [existingActiveSession, setExistingActiveSession] = useState<WorkoutSession | null>(null);
+
+  // 檢查是否有正在進行中的未完成訓練
+  useEffect(() => {
+    db.sessions
+      .filter((s) => !s.deleted_at && s.status === "in_progress")
+      .toArray()
+      .then((list) => {
+        if (list.length > 0) {
+          setExistingActiveSession(list[list.length - 1]);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // 讀取 URL 參數
   useEffect(() => {
@@ -240,6 +254,14 @@ function NewWorkoutForm() {
         await db.sets.bulkAdd(newSets);
       }
 
+      if (finalMuscle !== "游泳") {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("active_workout_session_id", sessionId);
+          localStorage.setItem("active_workout_session_title", title);
+          window.dispatchEvent(new Event("workout_session_update"));
+        }
+      }
+
       runFullSync().catch(() => {});
       router.push(`/workout/${sessionId}`);
     } catch (err) {
@@ -262,6 +284,40 @@ function NewWorkoutForm() {
           <p className="text-xs text-gray-400">快速選擇部位與場地，即刻開始記錄</p>
         </div>
       </div>
+
+      {/* ⚠️ 若已有進行中訓練，顯示醒目防呆跳轉卡片 */}
+      {existingActiveSession && (
+        <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-2xl p-4 shadow-xl space-y-2.5 animate-in fade-in">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+              <span className="text-xs font-black text-amber-300 uppercase tracking-wider">
+                提醒：您目前有尚未結束的訓練
+              </span>
+            </div>
+            <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-black">
+              LIVE 進行中
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h4 className="text-white font-bold text-sm truncate">
+                {existingActiveSession.display_title}
+              </h4>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                日期：{existingActiveSession.date} • {existingActiveSession.location}
+              </p>
+            </div>
+            <Link
+              href={`/workout/${existingActiveSession.id}`}
+              className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-black rounded-xl shrink-0 active:scale-95 transition-all shadow"
+            >
+              繼續該場訓練 ➔
+            </Link>
+          </div>
+        </div>
+      )}
 
       <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-5 space-y-4 shadow-xl">
         {/* 日期選擇 */}

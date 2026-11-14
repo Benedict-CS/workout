@@ -111,6 +111,14 @@ export default function HistoryPage() {
 
   useEffect(() => {
     loadData();
+
+    const handleDataChanged = () => {
+      loadData();
+    };
+    window.addEventListener("workout:data_changed", handleDataChanged);
+    return () => {
+      window.removeEventListener("workout:data_changed", handleDataChanged);
+    };
   }, []);
 
   async function handleDeleteSession(e: React.MouseEvent, sessionId: string, title: string) {
@@ -492,22 +500,14 @@ export default function HistoryPage() {
                 </span>{" "}
                 場訓練
               </span>
-              <div className="flex items-center gap-2 text-[11px]">
-                {curMonthMuscleCounts["胸"] > 0 && (
-                  <span className="text-rose-400">胸 {curMonthMuscleCounts["胸"]}</span>
-                )}
-                {curMonthMuscleCounts["背"] > 0 && (
-                  <span className="text-cyan-400">背 {curMonthMuscleCounts["背"]}</span>
-                )}
-                {curMonthMuscleCounts["腿"] > 0 && (
-                  <span className="text-emerald-400">腿 {curMonthMuscleCounts["腿"]}</span>
-                )}
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <span>胸 <strong className="text-white font-black">{curMonthMuscleCounts["胸"]}</strong></span>
+                <span>背 <strong className="text-white font-black">{curMonthMuscleCounts["背"]}</strong></span>
+                <span>腿 <strong className="text-white font-black">{curMonthMuscleCounts["腿"]}</strong></span>
                 {curMonthMuscleCounts["肩"] > 0 && (
-                  <span className="text-amber-400">肩 {curMonthMuscleCounts["肩"]}</span>
+                  <span>肩 <strong className="text-white font-black">{curMonthMuscleCounts["肩"]}</strong></span>
                 )}
-                {curMonthMuscleCounts["游泳"] > 0 && (
-                  <span className="text-blue-400">泳 {curMonthMuscleCounts["游泳"]}</span>
-                )}
+                <span>游 <strong className="text-white font-black">{curMonthMuscleCounts["游泳"]}</strong></span>
               </div>
             </div>
 
@@ -572,25 +572,14 @@ export default function HistoryPage() {
                       </span>
                     </div>
 
-                    {/* 訓練部位標籤 (紅/藍/綠/黃清晰部位色) */}
+                    {/* 訓練部位標籤 (統一精準部位色) */}
                     <div className="space-y-0.5 overflow-hidden w-full">
                       {daySessions.map((ds) => {
-                        let badgeStyle = "bg-rose-500/20 text-rose-300 border-rose-500/30";
-                        if (ds.target_muscle.includes("背"))
-                          badgeStyle = "bg-cyan-500/20 text-cyan-300 border-cyan-500/30";
-                        if (ds.target_muscle.includes("腿"))
-                          badgeStyle = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
-                        if (ds.target_muscle.includes("肩"))
-                          badgeStyle = "bg-amber-500/20 text-amber-300 border-amber-500/30";
-                        if (ds.target_muscle.includes("泳"))
-                          badgeStyle = "bg-blue-500/20 text-blue-300 border-blue-500/30";
-
                         const shortLabel = getPrimaryMuscle(ds.target_muscle);
-
                         return (
                           <div
                             key={ds.id}
-                            className={`text-[10px] font-black px-1 py-0.5 rounded border text-center truncate ${badgeStyle}`}
+                            className={`text-[10px] font-black px-1 py-0.5 rounded border text-center truncate ${getMuscleBadgeColor(ds.target_muscle)}`}
                           >
                             {shortLabel}
                           </div>

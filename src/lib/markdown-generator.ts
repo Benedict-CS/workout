@@ -1,4 +1,5 @@
 import type { WorkoutSession, SetItem, Exercise, BigThreeRecord } from "./types";
+import { cleanSessionTitle } from "./workout-utils";
 
 /**
  * 將單次訓練 Session 格式化為使用者的標準 Markdown 結構
@@ -24,7 +25,7 @@ export function formatSessionToMarkdown(
   }
 
   // 整理標題 (含場地與次數)
-  let summaryTitle = session.display_title;
+  let summaryTitle = cleanSessionTitle(session.display_title, session.target_muscle);
   // 如果 display_title 沒帶場地但 session.location 有值，補上場地
   if (session.location && !summaryTitle.includes(session.location)) {
     const parts = summaryTitle.split(" - ");
@@ -187,10 +188,10 @@ export function exportAllSessionsToMarkdown(
   lines.push("");
   lines.push("## 📊 基本三項數據紀錄");
   lines.push("");
-  lines.push(`* **硬舉**：${bigThree?.deadlift_kg ?? 90}Kg （${bigThree?.deadlift_ratio ?? 1.5}倍）`);
-  lines.push(`* **深蹲**：${bigThree?.squat_kg ?? 85}Kg （${bigThree?.squat_ratio ?? 1.41}倍）`);
-  lines.push(`* **臥推**：${bigThree?.bench_press_kg ?? 60}Kg （${bigThree?.bench_ratio ?? 1}倍）`);
-  lines.push(`* **三項總和**：${bigThree?.total_kg ?? 235}Kg`);
+  lines.push(`* **硬舉**：${bigThree?.deadlift_kg ?? 90}Kg （${bigThree?.deadlift_ratio ?? 1.42}倍）`);
+  lines.push(`* **深蹲**：${bigThree?.squat_kg ?? 90}Kg （${bigThree?.squat_ratio ?? 1.42}倍）`);
+  lines.push(`* **臥推**：${bigThree?.bench_press_kg ?? 60}Kg （${bigThree?.bench_ratio ?? 0.94}倍）`);
+  lines.push(`* **三項總和**：${bigThree?.total_kg ?? 240}Kg`);
   lines.push("");
   lines.push("---");
   lines.push("");
@@ -213,19 +214,22 @@ export function exportAllSessionsToMarkdown(
     let chestCount = 0;
     let backCount = 0;
     let legCount = 0;
+    let shoulderCount = 0;
     let swimCount = 0;
 
     for (const s of mSessions) {
       if (s.target_muscle.includes("胸")) chestCount++;
-      if (s.target_muscle.includes("背")) backCount++;
-      if (s.target_muscle.includes("腿")) legCount++;
-      if (s.target_muscle.includes("游泳")) swimCount++;
+      else if (s.target_muscle.includes("背")) backCount++;
+      else if (s.target_muscle.includes("腿")) legCount++;
+      else if (s.target_muscle.includes("肩")) shoulderCount++;
+      else if (s.target_muscle.includes("游泳") || s.target_muscle.includes("泳")) swimCount++;
     }
 
     const countsDesc = [];
     if (chestCount > 0) countsDesc.push(`胸: ${chestCount}`);
     if (backCount > 0) countsDesc.push(`背: ${backCount}`);
     if (legCount > 0) countsDesc.push(`腿: ${legCount}`);
+    if (shoulderCount > 0) countsDesc.push(`肩: ${shoulderCount}`);
     if (swimCount > 0) countsDesc.push(`游泳: ${swimCount}`);
 
     lines.push(`# ${monthNum} 月份 (${countsDesc.join(", ")})`);

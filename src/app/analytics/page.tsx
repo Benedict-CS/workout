@@ -128,10 +128,16 @@ export default function AnalyticsPage() {
         const exMap = new Map<string, Exercise>();
         for (const e of allExercises) exMap.set(e.id, e);
 
-        // 1. 每月份基本三項最高實測重量分析
-        const benchExIds = allExercises.filter((e) => e.name.includes("臥推") && !e.name.includes("啞鈴")).map((e) => e.id);
-        const squatExIds = allExercises.filter((e) => e.name.includes("深蹲")).map((e) => e.id);
-        const deadliftExIds = allExercises.filter((e) => e.name.includes("硬舉")).map((e) => e.id);
+        // 1. 每月份基本三項最高實測重量分析 (嚴格僅採計標準傳統健力三項，排除哈克/六角槓/上斜史密斯)
+        const benchExIds = allExercises
+          .filter((e) => e.id === "ex-bench" || e.id === "ex-bench-press" || (e.name.includes("臥推") && !e.name.includes("啞鈴") && !e.name.includes("機器") && !e.name.includes("上斜") && !e.name.includes("下斜") && !e.name.includes("史密斯")))
+          .map((e) => e.id);
+        const squatExIds = allExercises
+          .filter((e) => e.id === "ex-squat" || (e.name.includes("深蹲") && !e.name.includes("分腿") && !e.name.includes("哈克")))
+          .map((e) => e.id);
+        const deadliftExIds = allExercises
+          .filter((e) => e.id === "ex-deadlift" || (e.name.includes("硬舉") && !e.name.includes("六角")))
+          .map((e) => e.id);
 
         // 🌟 自動從真實訓練歷史中動態計算全歷史三項最高重量 (含今日深蹲 90Kg) 與最新體重
         let allTimeBench = 0;
@@ -145,7 +151,7 @@ export default function AnalyticsPage() {
 
         const latestWeight = bwList.length > 0 ? bwList[bwList.length - 1].weight_kg : (b3[0]?.body_weight_kg || 63.6);
         const effectiveBench = Math.max(allTimeBench, b3[0]?.bench_press_kg || 60);
-        const effectiveSquat = Math.max(allTimeSquat, b3[0]?.squat_kg || 85);
+        const effectiveSquat = Math.max(allTimeSquat, b3[0]?.squat_kg || 90);
         const effectiveDead = Math.max(allTimeDead, b3[0]?.deadlift_kg || 90);
         const effectiveTotal = effectiveBench + effectiveSquat + effectiveDead;
 
@@ -1058,7 +1064,7 @@ export default function AnalyticsPage() {
               <h2 className="text-sm font-bold text-gray-100">個人三項 PR 基準 & 體重倍數</h2>
             </div>
             <span className="text-[11px] text-gray-400">
-              基準體重：<span className="text-white font-bold">{bigThree.body_weight_kg || 62.6} kg</span>
+              基準體重：<span className="text-white font-bold">{bigThree.body_weight_kg || 63.6} kg</span>
             </span>
           </div>
 

@@ -89,6 +89,14 @@ export default function ExercisesPage() {
 
   useEffect(() => {
     loadData();
+
+    const handleDataChanged = () => {
+      loadData();
+    };
+    window.addEventListener("workout:data_changed", handleDataChanged);
+    return () => {
+      window.removeEventListener("workout:data_changed", handleDataChanged);
+    };
   }, []);
 
   async function handleToggleFavorite(ex: Exercise) {
@@ -228,6 +236,7 @@ export default function ExercisesPage() {
                 <option value="胸">胸</option>
                 <option value="背">背</option>
                 <option value="腿">腿</option>
+                <option value="肩">肩</option>
                 <option value="游泳">游泳</option>
               </select>
             </div>
@@ -293,6 +302,7 @@ export default function ExercisesPage() {
                     <option value="胸">胸</option>
                     <option value="背">背</option>
                     <option value="腿">腿</option>
+                    <option value="肩">肩</option>
                     <option value="游泳">游泳</option>
                   </select>
                 </div>
@@ -365,6 +375,7 @@ export default function ExercisesPage() {
           <option value="胸">胸</option>
           <option value="背">背</option>
           <option value="腿">腿</option>
+          <option value="肩">肩</option>
           <option value="游泳">游泳</option>
         </select>
       </div>

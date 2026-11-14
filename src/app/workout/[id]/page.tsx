@@ -38,7 +38,7 @@ import {
 } from "@/lib/db/crud";
 import { formatSessionToMarkdown } from "@/lib/markdown-generator";
 import { runFullSync, deleteRemoteSession, deleteRemoteSet } from "@/lib/db/sync";
-import { cleanSessionTitle } from "@/lib/workout-utils";
+import { cleanSessionTitle, getPrimaryMuscle } from "@/lib/workout-utils";
 import type { Exercise, SetItem, WorkoutSession, WeightType, SetType, SetSubField, MuscleGroup } from "@/lib/types";
 
 const LOCATION_OPTIONS = [
@@ -251,6 +251,19 @@ export default function WorkoutDetailPage({
     }
   }
 
+  function updateActiveSessionStorage(newId?: string, title?: string) {
+    if (newId && title) {
+      localStorage.setItem("active_workout_session_id", newId);
+      localStorage.setItem("active_workout_session_title", title);
+    } else {
+      localStorage.removeItem("active_workout_session_id");
+      localStorage.removeItem("active_workout_session_title");
+    }
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("workout_session_update"));
+    }
+  }
+
   // 載入當前 session 與數據 (手機鎖屏喚醒與重試保護)
   useEffect(() => {
     let isCancelled = false;
@@ -295,13 +308,11 @@ export default function WorkoutDetailPage({
 
         // 記錄正在進行中的訓練 ID，供首頁置頂即時恢復
         if (sess.status === "in_progress") {
-          localStorage.setItem("active_workout_session_id", id);
-          localStorage.setItem("active_workout_session_title", sess.display_title);
+          updateActiveSessionStorage(id, sess.display_title);
         } else {
           const curActive = localStorage.getItem("active_workout_session_id");
           if (curActive === id) {
-            localStorage.removeItem("active_workout_session_id");
-            localStorage.removeItem("active_workout_session_title");
+            updateActiveSessionStorage();
           }
         }
 
@@ -1087,8 +1098,7 @@ export default function WorkoutDetailPage({
       sync_status: "pending",
     };
     await db.sessions.put(updated);
-    localStorage.removeItem("active_workout_session_id");
-    localStorage.removeItem("active_workout_session_title");
+    updateActiveSessionStorage();
     runFullSync().catch(() => {});
     router.push("/");
   }
@@ -1157,8 +1167,7 @@ export default function WorkoutDetailPage({
     };
 
     await db.sessions.put(updatedSession);
-    localStorage.removeItem("active_workout_session_id");
-    localStorage.removeItem("active_workout_session_title");
+    updateActiveSessionStorage();
     runFullSync().catch(() => {});
     router.push("/");
   }
@@ -1174,8 +1183,7 @@ export default function WorkoutDetailPage({
       await db.sets.where("session_id").equals(id).delete();
       await db.sessions.delete(id);
     });
-    localStorage.removeItem("active_workout_session_id");
-    localStorage.removeItem("active_workout_session_title");
+    updateActiveSessionStorage();
     deleteRemoteSession(id).catch(() => {});
     runFullSync().catch(() => {});
     router.push("/");
@@ -1196,8 +1204,7 @@ export default function WorkoutDetailPage({
     };
 
     await db.sessions.put(updatedSession);
-    localStorage.removeItem("active_workout_session_id");
-    localStorage.removeItem("active_workout_session_title");
+    updateActiveSessionStorage(session.id, session.display_title);
     runFullSync().catch(() => {});
     router.push("/");
   }
@@ -1243,8 +1250,7 @@ export default function WorkoutDetailPage({
     };
 
     await db.sessions.put(updatedSession);
-    localStorage.removeItem("active_workout_session_id");
-    localStorage.removeItem("active_workout_session_title");
+    updateActiveSessionStorage();
     runFullSync().catch(() => {});
     router.push("/");
   }
@@ -1445,8 +1451,7 @@ export default function WorkoutDetailPage({
       await db.sets.where("session_id").equals(id).delete();
       await db.sessions.delete(id);
     });
-    localStorage.removeItem("active_workout_session_id");
-    localStorage.removeItem("active_workout_session_title");
+    updateActiveSessionStorage();
     deleteRemoteSession(id).catch(() => {});
     runFullSync().catch(() => {});
     router.push("/");
@@ -1527,8 +1532,8 @@ export default function WorkoutDetailPage({
     if (dockExerciseSearch.trim()) {
       if (!e.name.toLowerCase().includes(dockExerciseSearch.trim().toLowerCase())) return false;
     } else if (dockMuscleFilter === "default") {
-      const target = (session.target_muscle || "").replace("部", "").slice(0, 1);
-      if (e.muscle_group !== target && !session.target_muscle.includes(e.muscle_group)) {
+      const primary = getPrimaryMuscle(session.target_muscle);
+      if (e.muscle_group !== primary && !session.target_muscle.includes(e.muscle_group)) {
         return false;
       }
     } else if (dockMuscleFilter !== "all") {
@@ -2029,7 +2034,7 @@ export default function WorkoutDetailPage({
                       : "bg-[#181b26] text-gray-400 hover:text-white border border-[#262b3d]"
                   }`}
                 >
-                  推薦 ({session.target_muscle})
+                  推薦 ({getPrimaryMuscle(session.target_muscle)})
                 </button>
                 <button
                   type="button"
@@ -2099,11 +2104,12 @@ export default function WorkoutDetailPage({
               <button
                 type="button"
                 onClick={() => {
+                  const primary = getPrimaryMuscle(session.target_muscle);
                   const m =
                     dockMuscleFilter !== "default" && dockMuscleFilter !== "all"
-                      ? (dockMuscleFilter as MuscleGroup)
-                      : ((session.target_muscle || "").replace("部", "").slice(0, 1) as MuscleGroup);
-                  const validM: MuscleGroup = ["胸", "背", "腿", "肩"].includes(m) ? m : "胸";
+                      ? dockMuscleFilter
+                      : primary;
+                  const validM: MuscleGroup = ["胸", "背", "腿", "肩"].includes(m as any) ? (m as MuscleGroup) : "胸";
                   setNewExMuscle(validM);
                   setShowNewExerciseModal(true);
                 }}
@@ -2600,7 +2606,7 @@ export default function WorkoutDetailPage({
                       : "bg-[#181b26] text-gray-400 hover:text-white border border-[#262b3d]"
                   }`}
                 >
-                  推薦 ({session.target_muscle})
+                  推薦 ({getPrimaryMuscle(session.target_muscle)})
                 </button>
                 <button
                   type="button"
@@ -2643,7 +2649,10 @@ export default function WorkoutDetailPage({
                     return e.name.toLowerCase().includes(query) || e.muscle_group.toLowerCase().includes(query);
                   }
                   if (swapMuscleFilter === "all") return true;
-                  if (swapMuscleFilter === "default") return e.muscle_group === session.target_muscle;
+                  if (swapMuscleFilter === "default") {
+                    const primary = getPrimaryMuscle(session.target_muscle);
+                    return e.muscle_group === primary || session.target_muscle.includes(e.muscle_group);
+                  }
                   return e.muscle_group === swapMuscleFilter;
                 });
 
