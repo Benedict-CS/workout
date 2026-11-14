@@ -543,7 +543,7 @@ export default function HistoryPage() {
                   <button
                     key={fullDate}
                     onClick={() => setSelectedCalDate(fullDate)}
-                    className={`h-16 sm:h-20 rounded-xl sm:rounded-2xl p-1 sm:p-1.5 border text-left flex flex-col justify-between transition-all cursor-pointer relative ${
+                    className={`h-16 sm:h-20 rounded-xl sm:rounded-2xl p-1 sm:p-1.5 border text-center flex flex-col justify-between items-center transition-all cursor-pointer relative ${
                       isSelected
                         ? "bg-emerald-950/40 border-2 border-emerald-500 shadow-lg ring-1 ring-emerald-400/40"
                         : daySessions.length > 0
@@ -551,8 +551,8 @@ export default function HistoryPage() {
                         : "bg-[#161822]/60 border-[#262b3d]/40 text-gray-500 hover:bg-[#1a1d2b]/80"
                     }`}
                   >
-                    {/* 日期數字 */}
-                    <div className="flex items-center justify-between">
+                    {/* 日期數字 (置中對齊，完美契合記帳 app 佈局) */}
+                    <div className="w-full flex items-center justify-center pt-0.5">
                       <span
                         className={`text-xs font-black inline-flex items-center justify-center w-5 h-5 rounded-full ${
                           isSelected
@@ -605,12 +605,9 @@ export default function HistoryPage() {
           <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 shadow-lg space-y-3 animate-in fade-in duration-150">
             {/* 明細標題列 */}
             <div className="flex items-center justify-between border-b border-[#262b3d]/80 pb-2.5">
-              <div className="flex items-center gap-2">
-                <CalendarIcon className="w-4 h-4 text-emerald-400" />
-                <h3 className="font-black text-white text-sm">
-                  {selectedCalDate.slice(5).replace("-", "/")} {getDayOfWeekLabel(selectedCalDate)} 明細
-                </h3>
-              </div>
+              <h3 className="font-black text-white text-base">
+                {selectedCalDate.slice(5).replace("-", "/")} {getDayOfWeekLabel(selectedCalDate)} 明細
+              </h3>
 
               {/* 記一筆按鈕 (傳入選定的日期，直接開立這天的訓練) */}
               <Link
@@ -618,7 +615,7 @@ export default function HistoryPage() {
                 className="bg-emerald-500 hover:bg-emerald-400 text-black px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1 active:scale-95 transition-all shadow"
               >
                 <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                <span>+ 記一筆</span>
+                <span>記一筆</span>
               </Link>
             </div>
 
