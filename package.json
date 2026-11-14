@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "import-data": "tsx scripts/import-markdown.ts",
-    "deploy": "vercel deploy --yes --prod"
+    "deploy": "npx vercel deploy --yes --prod"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
