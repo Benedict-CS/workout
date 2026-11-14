@@ -263,101 +263,11 @@ export default function SettingsPage() {
         <p className="text-xs text-gray-400">管理場地偏好、三項基準數據、備份匯出與檔案還原</p>
       </div>
 
-      {/* 個人三項基準與體重設定 */}
-      <section className="bg-[#12141c] border border-amber-500/30 rounded-2xl p-4 space-y-3 shadow-lg">
+      {/* 動作庫管理 (置頂，方便現場與平時管理器材動作) */}
+      <section className="bg-[#12141c] border border-cyan-500/40 rounded-2xl p-4 space-y-3 shadow-lg">
         <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
           <div className="flex items-center gap-2">
-            <Trophy className="w-4 h-4 text-amber-400" />
-            <h2 className="text-sm font-bold text-gray-100">個人三項 PR 基準 & 體重倍數</h2>
-          </div>
-          <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
-            <Sparkles className="w-3 h-3" />
-            <span>自適應訓練即時抓取</span>
-          </span>
-        </div>
-
-        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] p-2.5 rounded-xl font-bold flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-          <span>系統已自動從真實歷史訓練（含今日深蹲 90Kg 新高）與最新量測體重 (63.6Kg) 即時同步更新！</span>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          <div>
-            <label className="text-[10px] text-gray-400 block mb-1">體重 (Kg)</label>
-            <input
-              type="number"
-              value={bodyWeight}
-              onChange={(e) => setBodyWeight(e.target.value)}
-              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs font-bold rounded-xl p-2.5 text-center outline-none focus:border-amber-400"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-gray-400 block mb-1">臥推 PR (Kg)</label>
-            <input
-              type="number"
-              value={benchKg}
-              onChange={(e) => setBenchKg(e.target.value)}
-              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs font-bold rounded-xl p-2.5 text-center outline-none focus:border-amber-400"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-gray-400 block mb-1">深蹲 PR (Kg)</label>
-            <input
-              type="number"
-              value={squatKg}
-              onChange={(e) => setSquatKg(e.target.value)}
-              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs font-bold rounded-xl p-2.5 text-center outline-none focus:border-amber-400"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-gray-400 block mb-1">硬舉 PR (Kg)</label>
-            <input
-              type="number"
-              value={deadliftKg}
-              onChange={(e) => setDeadliftKg(e.target.value)}
-              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs font-bold rounded-xl p-2.5 text-center outline-none focus:border-amber-400"
-            />
-          </div>
-        </div>
-
-        {/* 即時計算體重倍數卡片展示 */}
-        <div className="bg-[#181b26] p-3 rounded-xl border border-[#262b3d] grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
-          <div className="p-1">
-            <span className="text-[11px] text-gray-400 block mb-0.5">臥推倍數</span>
-            <span className="text-base font-black text-red-400">{benchMultiplier}</span>
-            <span className="text-[10px] text-gray-500 block">x 體重</span>
-          </div>
-          <div className="p-1">
-            <span className="text-[11px] text-gray-400 block mb-0.5">深蹲倍數</span>
-            <span className="text-base font-black text-emerald-400">{squatMultiplier}</span>
-            <span className="text-[10px] text-gray-500 block">x 體重</span>
-          </div>
-          <div className="p-1">
-            <span className="text-[11px] text-gray-400 block mb-0.5">硬舉倍數</span>
-            <span className="text-base font-black text-blue-400">{deadMultiplier}</span>
-            <span className="text-[10px] text-gray-500 block">x 體重</span>
-          </div>
-          <div className="p-1 bg-[#202533]/40 rounded-lg border border-amber-500/20">
-            <span className="text-[11px] text-amber-400 font-bold block mb-0.5">三項總和</span>
-            <span className="text-base font-black text-amber-300">{totalMultiplier}</span>
-            <span className="text-[10px] text-amber-400/70 block">x 體重 ({curTotal}kg)</span>
-          </div>
-        </div>
-
-        <button
-          onClick={handleSaveBigThree}
-          className="w-full bg-amber-500 hover:bg-amber-400 text-black font-black py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow active:scale-95 cursor-pointer"
-        >
-          {b3Saved ? <CheckCircle className="w-4 h-4" /> : null}
-          <span>{b3Saved ? "三項數據已成功儲存！" : "手動儲存三項基準與體重倍數"}</span>
-        </button>
-      </section>
-
-      {/* 動作庫管理 */}
-      <section className="bg-[#12141c] border border-cyan-500/30 rounded-2xl p-4 space-y-3 shadow-lg">
-        <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
-          <div className="flex items-center gap-2">
-            <Dumbbell className="w-4 h-4 text-cyan-400" />
+            <Dumbbell className="w-5 h-5 text-cyan-400" />
             <h2 className="text-sm font-bold text-gray-100">動作庫管理</h2>
           </div>
           <span className="text-[10px] text-gray-400">自訂動作、重量模式、部位分組</span>
@@ -370,6 +280,55 @@ export default function SettingsPage() {
           className="w-full bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
         >
           <span>進入動作庫管理清單</span>
+          <ChevronRight className="w-4 h-4" />
+        </Link>
+      </section>
+
+      {/* 個人三項 PR 基準 (自動抓取無須手動，導引至訓練分析) */}
+      <section className="bg-[#12141c] border border-amber-500/30 rounded-2xl p-4 space-y-3 shadow-lg">
+        <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
+          <div className="flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-amber-400" />
+            <h2 className="text-sm font-bold text-gray-100">個人三項 PR 基準（動態自適應）</h2>
+          </div>
+          <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+            <Sparkles className="w-3 h-3" />
+            <span>全自動即時運算</span>
+          </span>
+        </div>
+
+        <p className="text-xs text-gray-300 leading-relaxed">
+          系統已全自動從真實訓練紀錄（包含臥推 {benchKg}Kg、深蹲 {squatKg}Kg、硬舉 {deadliftKg}Kg）與最新量測體重 ({bodyWeight}Kg) 自動即時同步，三項總和 {curTotal}Kg ({totalMultiplier}x 體重)，<strong>無需再手動輸入儲存</strong>。
+        </p>
+
+        <div className="grid grid-cols-4 gap-2 text-center text-xs bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]">
+          <div>
+            <span className="text-[10px] text-gray-400 block">臥推 PR</span>
+            <span className="text-sm font-black text-red-300">{benchKg}kg</span>
+            <span className="text-[10px] text-red-400 font-bold block">{benchMultiplier}x</span>
+          </div>
+          <div>
+            <span className="text-[10px] text-gray-400 block">深蹲 PR</span>
+            <span className="text-sm font-black text-emerald-300">{squatKg}kg</span>
+            <span className="text-[10px] text-emerald-400 font-bold block">{squatMultiplier}x</span>
+          </div>
+          <div>
+            <span className="text-[10px] text-gray-400 block">硬舉 PR</span>
+            <span className="text-sm font-black text-blue-300">{deadliftKg}kg</span>
+            <span className="text-[10px] text-blue-400 font-bold block">{deadMultiplier}x</span>
+          </div>
+          <div className="bg-[#202533]/50 rounded-lg p-0.5">
+            <span className="text-[10px] text-amber-400 block font-bold">總和</span>
+            <span className="text-sm font-black text-amber-300">{curTotal}kg</span>
+            <span className="text-[10px] text-amber-400/80 font-bold block">{totalMultiplier}x</span>
+          </div>
+        </div>
+
+        <Link
+          href="/analytics"
+          className="w-full bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+        >
+          <span>查看完整訓練數據分析與每月成長走勢</span>
           <ChevronRight className="w-4 h-4" />
         </Link>
       </section>

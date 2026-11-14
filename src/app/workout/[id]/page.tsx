@@ -212,13 +212,17 @@ export default function WorkoutDetailPage({
     }
   }
 
-  function addRestSeconds(seconds: number) {
+  function adjustRestSeconds(seconds: number) {
     const storedEndStr = localStorage.getItem("workout_timer_end");
     const currentEnd = storedEndStr ? parseInt(storedEndStr, 10) : (targetEndTime || Date.now());
-    const baseEnd = Math.max(Date.now(), currentEnd);
-    const newEnd = baseEnd + seconds * 1000;
+    const newEnd = currentEnd + seconds * 1000;
     const now = Date.now();
     const remain = Math.ceil((newEnd - now) / 1000);
+
+    if (remain <= 0) {
+      stopRestTimer();
+      return;
+    }
 
     setTargetEndTime(newEnd);
     setTimerSeconds(remain);
@@ -1583,7 +1587,15 @@ export default function WorkoutDetailPage({
               <>
                 <button
                   type="button"
-                  onClick={() => addRestSeconds(30)}
+                  onClick={() => adjustRestSeconds(-30)}
+                  className="flex-1 py-2 bg-[#181b26] hover:bg-[#202533] border border-red-500/40 text-red-300 rounded-xl text-xs font-bold active:scale-95 cursor-pointer text-center"
+                  title="減少 30 秒休息"
+                >
+                  -30秒
+                </button>
+                <button
+                  type="button"
+                  onClick={() => adjustRestSeconds(30)}
                   className="flex-1 py-2 bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 rounded-xl text-xs font-bold active:scale-95 cursor-pointer text-center"
                   title="延長 30 秒休息"
                 >
@@ -2833,8 +2845,17 @@ export default function WorkoutDetailPage({
             <div className="h-4 w-px bg-white/20" />
             <button
               type="button"
-              onClick={() => addRestSeconds(30)}
+              onClick={() => adjustRestSeconds(-30)}
+              className="text-[11px] font-black bg-red-500/20 hover:bg-red-500/30 text-red-300 px-2 py-0.5 rounded-full border border-red-500/40 active:scale-95 transition-all cursor-pointer"
+              title="減少 30 秒"
+            >
+              -30s
+            </button>
+            <button
+              type="button"
+              onClick={() => adjustRestSeconds(30)}
               className="text-[11px] font-black bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 px-2 py-0.5 rounded-full border border-amber-400/40 active:scale-95 transition-all cursor-pointer"
+              title="增加 30 秒"
             >
               +30s
             </button>

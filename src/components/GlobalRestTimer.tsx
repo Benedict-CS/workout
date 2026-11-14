@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Clock, Plus, X, ArrowUpRight, CheckCircle2 } from "lucide-react";
+import { Clock, Plus, Minus, X, ArrowUpRight, CheckCircle2 } from "lucide-react";
 
 interface TimerInfo {
   sessionId: string;
@@ -102,11 +102,15 @@ export function GlobalRestTimer() {
     .toString()
     .padStart(2, "0")}`;
 
-  function handleAddSeconds(e: React.MouseEvent, secondsToAdd: number) {
+  function handleAdjustSeconds(e: React.MouseEvent, secondsToAdd: number) {
     e.stopPropagation();
     const storedEndStr = localStorage.getItem("workout_timer_end");
     const endMs = storedEndStr ? parseInt(storedEndStr, 10) : Date.now();
-    const newEnd = Math.max(Date.now(), endMs) + secondsToAdd * 1000;
+    const newEnd = endMs + secondsToAdd * 1000;
+    if (newEnd <= Date.now()) {
+      handleDismiss(e);
+      return;
+    }
     localStorage.setItem("workout_timer_end", newEnd.toString());
     window.dispatchEvent(new Event("workout_timer_update"));
   }
@@ -158,15 +162,26 @@ export function GlobalRestTimer() {
 
       <div className="flex items-center gap-1.5 shrink-0">
         {!isFinished && (
-          <button
-            type="button"
-            onClick={(e) => handleAddSeconds(e, 30)}
-            className="px-2 py-1 bg-[#181b26] hover:bg-[#202533] border border-amber-500/30 text-amber-300 rounded-lg text-xs font-bold active:scale-95 transition-all flex items-center gap-0.5"
-            title="加 30 秒"
-          >
-            <Plus className="w-3 h-3 stroke-[3]" />
-            <span>30s</span>
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={(e) => handleAdjustSeconds(e, -30)}
+              className="px-2 py-1 bg-[#181b26] hover:bg-[#202533] border border-red-500/40 text-red-300 rounded-lg text-xs font-bold active:scale-95 transition-all flex items-center gap-0.5 cursor-pointer"
+              title="減少 30 秒"
+            >
+              <Minus className="w-3 h-3 stroke-[3]" />
+              <span>30s</span>
+            </button>
+            <button
+              type="button"
+              onClick={(e) => handleAdjustSeconds(e, 30)}
+              className="px-2 py-1 bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 rounded-lg text-xs font-bold active:scale-95 transition-all flex items-center gap-0.5 cursor-pointer"
+              title="延長 30 秒"
+            >
+              <Plus className="w-3 h-3 stroke-[3]" />
+              <span>30s</span>
+            </button>
+          </>
         )}
 
         <button
