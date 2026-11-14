@@ -51,6 +51,7 @@ function NewWorkoutForm() {
   } | null>(null);
   const [clonePrevMenu, setClonePrevMenu] = useState(false);
   const [exercisesMap, setExercisesMap] = useState<Record<string, Exercise>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // 讀取 URL 參數
   useEffect(() => {
@@ -110,133 +111,141 @@ function NewWorkoutForm() {
   }, [targetMuscle]);
 
   async function handleCreate() {
-    const parts = date.split("-");
-    const monthKey = `${parts[0]}-${parts[1]}`;
-    const m = parseInt(parts[1], 10);
-    const d = parseInt(parts[2], 10);
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
-    const finalLocation = location.trim();
-    const finalMuscle = targetMuscle;
-    const sessionId = `session-${date}-${Date.now()}`;
+    try {
+      const parts = date.split("-");
+      const monthKey = `${parts[0]}-${parts[1]}`;
+      const m = parseInt(parts[1], 10);
+      const d = parseInt(parts[2], 10);
 
-    // 計算當月第幾次
-    // 注意：重訓的「第 X 次」是指當月重訓場次（排除游泳）！
-    // 游泳不帶「第 X 次」序號，且不計入重訓累計序號
-    let monthlyIndex = 1;
-    if (finalMuscle === "游泳") {
-      const swimCount = await db.sessions
-        .where("month_key")
-        .equals(monthKey)
-        .filter((s) => !s.deleted_at && s.target_muscle === "游泳")
-        .count();
-      monthlyIndex = swimCount + 1;
-    } else {
-      const weightSessionsInMonth = await db.sessions
-        .where("month_key")
-        .equals(monthKey)
-        .filter((s) => !s.deleted_at && s.target_muscle !== "游泳")
-        .toArray();
-      const maxMonthlyIndex = weightSessionsInMonth.reduce(
-        (max, s) => Math.max(max, s.monthly_index || 0),
-        0
-      );
-      monthlyIndex = maxMonthlyIndex + 1;
-    }
+      const finalLocation = location.trim();
+      const finalMuscle = targetMuscle;
+      const sessionId = `session-${date}-${Date.now()}`;
 
-    // 格式化標準命名：
-    // 若為游泳，如 "11/13 (游泳) - 交大游泳池 (下午)" 或 "11/13 (游泳) - 清大游泳池 [清大 alvaro 請]"
-    // 若為重訓，如 "11/13 (胸) - 三健客 - 第 5 次"
-    let title = "";
-    if (finalMuscle === "游泳") {
-      const timeTag = swimTimeSlot !== "全天" ? ` (${swimTimeSlot})` : "";
-      const noteTag = swimNotes.trim() ? ` [${swimNotes.trim()}]` : "";
-      title = `${m}/${d} (游泳) - ${finalLocation}${timeTag}${noteTag}`;
-    } else {
-      title = `${m}/${d} (${finalMuscle}) - ${finalLocation} - 第 ${monthlyIndex} 次`;
-    }
-
-    const newSession: WorkoutSession = {
-      id: sessionId,
-      date: date,
-      month_key: monthKey,
-      display_title: title,
-      target_muscle: finalMuscle,
-      monthly_index: monthlyIndex,
-      location: finalLocation,
-      notes: swimNotes.trim() || undefined,
-      status: finalMuscle === "游泳" ? "completed" : "in_progress",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      sync_status: "pending",
-    };
-
-    await db.sessions.add(newSession);
-
-    // 若為游泳，自動建立動作與對應 set，並直接返回首頁完成記錄
-    if (finalMuscle === "游泳") {
-      let swimEx = await db.exercises.get("ex-swim");
-      if (!swimEx) {
-        swimEx = {
-          id: "ex-swim",
-          name: "游泳",
-          muscle_group: "游泳",
-          weight_type: "bodyweight",
-          is_favorite: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          sync_status: "pending",
-        };
-        await db.exercises.put(swimEx);
+      // 計算當月第幾次
+      // 注意：重訓的「第 X 次」是指當月重訓場次（排除游泳）！
+      // 游泳不帶「第 X 次」序號，且不計入重訓累計序號
+      let monthlyIndex = 1;
+      if (finalMuscle === "游泳") {
+        const swimCount = await db.sessions
+          .where("month_key")
+          .equals(monthKey)
+          .filter((s) => !s.deleted_at && s.target_muscle === "游泳")
+          .count();
+        monthlyIndex = swimCount + 1;
+      } else {
+        const weightSessionsInMonth = await db.sessions
+          .where("month_key")
+          .equals(monthKey)
+          .filter((s) => !s.deleted_at && s.target_muscle !== "游泳")
+          .toArray();
+        const maxMonthlyIndex = weightSessionsInMonth.reduce(
+          (max, s) => Math.max(max, s.monthly_index || 0),
+          0
+        );
+        monthlyIndex = maxMonthlyIndex + 1;
       }
 
-      const rawText = swimTimeSlot !== "全天" ? `${swimTimeSlot}游泳` : `游泳 (${finalLocation})`;
-      const swimSet: SetItem = {
-        id: `set-${Date.now()}-1`,
-        session_id: sessionId,
-        exercise_id: "ex-swim",
-        set_order: 1,
-        set_type: "normal",
-        weight_kg: 0,
-        reps: 1,
-        raw_text: swimNotes.trim() ? `${rawText} - ${swimNotes.trim()}` : rawText,
-        notes: swimNotes.trim() || rawText,
+      // 格式化標準命名：
+      // 若為游泳，如 "11/13 (游泳) - 交大游泳池 (下午)" 或 "11/13 (游泳) - 清大游泳池 [清大 alvaro 請]"
+      // 若為重訓，如 "11/13 (胸) - 三健客 - 第 5 次"
+      let title = "";
+      if (finalMuscle === "游泳") {
+        const timeTag = swimTimeSlot !== "全天" ? ` (${swimTimeSlot})` : "";
+        const noteTag = swimNotes.trim() ? ` [${swimNotes.trim()}]` : "";
+        title = `${m}/${d} (游泳) - ${finalLocation}${timeTag}${noteTag}`;
+      } else {
+        title = `${m}/${d} (${finalMuscle}) - ${finalLocation} - 第 ${monthlyIndex} 次`;
+      }
+
+      const newSession: WorkoutSession = {
+        id: sessionId,
+        date: date,
+        month_key: monthKey,
+        display_title: title,
+        target_muscle: finalMuscle,
+        monthly_index: monthlyIndex,
+        location: finalLocation,
+        notes: swimNotes.trim() || undefined,
+        status: finalMuscle === "游泳" ? "completed" : "in_progress",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         sync_status: "pending",
       };
 
-      await db.sets.add(swimSet);
+      await db.sessions.add(newSession);
+
+      // 若為游泳，自動建立動作與對應 set，並直接返回首頁完成記錄
+      if (finalMuscle === "游泳") {
+        let swimEx = await db.exercises.get("ex-swim");
+        if (!swimEx) {
+          swimEx = {
+            id: "ex-swim",
+            name: "游泳",
+            muscle_group: "游泳",
+            weight_type: "bodyweight",
+            is_favorite: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            sync_status: "pending",
+          };
+          await db.exercises.put(swimEx);
+        }
+
+        const rawText = swimTimeSlot !== "全天" ? `${swimTimeSlot}游泳` : `游泳 (${finalLocation})`;
+        const swimSet: SetItem = {
+          id: `set-${Date.now()}-1`,
+          session_id: sessionId,
+          exercise_id: "ex-swim",
+          set_order: 1,
+          set_type: "normal",
+          weight_kg: 0,
+          reps: 1,
+          raw_text: swimNotes.trim() ? `${rawText} - ${swimNotes.trim()}` : rawText,
+          notes: swimNotes.trim() || rawText,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          sync_status: "pending",
+        };
+
+        await db.sets.add(swimSet);
+        runFullSync().catch(() => {});
+        router.push("/");
+        return;
+      }
+
+      // 若使用者勾選「沿用上一次菜單結構」，自動帶入組數
+      if (clonePrevMenu && prevTemplate && prevTemplate.sets.length > 0) {
+        const newSets: SetItem[] = prevTemplate.sets.map((s, idx) => ({
+          id: `set-${Date.now()}-${idx}`,
+          session_id: sessionId,
+          exercise_id: s.exercise_id,
+          set_order: idx + 1,
+          set_type: s.set_type,
+          weight_kg: s.weight_kg,
+          reps: s.reps,
+          raw_text: s.raw_text,
+          sub_fields: s.sub_fields,
+          is_failure: false,
+          is_completed: false,
+          feedback: undefined,
+          notes: undefined,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          sync_status: "pending",
+        }));
+
+        await db.sets.bulkAdd(newSets);
+      }
+
       runFullSync().catch(() => {});
-      router.push("/");
-      return;
+      router.push(`/workout/${sessionId}`);
+    } catch (err) {
+      console.error("建立訓練失敗:", err);
+      setIsSubmitting(false);
     }
-
-    // 若使用者勾選「沿用上一次菜單結構」，自動帶入組數
-    if (clonePrevMenu && prevTemplate && prevTemplate.sets.length > 0) {
-      const newSets: SetItem[] = prevTemplate.sets.map((s, idx) => ({
-        id: `set-${Date.now()}-${idx}`,
-        session_id: sessionId,
-        exercise_id: s.exercise_id,
-        set_order: idx + 1,
-        set_type: s.set_type,
-        weight_kg: s.weight_kg,
-        reps: s.reps,
-        raw_text: s.raw_text,
-        sub_fields: s.sub_fields,
-        is_failure: false,
-        is_completed: false,
-        feedback: undefined,
-        notes: undefined,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        sync_status: "pending",
-      }));
-
-      await db.sets.bulkAdd(newSets);
-    }
-
-    runFullSync().catch(() => {});
-    router.push(`/workout/${sessionId}`);
   }
 
   return (
@@ -415,15 +424,27 @@ function NewWorkoutForm() {
         )}
 
         <button
+          type="button"
+          disabled={isSubmitting}
           onClick={handleCreate}
-          className={`w-full font-black py-3.5 rounded-xl shadow-lg transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2 mt-3 ${
+          className={`w-full font-black py-3.5 rounded-xl shadow-lg transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2 mt-3 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
             targetMuscle === "游泳"
               ? "bg-cyan-500 hover:bg-cyan-400 text-black shadow-cyan-500/20"
               : "bg-emerald-500 hover:bg-emerald-400 text-black"
           }`}
         >
-          <Check className="w-4 h-4 stroke-[3]" />
-          <span>{targetMuscle === "游泳" ? "🏊 完成記錄游泳（直接儲存）" : "進入訓練並開始記組"}</span>
+          {isSubmitting ? (
+            <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <Check className="w-4 h-4 stroke-[3]" />
+          )}
+          <span>
+            {isSubmitting
+              ? "正在建立訓練..."
+              : targetMuscle === "游泳"
+              ? "🏊 完成記錄游泳（直接儲存）"
+              : "進入訓練並開始記組"}
+          </span>
         </button>
       </div>
     </div>

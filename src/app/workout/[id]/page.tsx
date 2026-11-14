@@ -118,7 +118,12 @@ export default function WorkoutDetailPage({
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [swapSourceExercise, setSwapSourceExercise] = useState<Exercise | null>(null);
   const [swapSearchQuery, setSwapSearchQuery] = useState("");
+  const [swapMuscleFilter, setSwapMuscleFilter] = useState<string>("default");
   const [sessionNotFound, setSessionNotFound] = useState(false);
+
+  // 防連續快點重送 (防重複記組) Lock Refs
+  const isSavingSetRef = useRef(false);
+  const isTogglingSetRef = useRef<Record<string, boolean>>({});
 
   // ＋ 自訂新動作 Modal (現場隨時自訂新器材或新動作)
   const [showNewExerciseModal, setShowNewExerciseModal] = useState(false);
@@ -492,6 +497,7 @@ export default function WorkoutDetailPage({
     if (!ex) return;
     setSwapSourceExercise(ex);
     setSwapSearchQuery("");
+    setSwapMuscleFilter("default");
     setShowSwapModal(true);
   }
 
@@ -711,118 +717,135 @@ export default function WorkoutDetailPage({
     return full;
   }
 
-  // 快速新增單組 (熱身組自動插入至熱身區，正式組依序遞增)
+  // 快速新增單組 (熱身組自動插入至熱身區，正式組依序遞增，防重複點擊)
   async function handleAddSet() {
+    if (isSavingSetRef.current) return;
     if (!selectedExId || !inputReps) return;
     const repsNum = parseInt(inputReps, 10) || 0;
     if (repsNum <= 0) return;
 
-    const weightNum = parseFloat(inputWeight) || 0;
-    const exSets = sets.filter((s) => s.exercise_id === selectedExId);
+    isSavingSetRef.current = true;
+    try {
+      const weightNum = parseFloat(inputWeight) || 0;
+      const exSets = sets.filter((s) => s.exercise_id === selectedExId);
 
-    let targetOrder = sets.length + 1;
-    if (inputType === "warmup") {
-      const lastWarmup = exSets.filter((s) => isWarmupOrActivation(s)).pop();
-      if (lastWarmup) {
-        targetOrder = lastWarmup.set_order + 1;
-      } else if (exSets.length > 0) {
-        targetOrder = exSets[0].set_order;
-      }
-    } else {
-      if (exSets.length > 0) {
-        targetOrder = exSets[exSets.length - 1].set_order + 1;
-      }
-    }
-
-    const setsToShift = sets.filter((s) => s.set_order >= targetOrder);
-    if (setsToShift.length > 0) {
-      await db.transaction("rw", [db.sets], async () => {
-        for (const s of setsToShift) {
-          await db.sets.update(s.id, { set_order: s.set_order + 1 });
+      let targetOrder = sets.length + 1;
+      if (inputType === "warmup") {
+        const lastWarmup = exSets.filter((s) => isWarmupOrActivation(s)).pop();
+        if (lastWarmup) {
+          targetOrder = lastWarmup.set_order + 1;
+        } else if (exSets.length > 0) {
+          targetOrder = exSets[0].set_order;
         }
-      });
+      } else {
+        if (exSets.length > 0) {
+          targetOrder = exSets[exSets.length - 1].set_order + 1;
+        }
+      }
+
+      const setsToShift = sets.filter((s) => s.set_order >= targetOrder);
+      if (setsToShift.length > 0) {
+        await db.transaction("rw", [db.sets], async () => {
+          for (const s of setsToShift) {
+            await db.sets.update(s.id, { set_order: s.set_order + 1 });
+          }
+        });
+      }
+
+      const formalIndex = inputType === "warmup" ? 0 : exSets.filter((s) => !isWarmupOrActivation(s)).length + 1;
+      const raw = formatSetRawText(
+        formalIndex,
+        inputType,
+        weightNum,
+        repsNum,
+        inputSubFields,
+        inputNotes
+      );
+
+      const newSet: SetItem = {
+        id: `set-${Date.now()}-${targetOrder}`,
+        session_id: id,
+        exercise_id: selectedExId,
+        set_order: targetOrder,
+        set_type: inputType,
+        weight_kg: weightNum,
+        reps: repsNum,
+        raw_text: raw,
+        sub_fields: inputSubFields.length > 0 ? inputSubFields : undefined,
+        notes: inputNotes || undefined,
+        is_completed: true,
+        feedback: "completed",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        sync_status: "pending",
+      };
+
+      await db.sets.add(newSet);
+      setSets((prev) =>
+        [...prev.map((s) => (s.set_order >= targetOrder ? { ...s, set_order: s.set_order + 1 } : s)), newSet].sort(
+          (a, b) => a.set_order - b.set_order
+        )
+      );
+      runFullSync().catch(() => {});
+
+      // 重設子欄位
+      setInputSubFields([]);
+      setInputNotes("");
+    } finally {
+      setTimeout(() => {
+        isSavingSetRef.current = false;
+      }, 350);
     }
-
-    const formalIndex = inputType === "warmup" ? 0 : exSets.filter((s) => !isWarmupOrActivation(s)).length + 1;
-    const raw = formatSetRawText(
-      formalIndex,
-      inputType,
-      weightNum,
-      repsNum,
-      inputSubFields,
-      inputNotes
-    );
-
-    const newSet: SetItem = {
-      id: `set-${Date.now()}-${targetOrder}`,
-      session_id: id,
-      exercise_id: selectedExId,
-      set_order: targetOrder,
-      set_type: inputType,
-      weight_kg: weightNum,
-      reps: repsNum,
-      raw_text: raw,
-      sub_fields: inputSubFields.length > 0 ? inputSubFields : undefined,
-      notes: inputNotes || undefined,
-      is_completed: true,
-      feedback: "completed",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      sync_status: "pending",
-    };
-
-    await db.sets.add(newSet);
-    setSets((prev) =>
-      [...prev.map((s) => (s.set_order >= targetOrder ? { ...s, set_order: s.set_order + 1 } : s)), newSet].sort(
-        (a, b) => a.set_order - b.set_order
-      )
-    );
-    runFullSync().catch(() => {});
-
-    // 重設子欄位
-    setInputSubFields([]);
-    setInputNotes("");
   }
 
-  // 重複上一組
+  // 重複上一組 (防連續快點重複寫入)
   async function handleRepeatLastSet() {
+    if (isSavingSetRef.current) return;
     if (!selectedExId) return;
     const exSets = sets.filter((s) => s.exercise_id === selectedExId);
     if (exSets.length === 0) return;
-    const last = exSets[exSets.length - 1];
 
-    const newOrder = sets.length + 1;
-    const formalIndex = isWarmupOrActivation(last) ? 0 : exSets.filter((s) => !isWarmupOrActivation(s)).length + 1;
-    const raw = formatSetRawText(
-      formalIndex,
-      last.set_type,
-      last.weight_kg,
-      last.reps,
-      last.sub_fields,
-      last.notes || ""
-    );
+    isSavingSetRef.current = true;
+    try {
+      const last = exSets[exSets.length - 1];
 
-    const newSet: SetItem = {
-      id: `set-${Date.now()}-${newOrder}`,
-      session_id: id,
-      exercise_id: selectedExId,
-      set_order: newOrder,
-      set_type: last.set_type,
-      weight_kg: last.weight_kg,
-      reps: last.reps,
-      raw_text: raw,
-      sub_fields: last.sub_fields,
-      notes: last.notes,
-      is_completed: true,
-      feedback: "completed",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      sync_status: "pending",
-    };
+      const newOrder = sets.length + 1;
+      const formalIndex = isWarmupOrActivation(last) ? 0 : exSets.filter((s) => !isWarmupOrActivation(s)).length + 1;
+      const raw = formatSetRawText(
+        formalIndex,
+        last.set_type,
+        last.weight_kg,
+        last.reps,
+        last.sub_fields,
+        last.notes || ""
+      );
 
-    await db.sets.add(newSet);
-    setSets((prev) => [...prev, newSet]);
-    runFullSync().catch(() => {});
+      const newSet: SetItem = {
+        id: `set-${Date.now()}-${newOrder}`,
+        session_id: id,
+        exercise_id: selectedExId,
+        set_order: newOrder,
+        set_type: last.set_type,
+        weight_kg: last.weight_kg,
+        reps: last.reps,
+        raw_text: raw,
+        sub_fields: last.sub_fields,
+        notes: last.notes,
+        is_completed: true,
+        feedback: "completed",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        sync_status: "pending",
+      };
+
+      await db.sets.add(newSet);
+      setSets((prev) => [...prev, newSet]);
+      runFullSync().catch(() => {});
+    } finally {
+      setTimeout(() => {
+        isSavingSetRef.current = false;
+      }, 350);
+    }
   }
 
   // 檢查組數是否已完成
@@ -835,114 +858,132 @@ export default function WorkoutDetailPage({
     return false;
   }
 
-  // 標記/切換單組完成狀態 (一組一組往下做，完成時彈出快速休息氣泡)
+  // 標記/切換單組完成狀態 (一組一組往下做，完成時彈出快速休息氣泡，防抖動快點)
   async function handleToggleSetCompleted(setId: string) {
-    const target = sets.find((s) => s.id === setId);
-    if (!target) return;
+    if (isTogglingSetRef.current[setId]) return;
+    isTogglingSetRef.current[setId] = true;
 
-    const currentStatus = isSetCompleted(target, session?.date);
-    const newStatus = !currentStatus;
+    try {
+      const target = sets.find((s) => s.id === setId);
+      if (!target) return;
 
-    const updated: SetItem = {
-      ...target,
-      is_completed: newStatus,
-      feedback: newStatus
-        ? (target.feedback ? `${target.feedback.replace(/\|?completed/g, "")}|completed` : "completed")
-        : (target.feedback ? target.feedback.replace(/\|?completed/g, "").trim() || undefined : undefined),
-      updated_at: new Date().toISOString(),
-      sync_status: "pending",
-    };
+      const currentStatus = isSetCompleted(target, session?.date);
+      const newStatus = !currentStatus;
 
-    await db.sets.put(updated);
-    setSets((prev) => prev.map((s) => (s.id === setId ? updated : s)));
-    runFullSync().catch(() => {});
+      const updated: SetItem = {
+        ...target,
+        is_completed: newStatus,
+        feedback: newStatus
+          ? (target.feedback ? `${target.feedback.replace(/\|?completed/g, "")}|completed` : "completed")
+          : (target.feedback ? target.feedback.replace(/\|?completed/g, "").trim() || undefined : undefined),
+        updated_at: new Date().toISOString(),
+        sync_status: "pending",
+      };
 
-    // 若剛標記為已完成，檢查是否打破個人紀錄 (PR) 並彈出高光慶祝
-    if (newStatus) {
-      const prDetails = getSetPRDetails(target);
-      if (prDetails.isPR) {
-        const exObj = exercises.find((e) => e.id === target.exercise_id);
-        setPrCelebration({
-          exerciseName: exObj?.name || "此動作",
-          weight: target.weight_kg,
-          reps: target.reps,
-          diffText: prDetails.diffText,
-          prevText: prDetails.prevText,
-        });
+      await db.sets.put(updated);
+      setSets((prev) => prev.map((s) => (s.id === setId ? updated : s)));
+      runFullSync().catch(() => {});
 
-        // 手機震動反饋節奏
-        if (typeof window !== "undefined" && "vibrate" in navigator) {
-          try {
-            navigator.vibrate([100, 60, 150, 60, 300]);
-          } catch {}
+      // 若剛標記為已完成，檢查是否打破個人紀錄 (PR) 並彈出高光慶祝
+      if (newStatus) {
+        const prDetails = getSetPRDetails(target);
+        if (prDetails.isPR) {
+          const exObj = exercises.find((e) => e.id === target.exercise_id);
+          setPrCelebration({
+            exerciseName: exObj?.name || "此動作",
+            weight: target.weight_kg,
+            reps: target.reps,
+            diffText: prDetails.diffText,
+            prevText: prDetails.prevText,
+          });
+
+          // 手機震動反饋節奏
+          if (typeof window !== "undefined" && "vibrate" in navigator) {
+            try {
+              navigator.vibrate([100, 60, 150, 60, 300]);
+            } catch {}
+          }
+
+          if (prCelebrationTimerRef.current) clearTimeout(prCelebrationTimerRef.current);
+          prCelebrationTimerRef.current = setTimeout(() => {
+            setPrCelebration(null);
+          }, 5500);
         }
-
-        if (prCelebrationTimerRef.current) clearTimeout(prCelebrationTimerRef.current);
-        prCelebrationTimerRef.current = setTimeout(() => {
-          setPrCelebration(null);
-        }, 5500);
       }
-    }
 
-    // 若剛標記為已完成，且非游泳訓練，立即彈出快速休息氣泡（5秒不點擊自動隱藏）
-    if (newStatus && session?.target_muscle !== "游泳") {
-      setRestPromptSetId(setId);
-      if (restPromptTimerRef.current) clearTimeout(restPromptTimerRef.current);
-      restPromptTimerRef.current = setTimeout(() => {
-        setRestPromptSetId(null);
-      }, 5000);
-    } else {
-      if (restPromptSetId === setId) setRestPromptSetId(null);
+      // 若剛標記為已完成，且非游泳訓練，立即彈出快速休息氣泡（5秒不點擊自動隱藏）
+      if (newStatus && session?.target_muscle !== "游泳") {
+        setRestPromptSetId(setId);
+        if (restPromptTimerRef.current) clearTimeout(restPromptTimerRef.current);
+        restPromptTimerRef.current = setTimeout(() => {
+          setRestPromptSetId(null);
+        }, 5000);
+      } else {
+        if (restPromptSetId === setId) setRestPromptSetId(null);
+      }
+    } finally {
+      setTimeout(() => {
+        delete isTogglingSetRef.current[setId];
+      }, 300);
     }
   }
 
-  // 快速複製該動作上一組多做一組 (0.5秒極速加組)
+  // 快速複製該動作上一組多做一組 (0.5秒極速加組，防重複快點)
   async function handleAddOneMoreSet(last: SetItem) {
+    if (isSavingSetRef.current) return;
     if (!last) return;
-    const exSets = sets.filter((s) => s.exercise_id === last.exercise_id);
-    const formalIndex = isWarmupOrActivation(last) ? 0 : exSets.filter((s) => !isWarmupOrActivation(s)).length + 1;
-    const raw = formatSetRawText(
-      formalIndex,
-      last.set_type,
-      last.weight_kg,
-      last.reps,
-      last.sub_fields,
-      last.notes || ""
-    );
 
-    const newSet: SetItem = {
-      id: `set-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      session_id: id,
-      exercise_id: last.exercise_id,
-      set_order: last.set_order + 1,
-      set_type: last.set_type,
-      weight_kg: last.weight_kg,
-      reps: last.reps,
-      raw_text: raw,
-      sub_fields: last.sub_fields,
-      notes: last.notes,
-      is_completed: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      sync_status: "pending",
-    };
+    isSavingSetRef.current = true;
+    try {
+      const exSets = sets.filter((s) => s.exercise_id === last.exercise_id);
+      const formalIndex = isWarmupOrActivation(last) ? 0 : exSets.filter((s) => !isWarmupOrActivation(s)).length + 1;
+      const raw = formatSetRawText(
+        formalIndex,
+        last.set_type,
+        last.weight_kg,
+        last.reps,
+        last.sub_fields,
+        last.notes || ""
+      );
 
-    // 插入在該動作最後一組之後，並重新計算全體 set_order
-    const lastIdx = sets.findIndex((s) => s.id === last.id);
-    const newSetsList = [...sets];
-    if (lastIdx !== -1) {
-      newSetsList.splice(lastIdx + 1, 0, newSet);
-    } else {
-      newSetsList.push(newSet);
+      const newSet: SetItem = {
+        id: `set-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        session_id: id,
+        exercise_id: last.exercise_id,
+        set_order: last.set_order + 1,
+        set_type: last.set_type,
+        weight_kg: last.weight_kg,
+        reps: last.reps,
+        raw_text: raw,
+        sub_fields: last.sub_fields,
+        notes: last.notes,
+        is_completed: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        sync_status: "pending",
+      };
+
+      // 插入在該動作最後一組之後，並重新計算全體 set_order
+      const lastIdx = sets.findIndex((s) => s.id === last.id);
+      const newSetsList = [...sets];
+      if (lastIdx !== -1) {
+        newSetsList.splice(lastIdx + 1, 0, newSet);
+      } else {
+        newSetsList.push(newSet);
+      }
+      const reordered = newSetsList.map((s, idx) => ({ ...s, set_order: idx + 1 }));
+
+      await db.transaction("rw", [db.sets], async () => {
+        await db.sets.bulkPut(reordered);
+      });
+
+      setSets(reordered);
+      runFullSync().catch(() => {});
+    } finally {
+      setTimeout(() => {
+        isSavingSetRef.current = false;
+      }, 350);
     }
-    const reordered = newSetsList.map((s, idx) => ({ ...s, set_order: idx + 1 }));
-
-    await db.transaction("rw", [db.sets], async () => {
-      await db.sets.bulkPut(reordered);
-    });
-
-    setSets(reordered);
-    runFullSync().catch(() => {});
   }
 
   // 更換動作順序 (上移 / 下移) - 當健身房器材有人使用時可彈性調換
@@ -2535,16 +2576,58 @@ export default function WorkoutDetailPage({
               </button>
             </div>
 
-            {/* 搜尋欄位 */}
-            <div className="relative">
-              <Search className="w-4 h-4 text-gray-500 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                placeholder="搜尋欲替換之動作名稱..."
-                value={swapSearchQuery}
-                onChange={(e) => setSwapSearchQuery(e.target.value)}
-                className="w-full bg-[#181b26] border border-[#262b3d] rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-gray-500 outline-none focus:border-amber-400"
-              />
+            {/* 搜尋欄位與部位篩選 */}
+            <div className="space-y-2">
+              <div className="relative">
+                <Search className="w-4 h-4 text-gray-500 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="搜尋欲替換之動作名稱..."
+                  value={swapSearchQuery}
+                  onChange={(e) => setSwapSearchQuery(e.target.value)}
+                  className="w-full bg-[#181b26] border border-[#262b3d] rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-gray-500 outline-none focus:border-amber-400"
+                />
+              </div>
+
+              {/* 部位快速篩選膠囊 (方便練腿當天現場切換肩或全部動作) */}
+              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
+                <button
+                  type="button"
+                  onClick={() => setSwapMuscleFilter("default")}
+                  className={`text-[11px] px-2.5 py-1 rounded-lg font-bold shrink-0 transition-all cursor-pointer ${
+                    swapMuscleFilter === "default"
+                      ? "bg-amber-500 text-black shadow-sm font-black"
+                      : "bg-[#181b26] text-gray-400 hover:text-white border border-[#262b3d]"
+                  }`}
+                >
+                  推薦 ({session.target_muscle})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSwapMuscleFilter("all")}
+                  className={`text-[11px] px-2.5 py-1 rounded-lg font-bold shrink-0 transition-all cursor-pointer ${
+                    swapMuscleFilter === "all"
+                      ? "bg-amber-500 text-black shadow-sm font-black"
+                      : "bg-[#181b26] text-gray-400 hover:text-white border border-[#262b3d]"
+                  }`}
+                >
+                  全部
+                </button>
+                {(["胸", "背", "腿", "肩"] as const).map((mg) => (
+                  <button
+                    key={mg}
+                    type="button"
+                    onClick={() => setSwapMuscleFilter(mg)}
+                    className={`text-[11px] px-2.5 py-1 rounded-lg font-bold shrink-0 transition-all cursor-pointer ${
+                      swapMuscleFilter === mg
+                        ? "bg-amber-500 text-black shadow-sm font-black"
+                        : "bg-[#181b26] text-gray-400 hover:text-white border border-[#262b3d]"
+                    }`}
+                  >
+                    {mg}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* 動作清單 */}
@@ -2559,7 +2642,9 @@ export default function WorkoutDetailPage({
                   if (query) {
                     return e.name.toLowerCase().includes(query) || e.muscle_group.toLowerCase().includes(query);
                   }
-                  return e.muscle_group === session.target_muscle;
+                  if (swapMuscleFilter === "all") return true;
+                  if (swapMuscleFilter === "default") return e.muscle_group === session.target_muscle;
+                  return e.muscle_group === swapMuscleFilter;
                 });
 
                 if (available.length === 0) {

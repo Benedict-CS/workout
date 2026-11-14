@@ -1,17 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
 import {
   Download,
   Upload,
-  CheckCircle,
   Database,
   FileText,
   Dumbbell,
-  Timer,
   ChevronRight,
-  RotateCcw,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { exportAllSessionsToMarkdown } from "@/lib/markdown-generator";
@@ -22,25 +19,6 @@ export default function SettingsPage() {
   // 備份還原檔案輸入
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [restoreStatusMsg, setRestoreStatusMsg] = useState<string | null>(null);
-
-  // 預設組間休息時間 (秒)
-  const [defaultRest, setDefaultRest] = useState<number>(150);
-  const [restSaved, setRestSaved] = useState(false);
-
-  useEffect(() => {
-    const savedRest = localStorage.getItem("workout_default_rest");
-    if (savedRest) {
-      const val = parseInt(savedRest, 10);
-      if (!isNaN(val) && val > 0) setDefaultRest(val);
-    }
-  }, []);
-
-  function handleSelectDefaultRest(secs: number) {
-    setDefaultRest(secs);
-    localStorage.setItem("workout_default_rest", secs.toString());
-    setRestSaved(true);
-    setTimeout(() => setRestSaved(false), 2000);
-  }
 
   // 匯出 Markdown 檔案 (.md)
   async function handleExportMarkdown() {
@@ -147,7 +125,7 @@ export default function SettingsPage() {
     <div className="space-y-5 pb-20">
       <div>
         <h1 className="text-xl font-black text-white">設定 & 個人客製化</h1>
-        <p className="text-xs text-gray-400">管理常用動作庫、組間休息偏好、資料備份與還原</p>
+        <p className="text-xs text-gray-400">管理常用動作庫、資料備份與檔案還原</p>
       </div>
 
       {/* 動作庫管理 (置頂，方便現場與平時管理器材動作) */}
@@ -169,48 +147,6 @@ export default function SettingsPage() {
           <span>進入動作庫管理清單</span>
           <ChevronRight className="w-4 h-4" />
         </Link>
-      </section>
-
-      {/* 預設組間休息設定 */}
-      <section className="bg-[#12141c] border border-amber-500/30 rounded-2xl p-4 space-y-3 shadow-lg">
-        <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
-          <div className="flex items-center gap-2">
-            <Timer className="w-5 h-5 text-amber-400" />
-            <h2 className="text-sm font-bold text-gray-100">預設組間休息時長</h2>
-          </div>
-          {restSaved && (
-            <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 animate-in fade-in">
-              <CheckCircle className="w-3 h-3" />
-              <span>已自動儲存</span>
-            </span>
-          )}
-        </div>
-
-        <p className="text-xs text-gray-400 leading-relaxed">
-          訓練時每組完成打勾後，底部浮動計時器將自動以此時長快速啟動倒數。
-        </p>
-
-        <div className="grid grid-cols-4 gap-2">
-          {[
-            { label: "1.5 分", secs: 90 },
-            { label: "2 分", secs: 120 },
-            { label: "2.5 分", secs: 150 },
-            { label: "3 分", secs: 180 },
-          ].map((item) => (
-            <button
-              key={item.secs}
-              type="button"
-              onClick={() => handleSelectDefaultRest(item.secs)}
-              className={`py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                defaultRest === item.secs
-                  ? "bg-amber-500 text-black border-amber-400 font-black shadow-md scale-[1.02]"
-                  : "bg-[#181b26] text-gray-300 hover:text-white border-[#262b3d]"
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
       </section>
 
       {/* Markdown 與備份匯入還原 */}
