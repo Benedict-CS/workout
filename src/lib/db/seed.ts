@@ -389,7 +389,13 @@ export async function ensureDatabaseSeeded(): Promise<void> {
   // 檢查並載入 InBody 里程碑身體組成檢測 (17 次多頻電極實測)
   const inbodyCount = await db.inbody_records.count();
   const hasBogusInbody = (await db.inbody_records.filter((ib) => ib.date === "2026-08-02" || ib.date === "2026-08-21").count()) > 0;
-  const hasOutdatedCondition = (await db.inbody_records.filter((ib) => Boolean(ib.condition_label && (ib.condition_label.includes("穿衣") || ib.condition_label.includes("中午飯後")))).count()) > 0;
+  const hasOutdatedCondition = (await db.inbody_records.filter((ib) => {
+    if (!ib.condition_label) return true;
+    if (ib.condition_label.includes("穿衣") || ib.condition_label.includes("中午飯後")) return true;
+    const [h] = (ib.time || "12:00").split(":").map(Number);
+    if ((h || 0) < 10 && ib.condition_label !== "早晨空腹 (未吃早餐)") return true;
+    return false;
+  }).count()) > 0;
 
   if (inbodyCount < inbodyData.length || hasBogusInbody || hasOutdatedCondition) {
     await db.inbody_records.clear();
@@ -427,14 +433,23 @@ export async function ensureDatabaseSeeded(): Promise<void> {
     await db.sessions.bulkPut(missingCurated);
   }
 
-  // 強制清除本地所有 InBody 舊版「(穿衣)」與未吃/午餐錯誤標籤 (以 13:00 為界)
+  // 強制清除本地所有 InBody 舊版「(穿衣)」與未吃/午餐錯誤標籤 (以 10:00 與 13:00 為界)
   const allIb = await db.inbody_records.toArray();
   for (const ib of allIb) {
     const [h, m] = (ib.time || "12:00").split(":").map(Number);
     const totalM = (h || 0) * 60 + (m || 0);
-    const isBefore = totalM < 13 * 60;
-    const newTiming = isBefore ? "before_lunch" : "after_lunch";
-    const newCond = isBefore ? "午餐前 (僅吃早餐)" : "午餐後 (已吃午餐)";
+    let newTiming: "morning_fasting" | "before_lunch" | "after_lunch";
+    let newCond: string;
+    if (totalM < 10 * 60) {
+      newTiming = "morning_fasting";
+      newCond = "早晨空腹 (未吃早餐)";
+    } else if (totalM < 13 * 60) {
+      newTiming = "before_lunch";
+      newCond = "午餐前 (僅吃早餐)";
+    } else {
+      newTiming = "after_lunch";
+      newCond = "午餐後 (已吃午餐)";
+    }
     if (ib.condition_label !== newCond || ib.timing !== newTiming) {
       await db.inbody_records.update(ib.id, {
         timing: newTiming,

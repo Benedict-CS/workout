@@ -45,6 +45,40 @@ interface MonthBigThreeData {
   total: number;
 }
 
+function getInBodyTimingInfo(timing?: string, timeStr?: string) {
+  let [h, m] = (timeStr || "12:00").split(":").map(Number);
+  if (isNaN(h)) h = 12;
+  const totalM = h * 60 + (m || 0);
+
+  // 10:00 前（如 08:52, 09:09, 09:12）或 timing 為 morning_fasting：早晨空腹 (未吃早餐)
+  if (timing === "morning_fasting" || (!timing && totalM < 10 * 60) || totalM < 10 * 60) {
+    return {
+      timing: "morning_fasting" as const,
+      fullLabel: "早晨空腹 (未吃早餐)",
+      badgeLabel: "早晨空腹",
+      badgeClass: "bg-purple-500/20 text-purple-300 border border-purple-500/40",
+    };
+  }
+
+  // 13:00 後（如 15:28）或 timing 為 after_lunch：午餐後 (已吃午餐)
+  if (timing === "after_lunch" || totalM >= 13 * 60) {
+    return {
+      timing: "after_lunch" as const,
+      fullLabel: "午餐後 (已吃午餐)",
+      badgeLabel: "午餐後",
+      badgeClass: "bg-blue-500/20 text-blue-300 border border-blue-500/40",
+    };
+  }
+
+  // 10:00 ~ 13:00（如 12:xx）：午餐前 (僅吃早餐)
+  return {
+    timing: "before_lunch" as const,
+    fullLabel: "午餐前 (僅吃早餐)",
+    badgeLabel: "午餐前",
+    badgeClass: "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40",
+  };
+}
+
 export default function AnalyticsPage() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -83,7 +117,7 @@ export default function AnalyticsPage() {
   const [newIbSmm, setNewIbSmm] = useState("");
   const [newIbFatPct, setNewIbFatPct] = useState("");
   const [newIbScore, setNewIbScore] = useState("");
-  const [newIbTiming, setNewIbTiming] = useState<"before_lunch" | "after_lunch">("before_lunch");
+  const [newIbTiming, setNewIbTiming] = useState<"morning_fasting" | "before_lunch" | "after_lunch">("morning_fasting");
   const [prReps, setPrReps] = useState({ bench: 5, squat: 8, deadlift: 2 });
 
   useEffect(() => {
@@ -299,8 +333,7 @@ export default function AnalyticsPage() {
     const fatPct = newIbFatPct ? parseFloat(newIbFatPct) : 17.0;
     const score = newIbScore ? parseInt(newIbScore) : 78;
     const fatMass = Math.round(((w * fatPct) / 100) * 10) / 10;
-    const isBefore1PM = newIbTiming === "before_lunch";
-    const condLabel = isBefore1PM ? "午餐前 (僅吃早餐)" : "午餐後 (已吃午餐)";
+    const timingInfo = getInBodyTimingInfo(newIbTiming, newIbTime);
 
     const newRec: InBodyRecord = {
       id: `inbody-${newIbDate}-${newIbTime.replace(":", "")}`,
@@ -311,8 +344,8 @@ export default function AnalyticsPage() {
       body_fat_mass_kg: fatMass,
       body_fat_pct: fatPct,
       inbody_score: score,
-      timing: newIbTiming,
-      condition_label: condLabel,
+      timing: timingInfo.timing,
+      condition_label: timingInfo.fullLabel,
       estimated_net_weight_kg: w,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -381,11 +414,7 @@ export default function AnalyticsPage() {
     : 0;
 
   const inbodyChartData = inbodyList.map((ib) => {
-    const isBefore =
-      ib.timing === "before_lunch" ||
-      ib.timing === "morning" ||
-      (ib.time ? parseInt(ib.time.split(":")[0], 10) < 13 : true);
-    const cond = isBefore ? "午餐前 (僅吃早餐)" : "午餐後 (已吃午餐)";
+    const tInfo = getInBodyTimingInfo(ib.timing, ib.time);
     return {
       date: ib.date.slice(5),
       fullDate: `${ib.date} ${ib.time}`,
@@ -394,8 +423,8 @@ export default function AnalyticsPage() {
       fatMass: ib.body_fat_mass_kg,
       weight: ib.weight_kg,
       score: ib.inbody_score,
-      timing: isBefore ? "before_lunch" : "after_lunch",
-      condition: cond,
+      timing: tInfo.timing,
+      condition: tInfo.fullLabel,
     };
   });
 
@@ -467,7 +496,7 @@ export default function AnalyticsPage() {
               <span className="text-[11px] text-gray-400 block mb-0.5">臥推 PR</span>
               <div className="flex items-baseline justify-center gap-1">
                 <span className="text-base font-black text-red-300">{bigThree.bench_press_kg} kg</span>
-                <span className="text-[10px] text-red-400/90 font-bold">(x{prReps.bench}下)</span>
+                <span className="text-[10px] text-red-400/90 font-bold">(x{prReps.bench})</span>
               </div>
               <span className="text-[10px] text-red-400 font-bold block mt-0.5">
                 {bigThree.body_weight_kg ? (bigThree.bench_press_kg / bigThree.body_weight_kg).toFixed(2) : "-"}x 體重
@@ -478,7 +507,7 @@ export default function AnalyticsPage() {
               <span className="text-[11px] text-gray-400 block mb-0.5">深蹲 PR</span>
               <div className="flex items-baseline justify-center gap-1">
                 <span className="text-base font-black text-emerald-300">{bigThree.squat_kg} kg</span>
-                <span className="text-[10px] text-emerald-400/90 font-bold">(x{prReps.squat}下)</span>
+                <span className="text-[10px] text-emerald-400/90 font-bold">(x{prReps.squat})</span>
               </div>
               <span className="text-[10px] text-emerald-400 font-bold block mt-0.5">
                 {bigThree.body_weight_kg ? (bigThree.squat_kg / bigThree.body_weight_kg).toFixed(2) : "-"}x 體重
@@ -489,7 +518,7 @@ export default function AnalyticsPage() {
               <span className="text-[11px] text-gray-400 block mb-0.5">硬舉 PR</span>
               <div className="flex items-baseline justify-center gap-1">
                 <span className="text-base font-black text-blue-300">{bigThree.deadlift_kg} kg</span>
-                <span className="text-[10px] text-blue-400/90 font-bold">(x{prReps.deadlift}下)</span>
+                <span className="text-[10px] text-blue-400/90 font-bold">(x{prReps.deadlift})</span>
               </div>
               <span className="text-[10px] text-blue-400 font-bold block mt-0.5">
                 {bigThree.body_weight_kg ? (bigThree.deadlift_kg / bigThree.body_weight_kg).toFixed(2) : "-"}x 體重
@@ -502,7 +531,6 @@ export default function AnalyticsPage() {
                 <span className="text-base font-black text-amber-300">
                   {bigThree.bench_press_kg + bigThree.squat_kg + bigThree.deadlift_kg} kg
                 </span>
-                <span className="text-[10px] text-amber-400/80 font-medium">(多下實測)</span>
               </div>
               <span className="text-[10px] text-amber-400 font-bold block mt-0.5">
                 {bigThree.body_weight_kg
@@ -510,10 +538,6 @@ export default function AnalyticsPage() {
                   : "-"}x 體重
               </span>
             </div>
-          </div>
-
-          <div className="pt-1.5 border-t border-[#262b3d]/50 flex items-center justify-between text-[11px] text-gray-400 flex-wrap gap-1">
-            <span>💡 註：PR 標記為實際組數完成次數（非極限 1RM 單下，皆為多下實測重量）</span>
           </div>
         </section>
       )}
@@ -633,7 +657,7 @@ export default function AnalyticsPage() {
             <h2 className="text-sm font-bold text-gray-100">體重追蹤與成長趨勢</h2>
           </div>
           <span className="text-[10px] text-gray-400 bg-[#181b26] px-2 py-0.5 rounded border border-[#262b3d]">
-            晨起空腹未穿衣基準
+            晨起空腹基準
           </span>
         </div>
 
@@ -892,17 +916,14 @@ export default function AnalyticsPage() {
                 <span className="font-mono font-bold text-gray-200">
                   {latestInbody.date} {latestInbody.time}
                 </span>
-                <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    (latestInbody.timing === "before_lunch" || latestInbody.timing === "morning" || (latestInbody.time && parseInt(latestInbody.time.split(":")[0], 10) < 13))
-                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                      : "bg-blue-500/20 text-blue-300 border border-blue-500/40"
-                  }`}
-                >
-                  {(latestInbody.timing === "before_lunch" || latestInbody.timing === "morning" || (latestInbody.time && parseInt(latestInbody.time.split(":")[0], 10) < 13))
-                    ? "午餐前 (僅吃早餐)"
-                    : "午餐後 (已吃午餐)"}
-                </span>
+                {(() => {
+                  const tInfo = getInBodyTimingInfo(latestInbody.timing, latestInbody.time);
+                  return (
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${tInfo.badgeClass}`}>
+                      {tInfo.fullLabel}
+                    </span>
+                  );
+                })()}
               </div>
               <span className="text-[11px] text-gray-400">
                 身體總評分：
@@ -936,9 +957,6 @@ export default function AnalyticsPage() {
                 <span className="text-base font-black text-amber-300">{latestInbody.body_fat_pct}%</span>
                 <span className="text-[10px] text-amber-400/90 font-bold block mt-0.5">
                   {pbfDiff > 0 ? `+${pbfDiff}%` : `${pbfDiff}%`} (首測 {firstInbody?.body_fat_pct || 12.9}% → {latestInbody.body_fat_pct}%)
-                </span>
-                <span className="text-[9px] text-gray-400 block mt-0.5">
-                  體脂重: <span className="text-gray-200 font-bold">{latestInbody.body_fat_mass_kg}</span> kg
                 </span>
               </div>
 
@@ -1103,7 +1121,13 @@ export default function AnalyticsPage() {
                     setNewIbTime(val);
                     const [h, m] = val.split(":").map(Number);
                     const totalM = (h || 0) * 60 + (m || 0);
-                    setNewIbTiming(totalM < 13 * 60 ? "before_lunch" : "after_lunch");
+                    if (totalM < 10 * 60) {
+                      setNewIbTiming("morning_fasting");
+                    } else if (totalM < 13 * 60) {
+                      setNewIbTiming("before_lunch");
+                    } else {
+                      setNewIbTiming("after_lunch");
+                    }
                   }}
                   className="w-full bg-[#12141c] border border-[#262b3d] text-white text-xs rounded-xl px-2.5 py-1.5 outline-none focus:border-emerald-500"
                 />
@@ -1157,12 +1181,23 @@ export default function AnalyticsPage() {
               </div>
 
               <div className="col-span-2">
-                <label className="text-[10px] text-gray-400 block mb-1">量測時段與狀態 (下午 1:00 前為午餐前)</label>
-                <div className="grid grid-cols-2 gap-2">
+                <label className="text-[10px] text-gray-400 block mb-1">量測時段與狀態</label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setNewIbTiming("morning_fasting")}
+                    className={`py-1.5 px-1 rounded-xl text-[11px] font-bold border cursor-pointer transition-colors text-center ${
+                      newIbTiming === "morning_fasting"
+                        ? "bg-purple-500/20 text-purple-300 border-purple-500/50"
+                        : "bg-[#12141c] text-gray-400 border-[#262b3d]"
+                    }`}
+                  >
+                    早晨空腹
+                  </button>
                   <button
                     type="button"
                     onClick={() => setNewIbTiming("before_lunch")}
-                    className={`py-1.5 px-2 rounded-xl text-xs font-bold border cursor-pointer transition-colors ${
+                    className={`py-1.5 px-1 rounded-xl text-[11px] font-bold border cursor-pointer transition-colors text-center ${
                       newIbTiming === "before_lunch"
                         ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
                         : "bg-[#12141c] text-gray-400 border-[#262b3d]"
@@ -1173,7 +1208,7 @@ export default function AnalyticsPage() {
                   <button
                     type="button"
                     onClick={() => setNewIbTiming("after_lunch")}
-                    className={`py-1.5 px-2 rounded-xl text-xs font-bold border cursor-pointer transition-colors ${
+                    className={`py-1.5 px-1 rounded-xl text-[11px] font-bold border cursor-pointer transition-colors text-center ${
                       newIbTiming === "after_lunch"
                         ? "bg-blue-500/20 text-blue-300 border-blue-500/50"
                         : "bg-[#12141c] text-gray-400 border-[#262b3d]"
@@ -1214,11 +1249,7 @@ export default function AnalyticsPage() {
         {showAllInbody && (
           <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1 border-t border-[#262b3d]/40 pt-2">
             {inbodyList.slice().reverse().map((ib) => {
-              const isBefore =
-                ib.timing === "before_lunch" ||
-                ib.timing === "morning" ||
-                (ib.time ? parseInt(ib.time.split(":")[0], 10) < 13 : true);
-              const label = isBefore ? "午餐前" : "午餐後";
+              const tInfo = getInBodyTimingInfo(ib.timing, ib.time);
               return (
                 <div
                   key={ib.id}
@@ -1229,13 +1260,9 @@ export default function AnalyticsPage() {
                       {ib.date} {ib.time}
                     </span>
                     <span
-                      className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                        isBefore
-                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                          : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
-                      }`}
+                      className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${tInfo.badgeClass}`}
                     >
-                      {label}
+                      {tInfo.badgeLabel}
                     </span>
                   </div>
 

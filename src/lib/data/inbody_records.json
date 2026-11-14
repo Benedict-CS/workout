@@ -8,8 +8,8 @@
     "body_fat_mass_kg": 7.8,
     "body_fat_pct": 12.9,
     "inbody_score": 77,
-    "timing": "noon",
-    "condition_label": "中午飯後 (穿衣)",
+    "timing": "after_lunch",
+    "condition_label": "午餐後 (已吃午餐)",
     "estimated_net_weight_kg": 59.6
   },
   {
@@ -21,8 +21,8 @@
     "body_fat_mass_kg": 8.8,
     "body_fat_pct": 14.8,
     "inbody_score": 76,
-    "timing": "noon",
-    "condition_label": "中午飯後 (穿衣)",
+    "timing": "before_lunch",
+    "condition_label": "午餐前 (僅吃早餐)",
     "estimated_net_weight_kg": 58.9
   },
   {
@@ -34,8 +34,8 @@
     "body_fat_mass_kg": 8.9,
     "body_fat_pct": 15.0,
     "inbody_score": 76,
-    "timing": "noon",
-    "condition_label": "中午飯後 (穿衣)",
+    "timing": "before_lunch",
+    "condition_label": "午餐前 (僅吃早餐)",
     "estimated_net_weight_kg": 58.6
   },
   {
@@ -47,8 +47,8 @@
     "body_fat_mass_kg": 9.1,
     "body_fat_pct": 15.4,
     "inbody_score": 75,
-    "timing": "noon",
-    "condition_label": "中午飯後 (穿衣)",
+    "timing": "before_lunch",
+    "condition_label": "午餐前 (僅吃早餐)",
     "estimated_net_weight_kg": 58.3
   },
   {
@@ -60,8 +60,8 @@
     "body_fat_mass_kg": 8.5,
     "body_fat_pct": 14.2,
     "inbody_score": 76,
-    "timing": "morning",
-    "condition_label": "早晨未吃 (穿衣)",
+    "timing": "morning_fasting",
+    "condition_label": "早晨空腹 (未吃早餐)",
     "estimated_net_weight_kg": 59.1
   },
   {
@@ -73,8 +73,8 @@
     "body_fat_mass_kg": 9.1,
     "body_fat_pct": 15.1,
     "inbody_score": 77,
-    "timing": "noon",
-    "condition_label": "中午飯後 (穿衣)",
+    "timing": "before_lunch",
+    "condition_label": "午餐前 (僅吃早餐)",
     "estimated_net_weight_kg": 59.4
   },
   {
@@ -86,8 +86,8 @@
     "body_fat_mass_kg": 9.8,
     "body_fat_pct": 15.9,
     "inbody_score": 78,
-    "timing": "noon",
-    "condition_label": "中午飯後 (穿衣)",
+    "timing": "before_lunch",
+    "condition_label": "午餐前 (僅吃早餐)",
     "estimated_net_weight_kg": 61.1
   },
   {
@@ -99,8 +99,8 @@
     "body_fat_mass_kg": 10.5,
     "body_fat_pct": 16.9,
     "inbody_score": 77,
-    "timing": "noon",
-    "condition_label": "中午飯後 (穿衣)",
+    "timing": "before_lunch",
+    "condition_label": "午餐前 (僅吃早餐)",
     "estimated_net_weight_kg": 61.5
   },
   {
@@ -112,8 +112,8 @@
     "body_fat_mass_kg": 9.9,
     "body_fat_pct": 15.7,
     "inbody_score": 79,
-    "timing": "noon",
-    "condition_label": "中午飯後 (穿衣)",
+    "timing": "before_lunch",
+    "condition_label": "午餐前 (僅吃早餐)",
     "estimated_net_weight_kg": 62.3
   },
   {
@@ -125,8 +125,8 @@
     "body_fat_mass_kg": 10.4,
     "body_fat_pct": 16.3,
     "inbody_score": 78,
-    "timing": "noon",
-    "condition_label": "中午飯後 (穿衣)",
+    "timing": "before_lunch",
+    "condition_label": "午餐前 (僅吃早餐)",
     "estimated_net_weight_kg": 63.0
   },
   {
@@ -138,8 +138,8 @@
     "body_fat_mass_kg": 11.5,
     "body_fat_pct": 17.9,
     "inbody_score": 77,
-    "timing": "noon",
-    "condition_label": "中午飯後 (穿衣)",
+    "timing": "before_lunch",
+    "condition_label": "午餐前 (僅吃早餐)",
     "estimated_net_weight_kg": 63.7
   },
   {
@@ -151,8 +151,8 @@
     "body_fat_mass_kg": 11.1,
     "body_fat_pct": 17.3,
     "inbody_score": 78,
-    "timing": "noon",
-    "condition_label": "中午飯後 (穿衣)",
+    "timing": "before_lunch",
+    "condition_label": "午餐前 (僅吃早餐)",
     "estimated_net_weight_kg": 63.6
   },
   {
@@ -164,8 +164,8 @@
     "body_fat_mass_kg": 11.7,
     "body_fat_pct": 18.2,
     "inbody_score": 76,
-    "timing": "noon",
-    "condition_label": "中午飯後 (穿衣)",
+    "timing": "before_lunch",
+    "condition_label": "午餐前 (僅吃早餐)",
     "estimated_net_weight_kg": 63.8
   },
   {
@@ -177,8 +177,8 @@
     "body_fat_mass_kg": 11.7,
     "body_fat_pct": 18.0,
     "inbody_score": 77,
-    "timing": "noon",
-    "condition_label": "中午飯後 (穿衣)",
+    "timing": "before_lunch",
+    "condition_label": "午餐前 (僅吃早餐)",
     "estimated_net_weight_kg": 64.1
   },
   {
@@ -190,8 +190,8 @@
     "body_fat_mass_kg": 11.6,
     "body_fat_pct": 17.9,
     "inbody_score": 77,
-    "timing": "noon",
-    "condition_label": "中午飯後 (穿衣)",
+    "timing": "before_lunch",
+    "condition_label": "午餐前 (僅吃早餐)",
     "estimated_net_weight_kg": 64.3
   },
   {
@@ -203,8 +203,8 @@
     "body_fat_mass_kg": 11.2,
     "body_fat_pct": 17.5,
     "inbody_score": 77,
-    "timing": "morning",
-    "condition_label": "早晨未吃 (穿衣)",
+    "timing": "morning_fasting",
+    "condition_label": "早晨空腹 (未吃早餐)",
     "estimated_net_weight_kg": 63.5
   },
   {
@@ -216,8 +216,8 @@
     "body_fat_mass_kg": 10.9,
     "body_fat_pct": 17.0,
     "inbody_score": 78,
-    "timing": "morning",
-    "condition_label": "早晨未吃 (穿衣)",
+    "timing": "morning_fasting",
+    "condition_label": "早晨空腹 (未吃早餐)",
     "estimated_net_weight_kg": 63.3
   }
 ]

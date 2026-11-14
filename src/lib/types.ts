@@ -98,8 +98,8 @@ export interface InBodyRecord {
   body_fat_mass_kg: number;   // 體脂肪重 (kg)
   body_fat_pct: number;       // 體脂率 PBF (%)
   inbody_score: number;       // InBody 身體評分
-  timing: "before_lunch" | "after_lunch" | "morning" | "noon"; // 午餐前 (僅吃早餐) / 午餐後 (已吃午餐)
-  condition_label: string;    // "午餐前 (僅吃早餐)" | "午餐後 (已吃午餐)"
+  timing: "morning_fasting" | "before_lunch" | "after_lunch" | "morning" | "noon"; // 早晨空腹 (未吃早餐) / 午餐前 (僅吃早餐) / 午餐後 (已吃午餐)
+  condition_label: string;    // "早晨空腹 (未吃早餐)" | "午餐前 (僅吃早餐)" | "午餐後 (已吃午餐)"
   estimated_net_weight_kg?: number;
   notes?: string;
   created_at?: string;
