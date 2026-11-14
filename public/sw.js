@@ -1,4 +1,4 @@
-const CACHE_NAME = "workout-pwa-v2";
+const CACHE_NAME = "workout-pwa-v3";
 const PRECACHE_URLS = [
   "/",
   "/manifest.json",
@@ -7,6 +7,7 @@ const PRECACHE_URLS = [
   "/icons/apple-touch-icon.png",
   "/icons/favicon-32.png",
   "/exercises",
+  "/workout/new",
   "/history",
   "/analytics",
   "/settings",

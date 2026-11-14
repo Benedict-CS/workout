@@ -334,7 +334,7 @@ export default function HomePage() {
               </span>
             </div>
             <span className="text-[11px] text-gray-400">
-              當月共 {currentGroup?.stats.total || 0} 場訓練 • 可按鍵盤左右鍵 ← → 切換
+              當月共 {currentGroup?.stats.total || 0} 場訓練 <span className="hidden sm:inline">• 可按鍵盤 ← → 切換</span><span className="sm:hidden">• 滑動換月</span>
             </span>
           </div>
 
@@ -355,14 +355,14 @@ export default function HomePage() {
           <section
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
-            className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3.5 shadow-md transition-all"
+            className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-3.5 sm:p-4 space-y-3.5 shadow-md transition-all"
           >
             {/* 該月統計：部位頻率 + 該月 3 項最高重量 (直觀看每個月力量進步) */}
             <div className="grid grid-cols-2 gap-2 text-xs">
               {/* 部位頻率 */}
               <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70 space-y-1">
                 <span className="text-[10px] text-gray-400 font-bold block mb-1">
-                  該月訓練部位頻率
+                  部位頻率
                 </span>
                 <div className={`grid ${(currentGroup.stats["肩"] || 0) > 0 ? "grid-cols-5" : "grid-cols-4"} gap-1 text-center`}>
                   <div>
@@ -393,7 +393,7 @@ export default function HomePage() {
               {/* 該月 3 項最高重量 */}
               <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70 space-y-1">
                 <span className="text-[10px] text-emerald-400 font-bold block mb-1">
-                  該月 3 項最高實測
+                  當月三項最高
                 </span>
                 <div className="grid grid-cols-3 gap-1 text-center">
                   <div>
@@ -470,62 +470,65 @@ export default function HomePage() {
                         if (sel && sel.trim().length > 0) return;
                         toggleExpand(sess.id);
                       }}
-                      className="px-3 py-2.5 flex items-center justify-between text-xs cursor-pointer active:bg-[#202533]"
+                      className="px-3 py-2.5 text-xs cursor-pointer active:bg-[#202533]"
                     >
-                      <div className="flex items-center gap-2 truncate pr-2 min-w-0">
-                        <span className={`px-2 py-0.5 rounded font-black text-[11px] border shrink-0 ${badgeColor}`}>
+                      {/* 主行：部位 badge + 標題 + 展開箭頭 */}
+                      <div className="flex items-start gap-2">
+                        <span className={`px-2 py-0.5 rounded font-black text-[11px] border shrink-0 mt-0.5 ${badgeColor}`}>
                           {sess.target_muscle}
                         </span>
 
                         <span
-                          className="font-bold text-gray-100 hover:text-emerald-400 transition-colors truncate select-text cursor-text"
+                          className="font-bold text-gray-100 hover:text-emerald-400 transition-colors flex-1 min-w-0 break-words select-text cursor-text leading-snug"
                           title="可直接選取複製文字"
                         >
                           {sess.display_title}
                         </span>
 
-                        {/* 一鍵複製標題文字按鈕 */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigator.clipboard.writeText(sess.display_title);
-                            setCopyToast(`已複製標題：${sess.display_title}`);
-                            setTimeout(() => setCopyToast(null), 2000);
-                          }}
-                          className="p-1 text-gray-500 hover:text-emerald-400 hover:bg-[#262b3d] rounded transition-all cursor-pointer shrink-0"
-                          title="一鍵複製此場訓練標題文字"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+                          {/* 一鍵複製標題文字按鈕 */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(sess.display_title);
+                              setCopyToast(`已複製標題：${sess.display_title}`);
+                              setTimeout(() => setCopyToast(null), 2000);
+                            }}
+                            className="p-1 text-gray-500 hover:text-emerald-400 hover:bg-[#262b3d] rounded transition-all cursor-pointer"
+                            title="一鍵複製此場訓練標題文字"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* 刪除按鈕 */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteSession(e, sess)}
+                            className="p-1 text-gray-500 hover:text-red-400 hover:bg-red-950/40 rounded transition-all cursor-pointer"
+                            title="刪除此場訓練"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <ChevronDown
+                            className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${
+                              isExpanded ? "rotate-180 text-emerald-400" : ""
+                            }`}
+                          />
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0 select-none">
+                      {/* 副行：場地 + 組數 */}
+                      <div className="flex items-center gap-2 mt-1 ml-[calc(1.75rem+0.5rem)]">
                         {sess.location && (
-                          <span className="text-[10px] text-gray-400 hidden sm:inline-block">
-                            {sess.location}
+                          <span className="text-[10px] text-gray-400">
+                            📍 {sess.location}
                           </span>
                         )}
-
-                        <span className="text-[11px] bg-[#090a0f] text-gray-400 px-2 py-0.5 rounded border border-[#262b3d]">
+                        <span className="text-[10px] bg-[#090a0f] text-gray-400 px-2 py-0.5 rounded border border-[#262b3d]">
                           {sessSets.length} 組
                         </span>
-
-                        {/* 首頁 title 列直接刪除按鈕 */}
-                        <button
-                          type="button"
-                          onClick={(e) => handleDeleteSession(e, sess)}
-                          className="p-1 text-gray-500 hover:text-red-400 hover:bg-red-950/40 rounded transition-all cursor-pointer shrink-0"
-                          title="刪除此場訓練"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-
-                        <ChevronDown
-                          className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${
-                            isExpanded ? "rotate-180 text-emerald-400" : ""
-                          }`}
-                        />
                       </div>
                     </div>
 
@@ -598,21 +601,21 @@ export default function HomePage() {
                         )}
 
                         {/* 底部操作工具列 */}
-                        <div className="flex items-center justify-between pt-2 border-t border-[#262b3d]/40 text-xs mt-2">
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2.5 border-t border-[#262b3d]/40 text-xs mt-2">
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
                               onClick={(e) => handleCopyMarkdown(e, sess)}
-                              className="flex items-center gap-1.5 text-gray-400 hover:text-emerald-400 py-1 px-2.5 rounded-lg bg-[#181b26] border border-[#262b3d] transition-colors cursor-pointer"
+                              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-gray-400 hover:text-emerald-400 py-1.5 px-2.5 rounded-lg bg-[#181b26] border border-[#262b3d] transition-colors cursor-pointer active:scale-95"
                             >
                               <Copy className="w-3.5 h-3.5" />
-                              <span>複製 Markdown</span>
+                              <span>複製 MD</span>
                             </button>
 
                             <button
                               type="button"
                               onClick={(e) => handleDeleteSession(e, sess)}
-                              className="flex items-center gap-1.5 text-gray-400 hover:text-red-400 py-1 px-2.5 rounded-lg bg-[#181b26] border border-[#262b3d] hover:border-red-500/40 transition-colors cursor-pointer"
+                              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-gray-400 hover:text-red-400 py-1.5 px-2.5 rounded-lg bg-[#181b26] border border-[#262b3d] hover:border-red-500/40 transition-colors cursor-pointer active:scale-95"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                               <span>刪除此場</span>
@@ -621,7 +624,7 @@ export default function HomePage() {
 
                           <Link
                             href={`/workout/${sess.id}`}
-                            className="flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 py-1 px-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 font-bold transition-all active:scale-95"
+                            className="flex items-center justify-center gap-1.5 text-emerald-400 hover:text-emerald-300 py-2 px-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 font-bold transition-all active:scale-95 text-center"
                           >
                             <Pencil className="w-3.5 h-3.5" />
                             <span>進入記錄 / 修改組數</span>

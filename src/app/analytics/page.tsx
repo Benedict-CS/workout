@@ -284,8 +284,8 @@ export default function AnalyticsPage() {
           </span>
         </div>
 
-        {/* 3 大指標卡 (若有體脂數據則並列顯示) */}
-        <div className={`grid ${latestFat !== null ? "grid-cols-4" : "grid-cols-3"} gap-2 text-center`}>
+        {/* 3 大指標卡 (若有體脂數據則並列顯示，手機版 2 欄整齊排列不擠壓) */}
+        <div className={`grid ${latestFat !== null ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"} gap-2 text-center`}>
           <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]/70">
             <span className="text-[10px] text-gray-400 block mb-0.5">起始體重</span>
             <span className="text-base font-black text-gray-200">{startBw}</span>
@@ -299,7 +299,7 @@ export default function AnalyticsPage() {
           </div>
 
           <div className="bg-[#181b26] p-2.5 rounded-xl border border-emerald-500/30">
-            <span className="text-[10px] text-emerald-400 block mb-0.5">體重淨增減</span>
+            <span className="text-[10px] text-emerald-400 block mb-0.5">淨增減</span>
             <span className="text-base font-black text-emerald-300">
               {netDiff > 0 ? `+${netDiff}` : netDiff}
             </span>
@@ -443,15 +443,15 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-gray-500">
-              * 建議固定晨起空腹量測；體脂率可參考趨勢，骨骼肌建議每 1~2 月比對 InBody
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 pt-1">
+            <span className="text-[10px] text-gray-500 leading-tight">
+              * 建議固定晨起空腹量測；體脂率可參考走勢，骨骼肌建議每 1~2 月比對 InBody
             </span>
             <button
               type="button"
               onClick={handleAddBodyWeight}
               disabled={!newWeightValue || bwSaving}
-              className="bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 text-black font-black px-4 py-2 rounded-xl text-xs transition-all flex items-center gap-1 shadow cursor-pointer shrink-0"
+              className="w-full sm:w-auto bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 text-black font-black px-4 py-2 rounded-xl text-xs transition-all flex items-center justify-center gap-1 shadow cursor-pointer shrink-0 active:scale-95"
             >
               <Plus className="w-3.5 h-3.5 stroke-[3]" />
               <span>記錄數據</span>

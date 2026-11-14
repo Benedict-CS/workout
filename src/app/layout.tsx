@@ -32,6 +32,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: "cover",
   themeColor: "#090a0f",
 };
 
@@ -48,8 +49,8 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
       <body className="antialiased bg-[#090a0f] text-gray-100 min-h-screen">
-        {/* 頂部導航列 */}
-        <header className="sticky top-0 z-40 bg-[#090a0f]/80 backdrop-blur-md border-b border-[#262b3d]/60 px-4 py-3 flex items-center justify-between">
+        {/* 頂部導航列 (支援 iOS PWA 瀏海與動態島安全區) */}
+        <header className="sticky top-0 z-40 bg-[#090a0f]/85 backdrop-blur-md border-b border-[#262b3d]/60 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 flex items-center justify-between">
           <Link
             href="/"
             className="flex items-center gap-2 font-black tracking-wider text-xl text-emerald-400 active:scale-95 transition-transform"
@@ -59,8 +60,8 @@ export default function RootLayout({
           </Link>
         </header>
 
-        {/* 主要內容區 (含底部預留高度防遮擋) */}
-        <main className="max-w-xl mx-auto px-4 py-4 pb-24">{children}</main>
+        {/* 主要內容區 (含底部導航與 Safe Area 防遮擋) */}
+        <main className="max-w-xl mx-auto px-3.5 sm:px-4 py-3.5 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]">{children}</main>
 
         {/* 全域浮動休息計時器 (跨頁面持續顯示與一鍵跳回) */}
         <GlobalRestTimer />
@@ -68,8 +69,8 @@ export default function RootLayout({
         {/* 全域背景自動雲端雙向同步 (開 App、回頁面、網路重連均自動同步) */}
         <AutoSyncManager />
 
-        {/* 底部 5 鍵導航 Bar (手機單手操作優化) */}
-        <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#12141c]/95 backdrop-blur-lg border-t border-[#262b3d] px-3 py-2 flex items-center justify-around text-[11px] font-medium text-gray-400">
+        {/* 底部 5 鍵導航 Bar (支援 iPhone Home Bar 安全區域與單手操作) */}
+        <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#12141c]/95 backdrop-blur-lg border-t border-[#262b3d] px-2 sm:px-3 pt-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] flex items-center justify-around text-[11px] font-medium text-gray-400">
           <Link
             href="/"
             className="flex flex-col items-center gap-1 hover:text-emerald-400 active:scale-95 transition-colors p-1"

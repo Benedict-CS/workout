@@ -12,6 +12,8 @@
   --text-muted: #9ca3af;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
 body {
@@ -22,11 +24,46 @@ body {
   min-height: 100dvh;
   padding-top: var(--safe-top);
   padding-bottom: calc(var(--safe-bottom) + 4.5rem);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
   -webkit-tap-highlight-color: transparent;
+  /* 消除 iOS 300ms 點擊延遲 */
+  touch-action: manipulation;
+  /* 防止文字在 iOS 自動縮放 */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* 長字不溢出 */
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
-input, textarea {
+input, textarea, select {
   user-select: auto;
+  /* 表單元素不繼承 manipulation，避免影響輸入 */
+  touch-action: auto;
+}
+
+/* 徹底杜絕 iOS Safari 點擊輸入框自動縮放（小於 16px 會觸發強制 Auto-Zoom 破版） */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+button {
+  /* 所有按鈕消除點擊延遲 */
+  touch-action: manipulation;
+}
+
+/* 隱藏橫向滾動條 (用於動作膠囊列) */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Custom scrollbar for modern feel */

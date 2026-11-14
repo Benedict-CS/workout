@@ -62,36 +62,36 @@ export function PWAInstallBanner() {
   }
 
   return (
-    <div className="bg-gradient-to-r from-emerald-950/90 to-[#12141c] border border-emerald-500/40 rounded-2xl p-3 shadow-xl mb-4 flex items-center justify-between gap-3 text-xs">
-      <div className="flex items-center gap-2.5 min-w-0">
-        <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl shrink-0">
+    <div className="bg-gradient-to-r from-emerald-950/90 to-[#12141c] border border-emerald-500/40 rounded-2xl p-3 shadow-xl mb-4 flex items-start justify-between gap-2.5 text-xs">
+      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+        <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl shrink-0 mt-0.5">
           <Download className="w-4 h-4 stroke-[2.5]" />
         </div>
-        <div className="min-w-0">
-          <div className="font-bold text-white text-xs">安裝 Workout 到手機主畫面</div>
-          <div className="text-[10px] text-gray-400 truncate">
+        <div className="min-w-0 flex-1">
+          <div className="font-bold text-white text-xs leading-tight">安裝 Workout 到手機主畫面</div>
+          <div className="text-[11px] text-gray-300 mt-1 leading-snug break-words">
             {isIOS
-              ? "點擊 Safari 下方「分享」按鈕 ➔「加入主畫面」即可全螢幕秒開"
-              : "離線紀錄、組間震動計時、零延遲極致體驗"}
+              ? "點擊 Safari「分享」按鈕 ➔「加入主畫面」秒開 App"
+              : "離線紀錄、組間震動計時、零延遲雙向同步"}
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5 shrink-0">
+      <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
         {!isIOS && deferredPrompt && (
           <button
             onClick={handleInstallClick}
             className="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black font-black rounded-lg text-xs shadow transition-all active:scale-95"
           >
-            立即安裝
+            安裝
           </button>
         )}
         <button
           onClick={handleDismiss}
-          className="p-1 text-gray-400 hover:text-white rounded-lg"
+          className="p-1 text-gray-400 hover:text-white rounded-lg active:scale-95"
           title="暫時關閉"
         >
-          <X className="w-3.5 h-3.5" />
+          <X className="w-4 h-4" />
         </button>
       </div>
     </div>

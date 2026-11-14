@@ -895,18 +895,19 @@ export default function WorkoutDetailPage({
 
   return (
     <div className="space-y-4 pb-28">
-      {/* 頂部導覽列 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
+      {/* 頂部導覽列 — 手機版改為上下兩列佈局避免擠壓 */}
+      <div className="space-y-2">
+        {/* 第一列：返回 + 標題 */}
+        <div className="flex items-start gap-2.5">
           <Link
             href="/"
-            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] rounded-xl text-gray-300"
+            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] rounded-xl text-gray-300 shrink-0 mt-0.5"
           >
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <div>
-            <h1 className="text-base font-black text-white">{session.display_title}</h1>
-            <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5 relative">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-base font-black text-white leading-tight break-words">{session.display_title}</h1>
+            <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5 relative flex-wrap">
               <span>{session.date}</span>
               <span>•</span>
               <button
@@ -919,7 +920,7 @@ export default function WorkoutDetailPage({
                 <ChevronDown className="w-3 h-3 opacity-60" />
               </button>
 
-              {/* 切換場地下拉 (只可切換三健客、交大健身房、交大游泳池) */}
+              {/* 切換場地下拉 */}
               {showLocationQuickPicker && (
                 <div className="absolute top-6 left-12 z-30 bg-[#12141c] border border-emerald-500/40 rounded-xl p-1.5 shadow-2xl space-y-1 text-xs min-w-[130px]">
                   {LOCATION_OPTIONS.map((loc) => (
@@ -942,11 +943,12 @@ export default function WorkoutDetailPage({
           </div>
         </div>
 
+        {/* 第二列：操作按鈕群 — 均分排列，手機完整顯示 */}
         <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={handleFinishWorkout}
-            className="px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-black rounded-xl text-xs font-black flex items-center gap-1.5 shadow active:scale-95 cursor-pointer"
+            className="flex-1 px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-black rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow active:scale-95 cursor-pointer"
             title="完成本次訓練並返回首頁"
           >
             <Check className="w-4 h-4 stroke-[3]" />
@@ -955,16 +957,15 @@ export default function WorkoutDetailPage({
 
           <button
             onClick={handleCopyMarkdown}
-            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] text-emerald-400 rounded-xl text-xs font-bold flex items-center gap-1"
+            className="p-2.5 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] text-emerald-400 rounded-xl flex items-center gap-1 active:scale-95"
             title="複製 Markdown"
           >
             <Copy className="w-4 h-4" />
-            <span className="hidden sm:inline">複製</span>
           </button>
 
           <button
             onClick={() => setShowMarkdownModal(true)}
-            className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] text-gray-300 rounded-xl"
+            className="p-2.5 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] text-gray-300 rounded-xl active:scale-95"
             title="檢視 Markdown"
           >
             <FileText className="w-4 h-4" />
@@ -972,7 +973,7 @@ export default function WorkoutDetailPage({
 
           <button
             onClick={handleDeleteEntireSession}
-            className="p-2 bg-[#12141c] hover:bg-red-950/40 border border-[#262b3d] text-gray-400 hover:text-red-400 rounded-xl"
+            className="p-2.5 bg-[#12141c] hover:bg-red-950/40 border border-[#262b3d] text-gray-400 hover:text-red-400 rounded-xl active:scale-95"
             title="刪除訓練"
           >
             <Trash2 className="w-4 h-4" />
@@ -987,12 +988,13 @@ export default function WorkoutDetailPage({
         </div>
       )}
 
-      {/* 休息計時器控制列 (重訓專用，手動點擊觸發) */}
+      {/* 休息計時器控制列 (重訓專用，手動點擊觸發) — 手機版自適應換行 */}
       {session.target_muscle !== "游泳" && (
-        <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-3 flex items-center justify-between text-xs shadow-sm">
+        <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-3 text-xs shadow-sm space-y-2">
+          {/* 狀態列 */}
           <div className="flex items-center gap-2">
-            <Timer className={`w-4 h-4 ${timerActive ? "text-amber-400 animate-pulse" : "text-gray-400"}`} />
-            <span className="font-bold text-gray-200">休息計時：</span>
+            <Timer className={`w-4 h-4 shrink-0 ${timerActive ? "text-amber-400 animate-pulse" : "text-gray-400"}`} />
+            <span className="font-bold text-gray-200 shrink-0">休息計時：</span>
             {timerActive && timerSeconds !== null && timerSeconds > 0 ? (
               <span className="text-amber-400 font-mono font-black text-sm animate-pulse">
                 {Math.floor(timerSeconds / 60)}:{(timerSeconds % 60).toString().padStart(2, "0")}
@@ -1004,13 +1006,14 @@ export default function WorkoutDetailPage({
             )}
           </div>
 
+          {/* 按鈕列 — 均分排列，手機不溢出 */}
           <div className="flex items-center gap-1.5">
             {timerActive ? (
               <>
                 <button
                   type="button"
                   onClick={() => addRestSeconds(30)}
-                  className="px-2.5 py-1 bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 rounded-lg text-[11px] font-bold active:scale-95 cursor-pointer"
+                  className="flex-1 py-1.5 bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 rounded-lg text-[11px] font-bold active:scale-95 cursor-pointer text-center"
                   title="延長 30 秒休息"
                 >
                   +30秒
@@ -1018,7 +1021,7 @@ export default function WorkoutDetailPage({
                 <button
                   type="button"
                   onClick={stopRestTimer}
-                  className="px-2 py-1 bg-red-950/30 hover:bg-red-900/50 border border-red-500/30 text-red-300 rounded-lg text-[11px] font-bold flex items-center gap-1 active:scale-95 cursor-pointer"
+                  className="flex-1 py-1.5 bg-red-950/30 hover:bg-red-900/50 border border-red-500/30 text-red-300 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 active:scale-95 cursor-pointer"
                   title="結束休息計時"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -1030,28 +1033,28 @@ export default function WorkoutDetailPage({
                 <button
                   type="button"
                   onClick={() => startRestTimer(90)}
-                  className="px-2 py-1 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-lg text-[11px] font-bold active:scale-95 cursor-pointer"
+                  className="flex-1 py-1.5 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-lg text-[11px] font-bold active:scale-95 cursor-pointer text-center"
                 >
                   1.5分
                 </button>
                 <button
                   type="button"
                   onClick={() => startRestTimer(120)}
-                  className="px-2 py-1 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-lg text-[11px] font-bold active:scale-95 cursor-pointer"
+                  className="flex-1 py-1.5 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-lg text-[11px] font-bold active:scale-95 cursor-pointer text-center"
                 >
                   2分
                 </button>
                 <button
                   type="button"
                   onClick={() => startRestTimer(150)}
-                  className="px-2.5 py-1 bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 rounded-lg text-[11px] font-black active:scale-95 shadow-sm cursor-pointer"
+                  className="flex-1 py-1.5 bg-[#181b26] hover:bg-[#202533] border border-amber-500/40 text-amber-300 rounded-lg text-[11px] font-black active:scale-95 shadow-sm cursor-pointer text-center"
                 >
                   2.5分
                 </button>
                 <button
                   type="button"
                   onClick={() => startRestTimer(180)}
-                  className="px-2 py-1 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-lg text-[11px] font-bold active:scale-95 cursor-pointer"
+                  className="flex-1 py-1.5 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 hover:text-white rounded-lg text-[11px] font-bold active:scale-95 cursor-pointer text-center"
                 >
                   3分
                 </button>
@@ -1078,83 +1081,91 @@ export default function WorkoutDetailPage({
                 key={exercise?.id || "unknown"}
                 className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-2.5 shadow-sm"
               >
-                <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
-                  <div className="flex items-center gap-2">
+                <div className="border-b border-[#262b3d]/60 pb-2 space-y-2">
+                  {/* 第一行：動作序號 + 完整動作名稱 + PR 徽章（100% 完整寬度，永不擠壓、永不切字） */}
+                  <div className="flex items-center gap-2 min-w-0">
                     <span className="text-[11px] font-black bg-[#181b26] text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-lg shrink-0">
                       #{exIdx + 1}
                     </span>
                     <Dumbbell className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <h3 className="font-black text-gray-100 text-sm">{exercise?.name}</h3>
+                    <h3 className="font-black text-gray-100 text-sm break-words flex-1 min-w-0 leading-tight">
+                      {exercise?.name}
+                    </h3>
                     {exSets.some((s) => isSetNewPR(s)) && (
                       <span className="text-[10px] font-black text-amber-300 bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shrink-0 animate-pulse">
                         <span>🔥</span>
-                        <span>破紀錄 PR</span>
+                        <span>PR</span>
                       </span>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-1.5">
+                  {/* 第二行：組數標籤（左） + 操作按鈕群（右），自適應排版 */}
+                  <div className="flex items-center justify-between gap-1.5 text-xs pt-0.5">
                     {/* 組數標籤：區分正式組與熱身組 */}
-                    {(() => {
-                      const warmupCount = exSets.filter((s) => isWarmupOrActivation(s)).length;
-                      const formalCount = exSets.length - warmupCount;
-                      if (warmupCount > 0) {
+                    <div>
+                      {(() => {
+                        const warmupCount = exSets.filter((s) => isWarmupOrActivation(s)).length;
+                        const formalCount = exSets.length - warmupCount;
+                        if (warmupCount > 0) {
+                          return (
+                            <span className="text-xs bg-[#181b26] text-gray-300 px-2 py-0.5 rounded border border-[#262b3d] font-medium">
+                              <span className="text-emerald-400 font-bold">{formalCount}</span> 正式
+                              <span className="text-gray-500 mx-1">•</span>
+                              <span className="text-blue-400 font-bold">{warmupCount}</span> 熱身
+                            </span>
+                          );
+                        }
                         return (
-                          <span className="text-xs bg-[#181b26] text-gray-300 px-2 py-0.5 rounded border border-[#262b3d] font-medium">
-                            <span className="text-emerald-400 font-bold">{formalCount}</span> 正式組
-                            <span className="text-gray-500 mx-1">•</span>
-                            <span className="text-blue-400 font-bold">{warmupCount}</span> 熱身
+                          <span className="text-xs bg-[#181b26] text-gray-400 px-2 py-0.5 rounded border border-[#262b3d]">
+                            {exSets.length} 組
                           </span>
                         );
-                      }
-                      return (
-                        <span className="text-xs bg-[#181b26] text-gray-400 px-2 py-0.5 rounded border border-[#262b3d]">
-                          {exSets.length} 組
-                        </span>
-                      );
-                    })()}
-
-                    {/* 換順序按鈕：當健身器材有人使用時可彈性調換 */}
-                    <div className="flex items-center gap-0.5 bg-[#181b26] p-0.5 rounded-lg border border-[#262b3d]">
-                      <button
-                        type="button"
-                        disabled={exIdx === 0}
-                        onClick={() => handleMoveExercise(exIdx, "up")}
-                        className="p-1 rounded text-gray-400 hover:text-white disabled:opacity-20 hover:bg-[#262b3d] transition-all cursor-pointer disabled:cursor-not-allowed"
-                        title="動作順序上移"
-                      >
-                        <ChevronUp className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={exIdx === setsByExercise.length - 1}
-                        onClick={() => handleMoveExercise(exIdx, "down")}
-                        className="p-1 rounded text-gray-400 hover:text-white disabled:opacity-20 hover:bg-[#262b3d] transition-all cursor-pointer disabled:cursor-not-allowed"
-                        title="動作順序下移"
-                      >
-                        <ChevronDown className="w-3.5 h-3.5" />
-                      </button>
+                      })()}
                     </div>
 
-                    {/* 替換動作按鈕 (現場器材有人用時直接一鍵更換器材/動作，保留組數) */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenSwapModal(exercise)}
-                      className="p-1.5 bg-[#181b26] hover:bg-[#202533] text-gray-400 hover:text-amber-400 rounded-lg border border-[#262b3d] hover:border-amber-500/40 transition-all cursor-pointer"
-                      title={`替換動作【${exercise?.name || "此動作"}】(保留已排組數)`}
-                    >
-                      <Repeat className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {/* 換順序按鈕：當健身器材有人使用時可彈性調換 */}
+                      <div className="flex items-center gap-0.5 bg-[#181b26] p-0.5 rounded-lg border border-[#262b3d]">
+                        <button
+                          type="button"
+                          disabled={exIdx === 0}
+                          onClick={() => handleMoveExercise(exIdx, "up")}
+                          className="p-1 rounded text-gray-400 hover:text-white disabled:opacity-20 hover:bg-[#262b3d] transition-all cursor-pointer disabled:cursor-not-allowed"
+                          title="動作順序上移"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={exIdx === setsByExercise.length - 1}
+                          onClick={() => handleMoveExercise(exIdx, "down")}
+                          className="p-1 rounded text-gray-400 hover:text-white disabled:opacity-20 hover:bg-[#262b3d] transition-all cursor-pointer disabled:cursor-not-allowed"
+                          title="動作順序下移"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
 
-                    {/* 刪除整個動作組按鈕 (一鍵移除此動作與所有組數) */}
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteEntireExercise(exercise?.id, exercise?.name, exSets.length)}
-                      className="p-1.5 bg-[#181b26] hover:bg-red-950/40 text-gray-400 hover:text-red-400 rounded-lg border border-[#262b3d] hover:border-red-500/40 transition-all cursor-pointer"
-                      title={`刪除整個動作【${exercise?.name || "此動作"}】及所有組數`}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                      {/* 替換動作按鈕 (現場器材有人用時直接一鍵更換器材/動作，保留組數) */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSwapModal(exercise)}
+                        className="p-1.5 bg-[#181b26] hover:bg-[#202533] text-gray-400 hover:text-amber-400 rounded-lg border border-[#262b3d] hover:border-amber-500/40 transition-all cursor-pointer"
+                        title={`替換動作【${exercise?.name || "此動作"}】(保留已排組數)`}
+                      >
+                        <Repeat className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* 刪除整個動作組按鈕 (一鍵移除此動作與所有組數) */}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteEntireExercise(exercise?.id, exercise?.name, exSets.length)}
+                        className="p-1.5 bg-[#181b26] hover:bg-red-950/40 text-gray-400 hover:text-red-400 rounded-lg border border-[#262b3d] hover:border-red-500/40 transition-all cursor-pointer"
+                        title={`刪除整個動作【${exercise?.name || "此動作"}】及所有組數`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1173,7 +1184,7 @@ export default function WorkoutDetailPage({
                     return (
                       <div
                         key={s.id}
-                        className={`px-3 py-2.5 rounded-xl border flex items-center justify-between text-xs transition-all ${
+                        className={`px-3 py-2.5 rounded-xl border text-xs transition-all ${
                           isCurrent
                             ? "bg-[#14261f] border-emerald-500 shadow-md shadow-emerald-950/40 ring-1 ring-emerald-500/50"
                             : isDone
@@ -1181,7 +1192,8 @@ export default function WorkoutDetailPage({
                             : "bg-[#181b26] border-[#262b3d]/80"
                         }`}
                       >
-                        <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                        {/* 主行：勾 + 序號 + 重量文字 + 右側按鈕 */}
+                        <div className="flex items-center gap-2 min-w-0">
                           {/* 打勾按鈕 */}
                           <button
                             type="button"
@@ -1198,7 +1210,7 @@ export default function WorkoutDetailPage({
                             <Check className="w-3.5 h-3.5 stroke-[3]" />
                           </button>
 
-                          {/* 序號標記：熱身/激發組顯示藍色標籤 (不佔用正式組序號)，正式組依序由 #1 起算 */}
+                          {/* 序號標記 */}
                           {isWarmup ? (
                             <span
                               className="font-mono text-[10px] font-black px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 shrink-0"
@@ -1215,79 +1227,79 @@ export default function WorkoutDetailPage({
                             </span>
                           )}
 
-                          <span className={`font-bold truncate ${isDone ? "text-gray-400 line-through decoration-emerald-500/50" : isCurrent ? "text-white font-black" : "text-gray-100"}`}>
+                          {/* 重量文字：允許換行，不截斷 */}
+                          <span className={`font-bold flex-1 min-w-0 break-words ${isDone ? "text-gray-400 line-through decoration-emerald-500/50" : isCurrent ? "text-white font-black" : "text-gray-100"}`}>
                             {cleanSetDisplay(s)}
                           </span>
 
-                          {/* 突破個人歷史紀錄 PR 標記 */}
-                          {isSetNewPR(s) && (
-                            <span
-                              className="px-1.5 py-0.5 rounded text-[10px] font-black bg-gradient-to-r from-amber-500/25 to-red-500/25 text-amber-300 border border-amber-500/50 flex items-center gap-0.5 shadow-sm shrink-0 animate-pulse"
-                              title={`突破個人歷史紀錄！(歷史最高：${prMap[s.exercise_id]?.maxWeight}Kg x${prMap[s.exercise_id]?.maxReps}下)`}
-                            >
-                              <span>🔥</span>
-                              <span>新 PR</span>
-                            </span>
-                          )}
-
-                          {/* 緊貼顯示上次做組紀錄 */}
-                          {matchingGhost && (
-                            <span
-                              className={`text-[10px] shrink-0 font-medium ${
-                                isCurrent ? "text-amber-300 font-bold" : "text-gray-500"
-                              }`}
-                              title={`上次此組實測：${cleanSetDisplay(matchingGhost)}`}
-                            >
-                              (上次: {cleanSetDisplay(matchingGhost)})
-                            </span>
-                          )}
-
-                          {isCurrent && (
-                            <span className="bg-emerald-500 text-black text-[10px] font-black px-1.5 py-0.5 rounded-md shrink-0 animate-pulse">
-                              進行中
-                            </span>
-                          )}
-                          {isDone && (
-                            <span className="text-[10px] text-emerald-400 font-bold hidden sm:inline shrink-0">
-                              已完成
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {s.set_type === "drop" && (
-                            <span className="bg-amber-500/20 text-amber-300 text-[10px] px-1.5 py-0.5 rounded font-bold">
-                              遞減
-                            </span>
-                          )}
-
-                          {isCurrent && (
+                          {/* 右側：完成標記（桌機） + 編輯 + 刪除 */}
+                          <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
+                            {isCurrent && (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleSetCompleted(s.id)}
+                                className="hidden sm:flex bg-emerald-500 hover:bg-emerald-400 text-black px-2 py-0.5 rounded-lg text-xs font-black items-center gap-1 cursor-pointer active:scale-95 transition-all shadow"
+                              >
+                                <Check className="w-3 h-3 stroke-[3]" />
+                                <span>完成</span>
+                              </button>
+                            )}
                             <button
-                              type="button"
-                              onClick={() => handleToggleSetCompleted(s.id)}
-                              className="bg-emerald-500 hover:bg-emerald-400 text-black px-2.5 py-1 rounded-lg text-xs font-black flex items-center gap-1 cursor-pointer active:scale-95 transition-all shadow"
+                              onClick={() => handleStartEditSet(s)}
+                              className="text-gray-400 hover:text-amber-400 p-1 sm:p-1.5 rounded-lg hover:bg-[#202533] transition-colors"
+                              title="修改此組"
                             >
-                              <Check className="w-3.5 h-3.5 stroke-[3]" />
-                              <span>完成</span>
+                              <Pencil className="w-3.5 h-3.5" />
                             </button>
-                          )}
-
-                          <button
-                            onClick={() => handleStartEditSet(s)}
-                            className="text-gray-400 hover:text-amber-400 p-1.5 rounded-lg hover:bg-[#202533] transition-colors"
-                            title="修改此組"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-
-                          <button
-                            onClick={() => handleDeleteSet(s.id)}
-                            className="text-gray-400 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-950/30 transition-colors"
-                            title="刪除"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                            <button
+                              onClick={() => handleDeleteSet(s.id)}
+                              className="text-gray-400 hover:text-red-400 p-1 sm:p-1.5 rounded-lg hover:bg-red-950/30 transition-colors"
+                              title="刪除"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
+
+                        {/* 副行：上次紀錄 + PR + 進行中/完成 徽章 — 只有存在時才顯示，避免空白 */}
+                        {(matchingGhost || isSetNewPR(s) || isCurrent || isDone || s.set_type === "drop") && (
+                          <div className="flex items-center gap-1.5 mt-1 ml-8 flex-wrap">
+                            {matchingGhost && (
+                              <span
+                                className={`text-[10px] font-medium ${
+                                  isCurrent ? "text-amber-300 font-bold" : "text-gray-500"
+                                }`}
+                                title={`上次此組實測：${cleanSetDisplay(matchingGhost)}`}
+                              >
+                                上次: {cleanSetDisplay(matchingGhost)}
+                              </span>
+                            )}
+                            {isSetNewPR(s) && (
+                              <span
+                                className="px-1.5 py-0.5 rounded text-[10px] font-black bg-gradient-to-r from-amber-500/25 to-red-500/25 text-amber-300 border border-amber-500/50 flex items-center gap-0.5 shadow-sm animate-pulse"
+                                title={`突破個人歷史紀錄！(歷史最高：${prMap[s.exercise_id]?.maxWeight}Kg x${prMap[s.exercise_id]?.maxReps}下)`}
+                              >
+                                <span>🔥</span>
+                                <span>新 PR</span>
+                              </span>
+                            )}
+                            {s.set_type === "drop" && (
+                              <span className="bg-amber-500/20 text-amber-300 text-[10px] px-1.5 py-0.5 rounded font-bold">
+                                遞減
+                              </span>
+                            )}
+                            {isCurrent && (
+                              <span className="bg-emerald-500 text-black text-[10px] font-black px-1.5 py-0.5 rounded-md animate-pulse">
+                                進行中
+                              </span>
+                            )}
+                            {isDone && (
+                              <span className="text-[10px] text-emerald-400 font-bold">
+                                已完成 ✓
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}

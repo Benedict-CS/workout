@@ -251,7 +251,7 @@ export default function SettingsPage() {
           <span className="text-[10px] text-emerald-400 font-medium">體重自動抓取秤盤量測</span>
         </div>
 
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           <div>
             <label className="text-[10px] text-gray-400 block mb-1">體重 (Kg)</label>
             <input
@@ -362,10 +362,10 @@ export default function SettingsPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <button
             onClick={handleExportMarkdown}
-            className="bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow"
+            className="bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow active:scale-95 cursor-pointer"
           >
             <Download className="w-4 h-4 stroke-[3]" />
             <span>匯出 Markdown 日誌</span>
@@ -373,7 +373,7 @@ export default function SettingsPage() {
 
           <button
             onClick={handleExportBackup}
-            className="bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-200 text-xs font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all"
+            className="bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-200 text-xs font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
           >
             <Database className="w-4 h-4 text-emerald-400" />
             <span>匯出 JSON 備份</span>
