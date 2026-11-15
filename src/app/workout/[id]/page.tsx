@@ -153,13 +153,6 @@ export default function WorkoutDetailPage({
   const [showPlateCalc, setShowPlateCalc] = useState(false);
   const [barWeight, setBarWeight] = useState<number>(20); // 預設 20kg 標準奧槓
 
-  // 快速調節重量數值（最低不小於 0，保留 2 位小數防浮點誤差）
-  function adjustWeightValue(currentStr: string, delta: number): string {
-    const current = parseFloat(currentStr) || 0;
-    const next = Math.max(0, Math.round((current + delta) * 100) / 100);
-    return next === 0 ? "0" : next.toString();
-  }
-
   // 🏋️ 奧運槓槓片速算 (Barbell Plate Calculator)
   function calculateBarbellPlates(totalWeight: number, bar: number = 20) {
     if (totalWeight <= 0) return null;

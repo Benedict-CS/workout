@@ -498,66 +498,89 @@ export async function ensureDatabaseSeeded(): Promise<void> {
   }
 
   // 強制清除本地所有 InBody 舊版「(穿衣)」與未吃/午餐錯誤標籤 (以 10:00 與 13:00 為界)
-  const allIb = await db.inbody_records.toArray();
-  for (const ib of allIb) {
-    const [h, m] = (ib.time || "12:00").split(":").map(Number);
-    const totalM = (h || 0) * 60 + (m || 0);
-    let newTiming: "morning_fasting" | "before_lunch" | "after_lunch";
-    let newCond: string;
-    if (totalM < 10 * 60) {
-      newTiming = "morning_fasting";
-      newCond = "早晨空腹 (未吃早餐)";
-    } else if (totalM < 13 * 60) {
-      newTiming = "before_lunch";
-      newCond = "午餐前 (僅吃早餐)";
-    } else {
-      newTiming = "after_lunch";
-      newCond = "午餐後 (已吃午餐)";
+  try {
+    const allIb = await db.inbody_records.toArray();
+    for (const ib of allIb) {
+      if (!ib) continue;
+      const timeStr = typeof ib.time === "string" ? ib.time : "12:00";
+      const parts = timeStr.split(":");
+      let h = parseInt(parts[0], 10);
+      let m = parseInt(parts[1], 10);
+      if (isNaN(h)) h = 12;
+      if (isNaN(m)) m = 0;
+      const totalM = h * 60 + m;
+
+      let newTiming: "morning_fasting" | "before_lunch" | "after_lunch";
+      let newCond: string;
+      if (totalM < 10 * 60) {
+        newTiming = "morning_fasting";
+        newCond = "早晨空腹 (未吃早餐)";
+      } else if (totalM < 13 * 60) {
+        newTiming = "before_lunch";
+        newCond = "午餐前 (僅吃早餐)";
+      } else {
+        newTiming = "after_lunch";
+        newCond = "午餐後 (已吃午餐)";
+      }
+      if (ib.condition_label !== newCond || ib.timing !== newTiming) {
+        await db.inbody_records.update(ib.id, {
+          timing: newTiming,
+          condition_label: newCond,
+        });
+      }
     }
-    if (ib.condition_label !== newCond || ib.timing !== newTiming) {
-      await db.inbody_records.update(ib.id, {
-        timing: newTiming,
-        condition_label: newCond,
-      });
-    }
+  } catch (err) {
+    console.warn("InBody records sanitization skipped:", err);
   }
 
   // 檢查並徹底清理 11/14 今日訓練組數污染 (若組數大於 21 組，才執行清理)
-  const nov14Sessions = await db.sessions.filter((s) => s.date === "2026-11-14").toArray();
-  for (const sess of nov14Sessions) {
-    const curSets = await db.sets.where("session_id").equals(sess.id).toArray();
-    const isCorrupted = curSets.length > 21;
-    if (isCorrupted) {
-      console.log("Client has corrupted 11/14 sets. Repairing now to exact 21 sets...");
-      await db.sets.where("session_id").equals(sess.id).delete();
-      const updatedCleanSets = CLEAN_NOV14_SETS.map((st) => ({ ...st, session_id: sess.id }));
-      await db.sets.bulkPut(updatedCleanSets as any);
+  try {
+    const nov14Sessions = await db.sessions.filter((s) => s.date === "2026-11-14").toArray();
+    for (const sess of nov14Sessions) {
+      if (!sess) continue;
+      const curSets = await db.sets.where("session_id").equals(sess.id).toArray();
+      const isCorrupted = curSets.length > 21;
+      if (isCorrupted) {
+        console.log("Client has corrupted 11/14 sets. Repairing now to exact 21 sets...");
+        await db.sets.where("session_id").equals(sess.id).delete();
+        const updatedCleanSets = CLEAN_NOV14_SETS.map((st) => ({ ...st, session_id: sess.id }));
+        await db.sets.bulkPut(updatedCleanSets as any);
+      }
+      if (sess.target_muscle !== "腿" || sess.display_title !== "11/14 (腿) - 交大健身房 - 第 10 次") {
+        await db.sessions.update(sess.id, {
+          display_title: "11/14 (腿) - 交大健身房 - 第 10 次",
+          target_muscle: "腿",
+        });
+      }
     }
-    if (sess.target_muscle !== "腿" || sess.display_title !== "11/14 (腿) - 交大健身房 - 第 10 次") {
-      await db.sessions.update(sess.id, {
-        display_title: "11/14 (腿) - 交大健身房 - 第 10 次",
-        target_muscle: "腿",
-      });
-    }
+  } catch (err) {
+    console.warn("Nov 14 session check skipped:", err);
   }
 
   // 檢查並標準化所有訓練場次標題與主要部位 (胸/背/腿/肩/游泳，去除贅字贅詞如「+ 三頭」、「+ 後肩」)
-  const allSessionsToClean = await db.sessions.toArray();
-  for (const s of allSessionsToClean) {
-    let cleanTarget = s.target_muscle;
-    if (s.target_muscle.includes("胸") || s.display_title.includes("胸")) cleanTarget = "胸";
-    else if (s.target_muscle.includes("背") || s.display_title.includes("背")) cleanTarget = "背";
-    else if (s.target_muscle.includes("腿") || s.display_title.includes("腿")) cleanTarget = "腿";
-    else if (s.target_muscle.includes("肩") || s.display_title.includes("肩")) cleanTarget = "肩";
-    else if (s.target_muscle.includes("泳") || s.display_title.includes("泳")) cleanTarget = "游泳";
+  try {
+    const allSessionsToClean = await db.sessions.toArray();
+    for (const s of allSessionsToClean) {
+      if (!s) continue;
+      const rawTarget = s.target_muscle || "";
+      const rawTitle = s.display_title || "";
+      let cleanTarget = rawTarget;
+      if (rawTarget.includes("胸") || rawTitle.includes("胸")) cleanTarget = "胸";
+      else if (rawTarget.includes("背") || rawTitle.includes("背")) cleanTarget = "背";
+      else if (rawTarget.includes("腿") || rawTitle.includes("腿")) cleanTarget = "腿";
+      else if (rawTarget.includes("肩") || rawTitle.includes("肩")) cleanTarget = "肩";
+      else if (rawTarget.includes("泳") || rawTitle.includes("泳")) cleanTarget = "游泳";
 
-    const cleanTitle = s.display_title.replace(/\(([^)]+)\)/, `(${cleanTarget})`);
-    if (cleanTitle !== s.display_title || cleanTarget !== s.target_muscle) {
-      await db.sessions.update(s.id, {
-        display_title: cleanTitle,
-        target_muscle: cleanTarget,
-      });
+      const cleanTitle = rawTitle.includes("(") ? rawTitle.replace(/\(([^)]+)\)/, `(${cleanTarget})`) : rawTitle;
+      if (cleanTitle !== s.display_title || cleanTarget !== s.target_muscle) {
+        await db.sessions.update(s.id, {
+          display_title: cleanTitle,
+          target_muscle: cleanTarget,
+        });
+      }
     }
+  } catch (err) {
+    console.warn("Session title normalization skipped:", err);
   }
 
   // 嘗試在背景與 Supabase 雙向同步 (確保手機與電腦資料一致)

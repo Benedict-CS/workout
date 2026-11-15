@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import type { BigThreeRecord } from "@/lib/types";
 
 interface MonthData {
   monthKey: string;
@@ -18,18 +17,31 @@ interface MonthData {
 export function MonthlyTrendSvgChart({ data }: { data: MonthData[] }) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
-  if (!data || data.length === 0) {
+  const validData = useMemo(() => {
+    if (!Array.isArray(data)) return [];
+    return data.filter(
+      (d) =>
+        d &&
+        typeof d === "object" &&
+        typeof d.monthLabel === "string"
+    );
+  }, [data]);
+
+  if (validData.length === 0) {
     return (
-      <div className="h-56 flex items-center justify-center text-xs text-gray-500">
+      <div className="h-56 flex items-center justify-center text-xs text-gray-500 bg-[#141620] rounded-xl border border-[#262b3d]/50">
         尚無三項訓練紀錄
       </div>
     );
   }
 
   // 計算數值極值以映射 Y 軸
-  const allVals = data.flatMap((d) => [d.bench, d.squat, d.deadlift]).filter((v) => v > 0);
+  const allVals = validData
+    .flatMap((d) => [Number(d.bench) || 0, Number(d.squat) || 0, Number(d.deadlift) || 0])
+    .filter((v) => v > 0);
   const minVal = 0;
-  const maxVal = Math.ceil((Math.max(...allVals, 100) + 10) / 10) * 10;
+  const maxRaw = allVals.length > 0 ? Math.max(...allVals) : 90;
+  const maxVal = Math.max(60, Math.ceil((maxRaw + 10) / 10) * 10);
 
   const width = 500;
   const height = 220;
@@ -38,29 +50,50 @@ export function MonthlyTrendSvgChart({ data }: { data: MonthData[] }) {
   const padTop = 20;
   const padBottom = 30;
 
-  const plotW = width - padLeft - padRight;
-  const plotH = height - padTop - padBottom;
+  const plotW = Math.max(10, width - padLeft - padRight);
+  const plotH = Math.max(10, height - padTop - padBottom);
 
   const getX = (idx: number) => {
-    if (data.length <= 1) return padLeft + plotW / 2;
-    return padLeft + (idx / (data.length - 1)) * plotW;
+    if (validData.length <= 1) return padLeft + plotW / 2;
+    const x = padLeft + (idx / (validData.length - 1)) * plotW;
+    return isFinite(x) ? Math.round(x * 10) / 10 : padLeft;
   };
 
-  const getY = (val: number) => {
-    if (maxVal === minVal) return padTop + plotH / 2;
-    const ratio = (val - minVal) / (maxVal - minVal);
-    return padTop + plotH - ratio * plotH;
+  const getY = (rawVal: any) => {
+    const val = Number(rawVal) || 0;
+    const range = maxVal - minVal;
+    if (range <= 0 || !isFinite(range)) return padTop + plotH / 2;
+    const ratio = Math.max(0, Math.min(1, (val - minVal) / range));
+    const y = padTop + plotH - ratio * plotH;
+    return isFinite(y) ? Math.round(y * 10) / 10 : padTop + plotH / 2;
   };
 
-  // 生成折線路徑
-  const benchPoints = data.map((d, i) => `${getX(i)},${getY(d.bench)}`).join(" ");
-  const squatPoints = data.map((d, i) => `${getX(i)},${getY(d.squat)}`).join(" ");
-  const deadPoints = data.map((d, i) => `${getX(i)},${getY(d.deadlift)}`).join(" ");
+  // 生成折線路徑 (濾除非數值座標)
+  const benchPoints = validData
+    .map((d, i) => `${getX(i)},${getY(d.bench)}`)
+    .filter((pt) => !pt.includes("NaN"))
+    .join(" ");
+  const squatPoints = validData
+    .map((d, i) => `${getX(i)},${getY(d.squat)}`)
+    .filter((pt) => !pt.includes("NaN"))
+    .join(" ");
+  const deadPoints = validData
+    .map((d, i) => `${getX(i)},${getY(d.deadlift)}`)
+    .filter((pt) => !pt.includes("NaN"))
+    .join(" ");
 
   // Y 軸刻度 (4 等分)
-  const yTicks = [0, Math.round(maxVal * 0.33), Math.round(maxVal * 0.66), maxVal];
+  const yTicks = [
+    0,
+    Math.round(maxVal * 0.33),
+    Math.round(maxVal * 0.66),
+    maxVal,
+  ];
 
-  const activeData = hoverIndex !== null ? data[hoverIndex] : data[data.length - 1];
+  const activeData =
+    hoverIndex !== null && hoverIndex >= 0 && hoverIndex < validData.length
+      ? validData[hoverIndex]
+      : validData[validData.length - 1];
 
   return (
     <div className="space-y-2 relative select-none">
@@ -99,11 +132,11 @@ export function MonthlyTrendSvgChart({ data }: { data: MonthData[] }) {
           })}
 
           {/* X 軸刻度文字 */}
-          {data.map((d, i) => {
+          {validData.map((d, i) => {
             const x = getX(i);
             return (
               <text
-                key={d.monthKey}
+                key={d.monthKey || i}
                 x={x}
                 y={height - 8}
                 textAnchor="middle"
@@ -130,79 +163,99 @@ export function MonthlyTrendSvgChart({ data }: { data: MonthData[] }) {
           )}
 
           {/* 臥推線 (紅色) */}
-          <polyline
-            fill="none"
-            stroke="#f87171"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            points={benchPoints}
-          />
+          {benchPoints && (
+            <polyline
+              fill="none"
+              stroke="#f87171"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              points={benchPoints}
+            />
+          )}
 
           {/* 深蹲線 (綠色) */}
-          <polyline
-            fill="none"
-            stroke="#10b981"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            points={squatPoints}
-          />
+          {squatPoints && (
+            <polyline
+              fill="none"
+              stroke="#10b981"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              points={squatPoints}
+            />
+          )}
 
           {/* 硬舉線 (藍色) */}
-          <polyline
-            fill="none"
-            stroke="#60a5fa"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            points={deadPoints}
-          />
+          {deadPoints && (
+            <polyline
+              fill="none"
+              stroke="#60a5fa"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              points={deadPoints}
+            />
+          )}
 
           {/* 數據節點圓點 */}
-          {data.map((d, i) => (
-            <g key={i}>
-              {/* 臥推點 */}
-              <circle
-                cx={getX(i)}
-                cy={getY(d.bench)}
-                r={hoverIndex === i ? 5 : 3.5}
-                fill="#f87171"
-                stroke="#12141c"
-                strokeWidth="1.5"
-              />
-              {/* 深蹲點 */}
-              <circle
-                cx={getX(i)}
-                cy={getY(d.squat)}
-                r={hoverIndex === i ? 5 : 3.5}
-                fill="#10b981"
-                stroke="#12141c"
-                strokeWidth="1.5"
-              />
-              {/* 硬舉點 */}
-              <circle
-                cx={getX(i)}
-                cy={getY(d.deadlift)}
-                r={hoverIndex === i ? 5 : 3.5}
-                fill="#60a5fa"
-                stroke="#12141c"
-                strokeWidth="1.5"
-              />
+          {validData.map((d, i) => {
+            const x = getX(i);
+            const bY = getY(d.bench);
+            const sY = getY(d.squat);
+            const dY = getY(d.deadlift);
+            const colW = Math.max(14, plotW / validData.length);
 
-              {/* 互動透明覆蓋點 (方便觸控與滑鼠懸停) */}
-              <rect
-                x={getX(i) - plotW / (data.length * 2)}
-                y={padTop}
-                width={plotW / data.length}
-                height={plotH}
-                fill="transparent"
-                className="cursor-pointer"
-                onMouseEnter={() => setHoverIndex(i)}
-                onTouchStart={() => setHoverIndex(i)}
-              />
-            </g>
-          ))}
+            return (
+              <g key={i}>
+                {/* 臥推點 */}
+                {d.bench > 0 && (
+                  <circle
+                    cx={x}
+                    cy={bY}
+                    r={hoverIndex === i ? 5 : 3.5}
+                    fill="#f87171"
+                    stroke="#12141c"
+                    strokeWidth="1.5"
+                  />
+                )}
+                {/* 深蹲點 */}
+                {d.squat > 0 && (
+                  <circle
+                    cx={x}
+                    cy={sY}
+                    r={hoverIndex === i ? 5 : 3.5}
+                    fill="#10b981"
+                    stroke="#12141c"
+                    strokeWidth="1.5"
+                  />
+                )}
+                {/* 硬舉點 */}
+                {d.deadlift > 0 && (
+                  <circle
+                    cx={x}
+                    cy={dY}
+                    r={hoverIndex === i ? 5 : 3.5}
+                    fill="#60a5fa"
+                    stroke="#12141c"
+                    strokeWidth="1.5"
+                  />
+                )}
+
+                {/* 互動透明覆蓋點 (方便觸控與滑鼠懸停) */}
+                <rect
+                  x={x - colW / 2}
+                  y={padTop}
+                  width={colW}
+                  height={plotH}
+                  fill="transparent"
+                  className="cursor-pointer"
+                  onMouseEnter={() => setHoverIndex(i)}
+                  onTouchStart={() => setHoverIndex(i)}
+                />
+              </g>
+            );
+          })}
         </svg>
       </div>
 
@@ -236,7 +289,7 @@ export function MonthlyTrendSvgChart({ data }: { data: MonthData[] }) {
 // -------------------------------------------------------------
 // 2. 單一趨勢線原生 SVG 圖表 (體重 / 體脂走勢 / InBody)
 // -------------------------------------------------------------
-interface SingleSeriesPoint {
+export interface SingleSeriesPoint {
   date: string;
   fullDate: string;
   value: number;
@@ -256,14 +309,20 @@ export function SingleMetricSvgChart({
 }) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
-  const validData = useMemo(
-    () => data.filter((d) => typeof d.value === "number" && !isNaN(d.value) && isFinite(d.value)),
-    [data]
-  );
+  const validData = useMemo(() => {
+    if (!Array.isArray(data)) return [];
+    return data
+      .filter((d) => d && typeof d.value === "number" && !isNaN(d.value) && isFinite(d.value))
+      .map((d) => ({
+        ...d,
+        date: String(d.date || ""),
+        fullDate: String(d.fullDate || d.date || ""),
+      }));
+  }, [data]);
 
   if (validData.length === 0) {
     return (
-      <div className="h-44 flex items-center justify-center text-xs text-gray-500">
+      <div className="h-44 flex items-center justify-center text-xs text-gray-500 bg-[#141620] rounded-xl border border-[#262b3d]/50">
         尚無足夠數據繪製趨勢圖
       </div>
     );
@@ -280,27 +339,36 @@ export function SingleMetricSvgChart({
   const padTop = 15;
   const padBottom = 25;
 
-  const plotW = width - padLeft - padRight;
-  const plotH = height - padTop - padBottom;
+  const plotW = Math.max(10, width - padLeft - padRight);
+  const plotH = Math.max(10, height - padTop - padBottom);
 
   const getX = (idx: number) => {
     if (validData.length <= 1) return padLeft + plotW / 2;
-    return padLeft + (idx / (validData.length - 1)) * plotW;
+    const x = padLeft + (idx / (validData.length - 1)) * plotW;
+    return isFinite(x) ? Math.round(x * 10) / 10 : padLeft;
   };
 
-  const getY = (val: number) => {
-    if (maxVal === minVal) return padTop + plotH / 2;
-    const ratio = (val - minVal) / (maxVal - minVal);
-    return padTop + plotH - ratio * plotH;
+  const getY = (rawVal: number) => {
+    const val = Number(rawVal);
+    if (!isFinite(val)) return padTop + plotH / 2;
+    const range = maxVal - minVal;
+    if (range <= 0 || !isFinite(range)) return padTop + plotH / 2;
+    const ratio = Math.max(0, Math.min(1, (val - minVal) / range));
+    const y = padTop + plotH - ratio * plotH;
+    return isFinite(y) ? Math.round(y * 10) / 10 : padTop + plotH / 2;
   };
 
-  const pointsStr = validData.map((d, i) => `${getX(i)},${getY(d.value)}`).join(" ");
+  const pointList = validData.map((d, i) => `${getX(i)},${getY(d.value)}`);
+  const pointsStr = pointList.join(" ");
 
   // 面積填充漸層路徑
   const firstX = getX(0);
   const lastX = getX(validData.length - 1);
   const bottomY = height - padBottom;
-  const areaPath = `M ${firstX},${bottomY} L ${pointsStr.replace(/ /g, " L ")} L ${lastX},${bottomY} Z`;
+  const areaPath =
+    validData.length > 0 && pointsStr
+      ? `M ${firstX},${bottomY} L ${pointList.join(" L ")} L ${lastX},${bottomY} Z`
+      : "";
 
   const yTicks = [
     minVal,
@@ -308,7 +376,12 @@ export function SingleMetricSvgChart({
     maxVal,
   ];
 
-  const activeItem = hoverIndex !== null ? validData[hoverIndex] : validData[validData.length - 1];
+  const activeItem =
+    hoverIndex !== null && hoverIndex >= 0 && hoverIndex < validData.length
+      ? validData[hoverIndex]
+      : validData[validData.length - 1];
+
+  const colWidth = Math.max(10, plotW / validData.length);
 
   return (
     <div className="space-y-1.5 relative select-none">
@@ -319,7 +392,7 @@ export function SingleMetricSvgChart({
           onMouseLeave={() => setHoverIndex(null)}
         >
           <defs>
-            <linearGradient id={`grad-${color.replace("#", "")}`} x1="0%" y1="0%" x2="0%" y2="100%">
+            <linearGradient id={`grad-${color.replace(/[^a-zA-Z0-9]/g, "")}`} x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor={color} stopOpacity="0.25" />
               <stop offset="100%" stopColor={color} stopOpacity="0.0" />
             </linearGradient>
@@ -398,17 +471,21 @@ export function SingleMetricSvgChart({
           )}
 
           {/* 面積微光 */}
-          <path d={areaPath} fill={`url(#grad-${color.replace("#", "")})`} />
+          {areaPath && (
+            <path d={areaPath} fill={`url(#grad-${color.replace(/[^a-zA-Z0-9]/g, "")})`} />
+          )}
 
           {/* 折線 */}
-          <polyline
-            fill="none"
-            stroke={color}
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            points={pointsStr}
-          />
+          {pointsStr && (
+            <polyline
+              fill="none"
+              stroke={color}
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              points={pointsStr}
+            />
+          )}
 
           {/* 數據節點圓點 */}
           {validData.map((d, i) => (
@@ -422,9 +499,9 @@ export function SingleMetricSvgChart({
                 strokeWidth="1"
               />
               <rect
-                x={getX(i) - (plotW / validData.length) / 2}
+                x={getX(i) - colWidth / 2}
                 y={padTop}
-                width={Math.max(10, plotW / validData.length)}
+                width={colWidth}
                 height={plotH}
                 fill="transparent"
                 className="cursor-pointer"
