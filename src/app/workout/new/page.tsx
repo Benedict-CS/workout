@@ -1,15 +1,19 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
+  ArrowRight,
   Check,
   Calendar,
   Dumbbell,
   MapPin,
   Copy,
+  Sparkles,
+  Layers,
+  AlertTriangle,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { getPreviousSessionTemplate } from "@/lib/db/crud";
@@ -17,19 +21,51 @@ import { runFullSync } from "@/lib/db/sync";
 import { cleanSessionTitle } from "@/lib/workout-utils";
 import type { WorkoutSession, SetItem, Exercise } from "@/lib/types";
 
+// 地點膠囊預設
 const LOCATION_PRESETS = [
-  "三健客",
-  "交大健身房",
-  "交大游泳池",
-];
+  { id: "三健客", label: "三健客", icon: "📍" },
+  { id: "交大健身房", label: "交大健身房", icon: "🏫" },
+  { id: "交大游泳池", label: "交大游泳池", icon: "🏊" },
+] as const;
 
+// 部位膠囊預設及專屬主題發光色 (胸藍、背綠、腿紫、肩橘、泳青)
 const MUSCLE_PRESETS = [
-  "胸",
-  "背",
-  "腿",
-  "肩",
-  "游泳",
-];
+  {
+    id: "胸",
+    label: "胸",
+    icon: "🔥",
+    activeClass:
+      "bg-blue-500/15 border-blue-500/80 text-blue-300 shadow-[0_0_16px_rgba(59,130,246,0.4)] ring-1 ring-blue-500/50",
+  },
+  {
+    id: "背",
+    label: "背",
+    icon: "⚡",
+    activeClass:
+      "bg-emerald-500/15 border-emerald-500/80 text-emerald-300 shadow-[0_0_16px_rgba(16,185,129,0.4)] ring-1 ring-emerald-500/50",
+  },
+  {
+    id: "腿",
+    label: "腿",
+    icon: "🦵",
+    activeClass:
+      "bg-purple-500/15 border-purple-500/80 text-purple-300 shadow-[0_0_16px_rgba(168,85,247,0.4)] ring-1 ring-purple-500/50",
+  },
+  {
+    id: "肩",
+    label: "肩",
+    icon: "🎯",
+    activeClass:
+      "bg-orange-500/15 border-orange-500/80 text-orange-300 shadow-[0_0_16px_rgba(249,115,22,0.4)] ring-1 ring-orange-500/50",
+  },
+  {
+    id: "游泳",
+    label: "游泳",
+    icon: "🏊",
+    activeClass:
+      "bg-cyan-500/15 border-cyan-400/80 text-cyan-300 shadow-[0_0_16px_rgba(6,182,212,0.4)] ring-1 ring-cyan-400/50",
+  },
+] as const;
 
 function NewWorkoutForm() {
   const router = useRouter();
@@ -37,8 +73,8 @@ function NewWorkoutForm() {
   const todayStr = new Date().toISOString().split("T")[0];
 
   const [date, setDate] = useState(todayStr);
-  const [targetMuscle, setTargetMuscle] = useState("胸");
-  const [location, setLocation] = useState("三健客");
+  const [targetMuscle, setTargetMuscle] = useState<string>("胸");
+  const [location, setLocation] = useState<string>("三健客");
 
   // 游泳專用時段與備註
   const [swimTimeSlot, setSwimTimeSlot] = useState<"早上" | "下午" | "晚上" | "全天">("下午");
@@ -63,6 +99,8 @@ function NewWorkoutForm() {
       .then((list) => {
         if (list.length > 0) {
           setExistingActiveSession(list[list.length - 1]);
+        } else {
+          setExistingActiveSession(null);
         }
       })
       .catch(() => {});
@@ -87,15 +125,6 @@ function NewWorkoutForm() {
       }
     }
   }, [searchParams]);
-
-  // 當選擇部位為游泳時，自動切換至交大游泳池；反之若原本是交大游泳池切到重訓，自動切回三健客
-  useEffect(() => {
-    if (targetMuscle === "游泳" && location !== "交大游泳池") {
-      setLocation("交大游泳池");
-    } else if (targetMuscle !== "游泳" && location === "交大游泳池") {
-      setLocation("三健客");
-    }
-  }, [targetMuscle]);
 
   // 載入所有動作名稱快照
   useEffect(() => {
@@ -124,6 +153,71 @@ function NewWorkoutForm() {
     }
     checkPrev();
   }, [targetMuscle]);
+
+  // 地點膠囊點擊切換邏輯
+  function handleLocationSelect(locId: string) {
+    setLocation(locId);
+    if (locId === "交大游泳池" && targetMuscle !== "游泳") {
+      setTargetMuscle("游泳");
+    } else if (locId !== "交大游泳池" && targetMuscle === "游泳") {
+      setTargetMuscle("胸");
+    }
+  }
+
+  // 部位膠囊點擊切換邏輯
+  function handleMuscleSelect(muscleId: string) {
+    setTargetMuscle(muscleId);
+    if (muscleId === "游泳" && location !== "交大游泳池") {
+      setLocation("交大游泳池");
+    } else if (muscleId !== "游泳" && location === "交大游泳池") {
+      setLocation("三健客");
+    }
+  }
+
+  // 結束舊場次並開新訓練
+  async function handleEndExistingAndStartNew() {
+    if (!existingActiveSession) return;
+    const confirmed = window.confirm(
+      `確定要結束進行中的【${existingActiveSession.target_muscle}】訓練，並在此開新場次嗎？`
+    );
+    if (!confirmed) return;
+
+    try {
+      await db.sessions.update(existingActiveSession.id, {
+        status: "completed",
+        updated_at: new Date().toISOString(),
+        sync_status: "pending",
+      });
+
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("active_workout_session_id");
+        localStorage.removeItem("active_workout_session_title");
+        window.dispatchEvent(new Event("workout_session_update"));
+      }
+
+      setExistingActiveSession(null);
+      runFullSync().catch(() => {});
+    } catch (err) {
+      console.error("結束舊訓練失敗:", err);
+    }
+  }
+
+  // 整理複製上次菜單的動作與組數結構
+  const groupedTemplateExercises = useMemo(() => {
+    if (!prevTemplate) return [];
+    const setsByExercise = new Map<string, SetItem[]>();
+    for (const set of prevTemplate.sets) {
+      const list = setsByExercise.get(set.exercise_id) || [];
+      list.push(set);
+      setsByExercise.set(set.exercise_id, list);
+    }
+
+    return prevTemplate.exerciseIds.map((exId) => ({
+      exerciseId: exId,
+      exercise: exercisesMap[exId],
+      sets: setsByExercise.get(exId) || [],
+    }));
+  }, [prevTemplate, exercisesMap]);
 
   async function handleCreate() {
     if (isSubmitting) return;
@@ -272,55 +366,83 @@ function NewWorkoutForm() {
   }
 
   return (
-    <div className="space-y-5 max-w-md mx-auto pt-2 pb-16">
+    <div className="space-y-5 max-w-md mx-auto pt-1 pb-16">
+      {/* 頂部標題 */}
       <div className="flex items-center gap-3">
         <Link
           href="/"
-          className="p-2 bg-[#12141c] hover:bg-[#181b26] border border-[#262b3d] rounded-xl text-gray-300"
+          className="p-2 bg-[#121520] hover:bg-[#181b26] border border-[#262b3d] rounded-xl text-gray-300 transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <div>
-          <h1 className="text-lg font-black text-white">開新訓練</h1>
+          <h1 className="text-lg font-black text-white flex items-center gap-2">
+            <span>開新訓練</span>
+            <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+              NEW SESSION
+            </span>
+          </h1>
           <p className="text-xs text-gray-400">快速選擇部位與場地，即刻開始記錄</p>
         </div>
       </div>
 
-      {/* ⚠️ 若已有進行中訓練，顯示醒目防呆跳轉卡片 */}
+      {/* ⚡ 進行中訓練防呆提醒橫幅 (醒目脈衝光暈) */}
       {existingActiveSession && (
-        <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-2xl p-4 shadow-xl space-y-2.5 animate-in fade-in">
+        <div className="relative overflow-hidden bg-gradient-to-r from-amber-500/15 via-[#121520] to-amber-500/10 border-2 border-amber-500/60 rounded-2xl p-4 shadow-[0_0_25px_rgba(245,158,11,0.25)] space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
-              <span className="text-xs font-black text-amber-300 uppercase tracking-wider">
-                提醒：您目前有尚未結束的訓練
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+              </span>
+              <span className="text-xs font-black text-amber-300 uppercase tracking-wider flex items-center gap-1">
+                <span>⚡</span>
+                <span>進行中訓練防呆提醒</span>
               </span>
             </div>
-            <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-black">
+            <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/50 px-2 py-0.5 rounded-full font-black animate-pulse">
               LIVE 進行中
             </span>
           </div>
 
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <h4 className="text-white font-bold text-sm truncate">
-                {cleanSessionTitle(existingActiveSession.display_title, existingActiveSession.target_muscle)}
-              </h4>
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                日期：{existingActiveSession.date} • {existingActiveSession.location}
-              </p>
-            </div>
+          <div>
+            <h3 className="text-sm sm:text-base font-black text-white leading-snug">
+              ⚡ 您目前有一場進行中的訓練：【{existingActiveSession.target_muscle}】(
+              {existingActiveSession.location || "未指定地點"})，是否直接返回？
+            </h3>
+            <p className="text-xs text-gray-400 mt-1 flex items-center gap-2">
+              <span>📅 日期：{existingActiveSession.date}</span>
+              <span>•</span>
+              <span className="truncate max-w-[200px]">
+                {cleanSessionTitle(
+                  existingActiveSession.display_title,
+                  existingActiveSession.target_muscle
+                )}
+              </span>
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
             <Link
               href={`/workout/${existingActiveSession.id}`}
-              className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-black rounded-xl shrink-0 active:scale-95 transition-all shadow"
+              className="w-full bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black text-xs font-black py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-amber-500/30 active:scale-[0.98] transition-all cursor-pointer"
             >
-              繼續該場訓練 ➔
+              <span>一鍵返回繼續訓練</span>
+              <ArrowRight className="w-4 h-4 stroke-[3]" />
             </Link>
+            <button
+              type="button"
+              onClick={handleEndExistingAndStartNew}
+              className="w-full bg-[#181b26] hover:bg-rose-500/10 border border-[#262b3d] hover:border-rose-500/40 text-gray-300 hover:text-rose-300 text-xs font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer"
+            >
+              <span>結束舊場次開新訓練</span>
+            </button>
           </div>
         </div>
       )}
 
-      <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-5 space-y-4 shadow-xl">
+      {/* 主要設定卡片 */}
+      <div className="bg-[#121520] border border-[#262b3d] rounded-2xl p-5 space-y-4 shadow-xl">
         {/* 日期選擇 */}
         <div>
           <label className="text-xs font-bold text-gray-400 block mb-1.5 flex items-center gap-1.5">
@@ -331,66 +453,73 @@ function NewWorkoutForm() {
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="w-full bg-[#181b26] border border-[#262b3d] text-white text-sm font-medium rounded-xl p-3 focus:border-emerald-500 outline-none"
+            className="w-full bg-[#0b0d14] border border-[#262b3d] text-white text-sm font-medium rounded-xl p-3 focus:border-emerald-500 outline-none transition-colors"
           />
         </div>
 
-        {/* 主攻部位 (5 大項：胸、背、腿、肩、游泳) */}
+        {/* 訓練目標部位膠囊 (Target Muscle Chips: 胸藍、背綠、腿紫、肩橘、泳青) */}
         <div>
-          <label className="text-xs font-bold text-gray-300 block mb-1.5 flex items-center gap-1.5">
-            <Dumbbell className="w-4 h-4 text-emerald-400" />
-            <span>主攻部位</span>
-          </label>
-          <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
-            {MUSCLE_PRESETS.map((p) => {
-              let icon = "🔥";
-              if (p === "背") icon = "⚡";
-              if (p === "腿") icon = "🦵";
-              if (p === "肩") icon = "🎯";
-              if (p === "游泳") icon = "🏊";
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
+              <Dumbbell className="w-4 h-4 text-emerald-400" />
+              <span>主攻部位</span>
+            </label>
+            <span className="text-[10px] text-gray-500">點選切換專屬主題色</span>
+          </div>
 
+          <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+            {MUSCLE_PRESETS.map((m) => {
+              const isSelected = targetMuscle === m.id;
               return (
                 <button
-                  key={p}
+                  key={m.id}
                   type="button"
-                  onClick={() => setTargetMuscle(p)}
-                  className={`py-2.5 px-1 sm:px-2 text-xs sm:text-sm rounded-xl border font-bold text-center transition-all flex flex-col items-center gap-1 cursor-pointer active:scale-95 ${
-                    targetMuscle === p
-                      ? "bg-emerald-500 text-black border-emerald-400 shadow-lg scale-[1.02] font-black"
-                      : "bg-[#181b26] border-[#262b3d] text-gray-300 hover:border-gray-600"
+                  onClick={() => handleMuscleSelect(m.id)}
+                  className={`py-3 px-1 sm:px-2 rounded-2xl border font-black text-center transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer active:scale-95 ${
+                    isSelected
+                      ? `${m.activeClass} scale-[1.03]`
+                      : "bg-[#0b0d14] border-[#262b3d] text-gray-400 hover:text-gray-200 hover:border-gray-600"
                   }`}
                 >
-                  <span className="text-base">{icon}</span>
-                  <span>{p}</span>
+                  <span className="text-lg">{m.icon}</span>
+                  <span className="text-xs sm:text-sm font-black">{m.label}</span>
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* 訓練場地 */}
+        {/* 訓練地點選擇膠囊 (Location Chips: [📍 三健客] [🏫 交大健身房] [🏊 交大游泳池]) */}
         <div>
-          <label className="text-xs font-bold text-gray-300 block mb-1.5 flex items-center gap-1.5">
-            <MapPin className="w-4 h-4 text-emerald-400" />
-            <span>訓練場地</span>
-          </label>
-          <div className="grid grid-cols-2 gap-2.5">
-            {(targetMuscle === "游泳" ? ["交大游泳池", "清大游泳池"] : ["三健客", "交大健身房"]).map((loc) => {
-              const isSelected = location === loc;
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
+              <MapPin className="w-4 h-4 text-emerald-400" />
+              <span>訓練地點</span>
+            </label>
+            <span className="text-[10px] text-gray-500">一鍵切換場地</span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            {LOCATION_PRESETS.map((loc) => {
+              const isSelected = location === loc.id;
+              const isSwim = loc.id === "交大游泳池";
               return (
                 <button
-                  key={loc}
+                  key={loc.id}
                   type="button"
-                  onClick={() => setLocation(loc)}
-                  className={`py-3 px-2 text-sm rounded-xl border font-bold transition-all text-center cursor-pointer active:scale-95 ${
+                  onClick={() => handleLocationSelect(loc.id)}
+                  className={`py-3 px-2 rounded-2xl border font-black transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer active:scale-95 text-xs sm:text-sm ${
                     isSelected
-                      ? targetMuscle === "游泳"
-                        ? "bg-cyan-500/20 border-cyan-500 text-cyan-300 shadow-sm font-black"
-                        : "bg-emerald-500/20 border-emerald-500 text-emerald-300 shadow-sm font-black"
-                      : "bg-[#181b26] border-[#262b3d] text-gray-400 hover:text-white"
+                      ? isSwim
+                        ? "bg-cyan-500/15 border-cyan-400 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.35)] ring-1 ring-cyan-400/50 scale-[1.02]"
+                        : "bg-emerald-500/15 border-emerald-400 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.35)] ring-1 ring-emerald-400/50 scale-[1.02]"
+                      : "bg-[#0b0d14] border-[#262b3d] text-gray-400 hover:text-gray-200 hover:border-gray-600"
                   }`}
                 >
-                  {loc}
+                  <span className="text-base sm:text-lg">{loc.icon}</span>
+                  <span className="font-black tracking-wide truncate max-w-full">
+                    {loc.label}
+                  </span>
                 </button>
               );
             })}
@@ -399,7 +528,7 @@ function NewWorkoutForm() {
 
         {/* 游泳專用：時段選擇與備註 */}
         {targetMuscle === "游泳" && (
-          <div className="bg-[#181b26] border border-cyan-500/30 rounded-xl p-3.5 space-y-3">
+          <div className="bg-[#0b0d14] border border-cyan-500/30 rounded-2xl p-3.5 space-y-3 animate-in fade-in">
             <div>
               <label className="text-xs font-bold text-cyan-400 block mb-1.5 flex items-center gap-1.5">
                 <span>🏊</span>
@@ -414,7 +543,7 @@ function NewWorkoutForm() {
                     className={`py-2 px-1 text-xs rounded-xl border font-bold text-center transition-all ${
                       swimTimeSlot === slot
                         ? "bg-cyan-500 text-black border-cyan-400 shadow-md font-black"
-                        : "bg-[#090a0f] border-[#262b3d] text-gray-300 hover:border-gray-600"
+                        : "bg-[#121520] border-[#262b3d] text-gray-300 hover:border-gray-600"
                     }`}
                   >
                     {slot}
@@ -432,48 +561,95 @@ function NewWorkoutForm() {
                 placeholder="例如：潤榮 游泳 / 清大 alvaro 請..."
                 value={swimNotes}
                 onChange={(e) => setSwimNotes(e.target.value)}
-                className="w-full bg-[#090a0f] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 outline-none focus:border-cyan-400 placeholder-gray-600"
+                className="w-full bg-[#121520] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 outline-none focus:border-cyan-400 placeholder-gray-600"
               />
             </div>
           </div>
         )}
 
-        {/* 📋 沿用上一次菜單功能 */}
+        {/* 📋 複製上次菜單預覽卡片 (Clone Previous Template) */}
         {prevTemplate && targetMuscle !== "游泳" && (
-          <div className="bg-[#181b26] border border-emerald-500/30 rounded-xl p-3.5 space-y-2.5">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Copy className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+          <div className="bg-[#0b0d14] border border-emerald-500/30 rounded-2xl p-4 space-y-3 shadow-lg">
+            <div
+              className="flex items-center justify-between cursor-pointer select-none"
+              onClick={() => setClonePrevMenu(!clonePrevMenu)}
+            >
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`p-2 rounded-xl transition-colors ${
+                    clonePrevMenu
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                      : "bg-[#121520] text-gray-400 border border-[#262b3d]"
+                  }`}
+                >
+                  <Copy className="w-4 h-4" />
+                </div>
                 <div>
-                  <h4 className="text-xs font-bold text-gray-200">
-                    沿用上一次【{targetMuscle}】菜單
+                  <h4 className="text-xs sm:text-sm font-black text-white flex items-center gap-1.5">
+                    <span>沿用上次【{targetMuscle}】菜單結構</span>
+                    <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded font-bold">
+                      推薦
+                    </span>
                   </h4>
-                  <p className="text-[11px] text-gray-400">
-                    {prevTemplate.session.date}（{prevTemplate.sets.length} 組 /{" "}
-                    {prevTemplate.exerciseIds.length} 個動作）
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    上次日期：{prevTemplate.session.date} • 共 {prevTemplate.exerciseIds.length}{" "}
+                    個動作、{prevTemplate.sets.length} 組
                   </p>
                 </div>
               </div>
               <input
                 type="checkbox"
-                id="cloneMenuCheckbox"
                 checked={clonePrevMenu}
                 onChange={(e) => setClonePrevMenu(e.target.checked)}
-                className="w-4 h-4 accent-emerald-500 rounded mt-0.5 cursor-pointer"
+                onClick={(e) => e.stopPropagation()}
+                className="w-5 h-5 accent-emerald-500 rounded-lg cursor-pointer"
               />
             </div>
 
+            {/* 展開之動作清單卡片（動作名稱、組數、預計負重） */}
             {clonePrevMenu && (
-              <div className="text-[11px] text-emerald-300/90 bg-[#090a0f]/80 p-2.5 rounded-lg border border-[#262b3d] space-y-1">
-                <span className="font-bold block text-gray-300 mb-0.5">即將自動帶入動作結構：</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {prevTemplate.exerciseIds.map((exId) => (
-                    <span
-                      key={exId}
-                      className="bg-[#181b26] text-gray-300 px-2 py-0.5 rounded border border-[#262b3d]"
+              <div className="space-y-2 pt-1 border-t border-[#262b3d]/60 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between text-[11px] text-gray-400 px-1">
+                  <span className="font-bold text-gray-300 flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>即將複製的動作與目標負重：</span>
+                  </span>
+                  <span className="text-emerald-400 font-bold">
+                    {prevTemplate.exerciseIds.length} 動作 / {prevTemplate.sets.length} 組
+                  </span>
+                </div>
+
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {groupedTemplateExercises.map(({ exerciseId, exercise, sets }) => (
+                    <div
+                      key={exerciseId}
+                      className="bg-[#121520] border border-[#262b3d] rounded-xl p-2.5 space-y-1.5 hover:border-gray-600 transition-colors"
                     >
-                      {exercisesMap[exId]?.name || "動作"}
-                    </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-200 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          <span>{exercise?.name || "自訂動作"}</span>
+                        </span>
+                        <span className="text-[11px] text-emerald-400/90 font-mono bg-[#0b0d14] px-2 py-0.5 rounded-full border border-[#262b3d]">
+                          {sets.length} 組
+                        </span>
+                      </div>
+
+                      {/* 各組負重預覽膠囊 */}
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {sets.map((s, idx) => {
+                          const weightDisplay = s.weight_kg > 0 ? `${s.weight_kg}kg` : "自重";
+                          return (
+                            <span
+                              key={s.id || idx}
+                              className="text-[10px] bg-[#0b0d14] text-gray-300 border border-[#262b3d] px-1.5 py-0.5 rounded font-mono"
+                            >
+                              第{idx + 1}組: {weightDisplay} × {s.reps}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -481,14 +657,15 @@ function NewWorkoutForm() {
           </div>
         )}
 
+        {/* 提交按鈕 */}
         <button
           type="button"
           disabled={isSubmitting}
           onClick={handleCreate}
-          className={`w-full font-black py-3.5 rounded-xl shadow-lg transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2 mt-3 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+          className={`w-full font-black py-3.5 rounded-xl shadow-lg transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2 mt-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
             targetMuscle === "游泳"
               ? "bg-cyan-500 hover:bg-cyan-400 text-black shadow-cyan-500/20"
-              : "bg-emerald-500 hover:bg-emerald-400 text-black"
+              : "bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20"
           }`}
         >
           {isSubmitting ? (

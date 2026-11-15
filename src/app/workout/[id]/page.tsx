@@ -29,6 +29,7 @@ import {
   AlertTriangle,
   Trophy,
   Sparkles,
+  Calculator,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import {
@@ -148,11 +149,42 @@ export default function WorkoutDetailPage({
   const [recentPRSetId, setRecentPRSetId] = useState<string | null>(null);
   const recentPRTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // 槓片速算小工具狀態
+  const [showPlateCalc, setShowPlateCalc] = useState(false);
+  const [barWeight, setBarWeight] = useState<number>(20); // 預設 20kg 標準奧槓
+
   // 快速調節重量數值（最低不小於 0，保留 2 位小數防浮點誤差）
   function adjustWeightValue(currentStr: string, delta: number): string {
     const current = parseFloat(currentStr) || 0;
     const next = Math.max(0, Math.round((current + delta) * 100) / 100);
     return next === 0 ? "0" : next.toString();
+  }
+
+  // 🏋️ 奧運槓槓片速算 (Barbell Plate Calculator)
+  function calculateBarbellPlates(totalWeight: number, bar: number = 20) {
+    if (totalWeight <= 0) return null;
+    if (totalWeight <= bar) {
+      return { perSide: 0, plates: [], isBarOnly: true, remainder: 0 };
+    }
+    const targetPerSide = (totalWeight - bar) / 2;
+    const availablePlates = [25, 20, 15, 10, 5, 2.5, 1.25, 0.5];
+    let remaining = targetPerSide;
+    const plates: { weight: number; count: number }[] = [];
+
+    for (const p of availablePlates) {
+      if (remaining >= p) {
+        const count = Math.floor(remaining / p);
+        plates.push({ weight: p, count });
+        remaining = Math.round((remaining - count * p) * 100) / 100;
+      }
+    }
+
+    return {
+      perSide: targetPerSide,
+      plates,
+      isBarOnly: false,
+      remainder: remaining,
+    };
   }
 
   // 🏆 觸發 PR 突破個人紀錄慶祝與卡片高光微動畫反饋
@@ -2379,23 +2411,117 @@ export default function WorkoutDetailPage({
               </div>
             </div>
 
-            {/* 3. 單組即時推估 1RM 提示 (次數 > 1 且 重量 > 0) */}
-            {(() => {
-              const w = parseFloat(inputWeight) || 0;
-              const r = parseInt(inputReps, 10) || 0;
-              if (w > 0 && r > 1) {
-                const epley1RM = Math.round(w * (1 + r / 30) * 10) / 10;
-                return (
-                  <div className="flex items-center gap-1.5 text-xs text-amber-300/95 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-xl w-fit animate-in fade-in duration-150">
-                    <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span>
-                      預估 1RM ≈ <strong className="font-mono font-black text-amber-300 text-sm">{epley1RM}</strong> kg (Epley)
-                    </span>
+            {/* 3. 單組即時推估 1RM 提示 與 奧運槓槓片速算切換 */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              {(() => {
+                const w = parseFloat(inputWeight) || 0;
+                const r = parseInt(inputReps, 10) || 0;
+                if (w > 0 && r > 1) {
+                  const epley1RM = Math.round(w * (1 + r / 30) * 10) / 10;
+                  return (
+                    <div className="flex items-center gap-1.5 text-xs text-amber-300/95 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-xl w-fit animate-in fade-in duration-150">
+                      <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>
+                        預估 1RM ≈ <strong className="font-mono font-black text-amber-300 text-sm">{epley1RM}</strong> kg (Epley)
+                      </span>
+                    </div>
+                  );
+                }
+                return <div />;
+              })()}
+
+              <button
+                type="button"
+                onClick={() => setShowPlateCalc((v) => !v)}
+                className={`text-xs font-bold px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer select-none active:scale-95 ${
+                  showPlateCalc
+                    ? "bg-cyan-500 text-black border-cyan-400 font-black shadow-sm"
+                    : "bg-[#181b26] text-gray-400 hover:text-cyan-300 border-[#262b3d] hover:border-cyan-500/40"
+                }`}
+                title="奧運槓每邊加掛槓片速算"
+              >
+                <Calculator className="w-3.5 h-3.5" />
+                <span>{showPlateCalc ? "收起槓片" : "槓片速算"}</span>
+              </button>
+            </div>
+
+            {/* 🏋️ 槓片速算展開面板 (Barbell Plate Calculator) */}
+            {showPlateCalc && (
+              <div className="bg-[#10131d] border border-cyan-500/40 rounded-xl p-3 space-y-2.5 animate-in fade-in duration-150 shadow-lg">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-cyan-300 font-bold flex items-center gap-1.5">
+                    <Calculator className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>槓片速算 (單邊加掛)</span>
+                  </span>
+                  <div className="flex items-center gap-1">
+                    {[20, 15, 10].map((b) => (
+                      <button
+                        key={b}
+                        type="button"
+                        onClick={() => setBarWeight(b)}
+                        className={`text-[10px] px-2 py-0.5 rounded-md font-bold transition-all cursor-pointer ${
+                          barWeight === b
+                            ? "bg-cyan-500 text-black font-black"
+                            : "bg-[#181b26] text-gray-400 border border-[#262b3d] hover:text-white"
+                        }`}
+                      >
+                        {b}kg 槓
+                      </button>
+                    ))}
                   </div>
-                );
-              }
-              return null;
-            })()}
+                </div>
+
+                {(() => {
+                  const w = parseFloat(inputWeight) || 0;
+                  const res = calculateBarbellPlates(w, barWeight);
+                  if (!res) {
+                    return (
+                      <p className="text-[11px] text-gray-400">
+                        請輸入大於 0 的重量以試算槓片
+                      </p>
+                    );
+                  }
+                  if (res.isBarOnly) {
+                    return (
+                      <div className="text-xs text-amber-300 font-bold bg-amber-500/10 border border-amber-500/30 px-2.5 py-1.5 rounded-lg">
+                        🏋️ 目前重量小於或等於槓重 ({barWeight} kg)，無須加掛任何槓片
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-1.5">
+                      <div className="text-xs text-gray-300 flex items-center gap-1.5">
+                        <span>單邊需掛：</span>
+                        <strong className="text-cyan-300 font-mono text-sm font-black">{res.perSide} kg</strong>
+                        {res.remainder > 0 && (
+                          <span className="text-[10px] text-amber-400 font-mono">(餘 {res.remainder}kg)</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {res.plates.map((pl) => (
+                          <span
+                            key={pl.weight}
+                            className={`text-xs px-2 py-1 rounded-lg font-black font-mono border flex items-center gap-1 shadow-sm ${
+                              pl.weight >= 20
+                                ? "bg-blue-950/80 text-blue-300 border-blue-500/50"
+                                : pl.weight >= 15
+                                ? "bg-amber-950/80 text-amber-300 border-amber-500/50"
+                                : pl.weight >= 10
+                                ? "bg-emerald-950/80 text-emerald-300 border-emerald-500/50"
+                                : "bg-gray-800 text-gray-200 border-gray-600/50"
+                            }`}
+                          >
+                            <span>{pl.weight}kg</span>
+                            <span className="text-[10px] opacity-80">×{pl.count}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
 
           {/* ⭐ 支援在同一組內增加多個欄位 (休 / 補 / 遞減) */}
@@ -2522,15 +2648,29 @@ export default function WorkoutDetailPage({
             ))}
           </div>
 
-          <button
-            type="button"
-            onClick={handleAddSet}
-            disabled={!inputReps || parseInt(inputReps, 10) <= 0}
-            className="w-full bg-[#181b26] hover:bg-[#202533] border border-emerald-500/40 text-emerald-300 disabled:opacity-40 font-bold py-3.5 rounded-xl transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2 mt-2 cursor-pointer disabled:cursor-not-allowed shadow-sm"
-          >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span>＋ 加入此組至紀錄</span>
-          </button>
+          {/* 雙核心做組動作按鈕：新增此組 ＋ 快速複製上一組 */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
+            <button
+              type="button"
+              onClick={handleAddSet}
+              disabled={!inputReps || parseInt(inputReps, 10) <= 0}
+              className="sm:col-span-2 bg-[#181b26] hover:bg-[#202533] border border-emerald-500/40 text-emerald-300 disabled:opacity-40 font-bold py-3.5 rounded-xl transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed shadow-sm"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>＋ 加入此組至紀錄</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleRepeatLastSet}
+              disabled={sets.filter((s) => s.exercise_id === selectedExId).length === 0}
+              className="bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] hover:border-emerald-500/50 text-emerald-400 font-bold py-3.5 rounded-xl transition-all active:scale-[0.98] text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed select-none"
+              title="快速複製前一組的重量與次數"
+            >
+              <Repeat className="w-3.5 h-3.5" />
+              <span>同前組 (快速複製)</span>
+            </button>
+          </div>
         </div>
       )}
 

@@ -590,12 +590,12 @@ export default function HistoryPage() {
                   </span>
                 )}
               </span>
-              <div className="flex items-center gap-2 text-xs text-gray-400">
-                <span>胸 <strong className="text-white font-black">{curMonthMuscleCounts["胸"]}</strong></span>
-                <span>背 <strong className="text-white font-black">{curMonthMuscleCounts["背"]}</strong></span>
-                <span>腿 <strong className="text-white font-black">{curMonthMuscleCounts["腿"]}</strong></span>
-                <span>肩 <strong className="text-white font-black">{curMonthMuscleCounts["肩"] || 0}</strong></span>
-                <span>游 <strong className="text-white font-black">{curMonthMuscleCounts["游泳"]}</strong></span>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-red-400">胸 <strong className="text-white font-black">{curMonthMuscleCounts["胸"]}</strong></span>
+                <span className="text-blue-400">背 <strong className="text-white font-black">{curMonthMuscleCounts["背"]}</strong></span>
+                <span className="text-emerald-400">腿 <strong className="text-white font-black">{curMonthMuscleCounts["腿"]}</strong></span>
+                <span className="text-purple-400">肩 <strong className="text-white font-black">{curMonthMuscleCounts["肩"] || 0}</strong></span>
+                <span className="text-cyan-400">游 <strong className="text-white font-black">{curMonthMuscleCounts["游泳"]}</strong></span>
               </div>
             </div>
 
