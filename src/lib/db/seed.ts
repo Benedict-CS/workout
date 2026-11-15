@@ -7,8 +7,8 @@ import type { SetItem } from "@/lib/types";
 
 export const CLEAN_NOV14_SETS: SetItem[] = [
   {
-    id: "set-20261114-1",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-0",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-squat",
     set_order: 1,
     set_type: "warmup",
@@ -21,8 +21,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-2",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-1",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-squat",
     set_order: 2,
     set_type: "warmup",
@@ -35,8 +35,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-3",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-2",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-squat",
     set_order: 3,
     set_type: "warmup",
@@ -49,8 +49,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-4",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-3",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-squat",
     set_order: 4,
     set_type: "warmup",
@@ -63,8 +63,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-5",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-4",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-squat",
     set_order: 5,
     set_type: "normal",
@@ -77,8 +77,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-6",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-5",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-squat",
     set_order: 6,
     set_type: "normal",
@@ -91,8 +91,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-7",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-6",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-squat",
     set_order: 7,
     set_type: "normal",
@@ -105,8 +105,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-8",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-7",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-squat",
     set_order: 8,
     set_type: "normal",
@@ -119,8 +119,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-9",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-8",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-leg-press",
     set_order: 9,
     set_type: "normal",
@@ -133,8 +133,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-10",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-9",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-leg-press",
     set_order: 10,
     set_type: "normal",
@@ -147,8 +147,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-11",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-10",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-leg-press",
     set_order: 11,
     set_type: "normal",
@@ -161,8 +161,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-12",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-11",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-leg-press",
     set_order: 12,
     set_type: "normal",
@@ -175,8 +175,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-13",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-12",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-leg-curl",
     set_order: 13,
     set_type: "normal",
@@ -189,8 +189,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-14",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-13",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-leg-curl",
     set_order: 14,
     set_type: "normal",
@@ -204,8 +204,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-15",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-14",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-leg-curl",
     set_order: 15,
     set_type: "normal",
@@ -219,8 +219,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-16",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-15",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-leg-curl",
     set_order: 16,
     set_type: "normal",
@@ -235,8 +235,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
   },
   // 啞鈴側平舉
   {
-    id: "set-20261114-17",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-16",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-db-lateral-raise",
     set_order: 17,
     set_type: "normal",
@@ -250,8 +250,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-18",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-17",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-db-lateral-raise",
     set_order: 18,
     set_type: "normal",
@@ -265,8 +265,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-19",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-18",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-db-lateral-raise",
     set_order: 19,
     set_type: "normal",
@@ -280,8 +280,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-20",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-19",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-db-lateral-raise",
     set_order: 20,
     set_type: "normal",
@@ -295,8 +295,8 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     sync_status: "synced",
   },
   {
-    id: "set-20261114-21",
-    session_id: "session-2026-11-14-1794646944321",
+    id: "set-1794661032754-20",
+    session_id: "session-2026-11-14-1794661032737",
     exercise_id: "ex-db-lateral-raise",
     set_order: 21,
     set_type: "normal",
@@ -458,11 +458,11 @@ export async function ensureDatabaseSeeded(): Promise<void> {
     }
   }
 
-  // 檢查並徹底清理 11/14 今日訓練組數污染 (41 組 -> 正確乾淨 21 組)
+  // 檢查並徹底清理 11/14 今日訓練組數污染 (若組數大於 21 組，才執行清理)
   const nov14Sessions = await db.sessions.filter((s) => s.date === "2026-11-14").toArray();
   for (const sess of nov14Sessions) {
     const curSets = await db.sets.where("session_id").equals(sess.id).toArray();
-    const isCorrupted = curSets.length !== 21 || curSets.some((s) => !s.id.startsWith("set-20261114-"));
+    const isCorrupted = curSets.length > 21;
     if (isCorrupted) {
       console.log("Client has corrupted 11/14 sets. Repairing now to exact 21 sets...");
       await db.sets.where("session_id").equals(sess.id).delete();

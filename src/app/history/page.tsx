@@ -701,6 +701,11 @@ export default function HistoryPage() {
                                 <span className="text-gray-500">•</span>
                                 <span className="text-gray-300 font-medium text-[11px]">
                                   共 {formalSets.length} 組
+                                  {sessSets.length > formalSets.length && (
+                                    <span className="text-gray-500 ml-1 text-[10px]">
+                                      (+{sessSets.length - formalSets.length}熱身)
+                                    </span>
+                                  )}
                                 </span>
                               </>
                             )}
@@ -880,12 +885,21 @@ export default function HistoryPage() {
                             <span>{distinctEx} 個動作</span>
                             <span>•</span>
                             <span>
-                              {sessSets.filter((st) => {
-                                if (st.set_type === "warmup") return false;
-                                const r = st.raw_text || "";
-                                const n = st.notes || "";
-                                return !(r.includes("熱身") || r.includes("激發") || r.includes("試重") || n.includes("熱身"));
-                              }).length} 組
+                              {(() => {
+                                const fSets = sessSets.filter((st) => {
+                                  if (st.set_type === "warmup") return false;
+                                  const r = st.raw_text || "";
+                                  const n = st.notes || "";
+                                  return !(r.includes("熱身") || r.includes("激發") || r.includes("試重") || n.includes("熱身"));
+                                });
+                                const wCount = sessSets.length - fSets.length;
+                                return (
+                                  <>
+                                    {fSets.length} 組
+                                    {wCount > 0 && <span className="text-gray-500 ml-1 text-[10px]">(+{wCount}熱身)</span>}
+                                  </>
+                                );
+                              })()}
                             </span>
                           </>
                         )}

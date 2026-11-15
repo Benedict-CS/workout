@@ -56,11 +56,13 @@ export default function HomePage() {
   const [expandedSessionIds, setExpandedSessionIds] = useState<Set<string>>(new Set());
 
   // 單月分頁檢視 (順序排列：6月 -> 11月，鎖定僅透過按鈕左右切換或點選切換，絕不允許手勢滑動誤觸)
-  const [selectedMonthIndex, setSelectedMonthIndex] = useState(0);
+  const [selectedMonthIndex, setSelectedMonthIndex] = useState(-1);
   const [showMonthDropdown, setShowMonthDropdown] = useState(false);
   const hasInitializedMonthRef = useRef(false);
   const selectedMonthKeyRef = useRef<string | null>(null);
-  const currentGroup = monthGroups[selectedMonthIndex] || monthGroups[0];
+  const currentGroup = (selectedMonthIndex >= 0 && selectedMonthIndex < monthGroups.length)
+    ? monthGroups[selectedMonthIndex]
+    : monthGroups[monthGroups.length - 1];
 
   // 鍵盤 ← / → 鍵左右切換月份 (防在輸入框中誤觸)
   useEffect(() => {
@@ -230,21 +232,17 @@ export default function HomePage() {
         });
       }
 
-      setMonthGroups(groups);
-      // 預設進入最新月份 (最後一個月：11月)，初次載入鎖定；後續背景同步不覆蓋使用者正在瀏覽的月份
+      let targetIdx = groups.length - 1;
       if (!hasInitializedMonthRef.current && groups.length > 0) {
         hasInitializedMonthRef.current = true;
-        const lastIdx = groups.length - 1;
-        setSelectedMonthIndex(lastIdx);
-        selectedMonthKeyRef.current = groups[lastIdx]?.monthKey || null;
+        targetIdx = groups.length - 1;
+        selectedMonthKeyRef.current = groups[targetIdx]?.monthKey || null;
       } else if (selectedMonthKeyRef.current && groups.length > 0) {
         const foundIdx = groups.findIndex((g) => g.monthKey === selectedMonthKeyRef.current);
-        if (foundIdx !== -1) {
-          setSelectedMonthIndex(foundIdx);
-        } else {
-          setSelectedMonthIndex(Math.max(0, groups.length - 1));
-        }
+        targetIdx = foundIdx !== -1 ? foundIdx : Math.max(0, groups.length - 1);
       }
+      setSelectedMonthIndex(targetIdx);
+      setMonthGroups(groups);
     } catch (err) {
       console.error("Failed to load dashboard data:", err);
     } finally {
@@ -348,10 +346,24 @@ export default function HomePage() {
               <h3 className="font-black text-white text-base truncate">
                 {cleanSessionTitle(activeSession.display_title, activeSession.target_muscle)}
               </h3>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {(sessionSetsMap[activeSession.id] || []).filter((s) => s.is_completed).length} /{" "}
-                {(sessionSetsMap[activeSession.id] || []).length} 組已完成 • 點擊立即恢復現場記錄
-              </p>
+              {(() => {
+                const sessSets = sessionSetsMap[activeSession.id] || [];
+                const isWarmup = (st: SetItem) => {
+                  if (st.set_type === "warmup") return true;
+                  const r = st.raw_text || "";
+                  const n = st.notes || "";
+                  return r.includes("熱身") || r.includes("激發") || r.includes("試重") || n.includes("熱身");
+                };
+                const formalSets = sessSets.filter((st) => !isWarmup(st));
+                const completedFormal = formalSets.filter((s) => s.is_completed !== false).length;
+                const warmupCount = sessSets.length - formalSets.length;
+                return (
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    已做 {completedFormal} / {formalSets.length} 組正式組
+                    {warmupCount > 0 && <span className="text-gray-500 ml-1">(+{warmupCount} 組熱身)</span>} • 點擊立即恢復現場記錄
+                  </p>
+                );
+              })()}
             </div>
 
             <Link
@@ -616,10 +628,20 @@ export default function HomePage() {
                               sess.status === "in_progress" ? (
                                 <span className="text-[11px] sm:text-xs bg-amber-950/40 text-amber-300 px-2 py-0.5 rounded border border-amber-500/40 font-bold">
                                   已做 {formalSets.filter((s) => s.is_completed !== false).length}/{formalSets.length} 組
+                                  {sessSets.length > formalSets.length && (
+                                    <span className="text-gray-500 ml-1 text-[10px]">
+                                      (+{sessSets.length - formalSets.length}熱身)
+                                    </span>
+                                  )}
                                 </span>
                               ) : (
                                 <span className="text-[11px] sm:text-xs bg-[#090a0f] text-gray-300 px-2 py-0.5 rounded border border-[#262b3d] font-semibold">
                                   {formalSets.length} 組
+                                  {sessSets.length > formalSets.length && (
+                                    <span className="text-gray-500 ml-1 text-[10px]">
+                                      (+{sessSets.length - formalSets.length}熱身)
+                                    </span>
+                                  )}
                                 </span>
                               )
                             )}
