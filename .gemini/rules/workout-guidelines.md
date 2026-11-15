@@ -1,0 +1,96 @@
+---
+description: Critical guidelines, domain knowledge, PR standards, and UI anti-patterns for the Workout app to prevent regressions and errors.
+globs: ["*"]
+---
+
+# Workout App Core Engineering & Domain Guidelines
+
+這份文件記錄了本專案的「核心鐵律」、「數據標準」、「UI/UX 規範」與「歷史踩坑禁忌」。在進行任何程式碼修改、功能開發或資料庫維護時，**必須嚴格遵守以下規則，絕不重複犯錯**。
+
+---
+
+## 1. UI/UX 與互動鐵律（簡約、安靜、直覺）
+
+- 🚫 **嚴禁私自添加未經用戶同意的「花俏」輔助按鈕或推測指標**：
+  - 絕對不要在紀錄區或編輯彈窗加入重量增減晶片（如 `[-5] [-2.5] [+2.5] [+5] [+10]`）。用戶已明確指示反感。
+  - 絕對不要顯示單組即時推估 1RM（如 `⚡ 預估 1RM ≈ ... kg (Epley)`）。
+  - 紀錄介面與「修改組數 Modal」必須保持**極簡、安靜、直覺**，只保留：
+    1. 組數類型切換（正式組 / 熱身組 / 遞減組）
+    2. 重量 (Kg) 輸入框
+    3. 次數 (下) 輸入框
+    4. 同一組附加欄位（+休 / +補 / +遞減）
+    5. 取消與儲存按鈕
+  - 任何輔助計算工具（例如奧運槓槓片速算）必須預設收起，不得搶佔或干擾輸入主視覺。
+
+---
+
+## 2. 個人三項基準與 PR 真實性規範
+
+- 🏋️ **個人健力三項實測基準（不可擅自更動）**：
+  - **基準體重**：`63.6 kg`
+  - **槓鈴臥推 PR**：`60 kg (x5)`，體重倍數：`0.94x` 體重
+  - **槓鈴深蹲 PR**：`90 kg (x8)`，體重倍數：`1.42x` 體重
+  - **傳統硬舉 PR**：`90 kg (x2)`，體重倍數：`1.42x` 體重
+  - **三項總和**：`240 kg`，體重倍數：`3.77x` 體重
+  - 格式要求：次數僅以簡潔括號標記（如 `(x5)`），**不要寫任何「(多下實測)」字樣**，也不要加入冗長的免責備註。
+
+- 🏊 **游泳專項（`ex-swim`）**：
+  - 游泳是以「場次/時間」進行的有氧專項訓練，資料庫組數紀錄為 dummy set（reps: 1, weight: 0）。
+  - **絕對嚴禁顯示為「歷史最佳 PR: 1 下 (自重)」**！這會讓使用者覺得荒謬。
+  - 必須標記為：`完成 X 場泳訓`，標籤屬性為 `專項有氧心肺訓練`。
+
+- 🧗 **反向輔助機器（`weight_type === "assisted_inverse"`）**：
+  - 包括：輔助雙槓臂屈伸機、輔助引體向上機等。
+  - 這類器材的配重是**減重反向輔助推力**（配重越重越輕，配重越輕本體強度越高）。
+  - **嚴禁顯示為正向負重「歷史最佳 PR: 20 kg」**。
+  - 必須明確顯示：`輔助配重: 20 kg × 8 下`，並帶有紫色 `(輔助減重)` 標記。
+
+- 🦵 **大重量機器實測（如 腿推機 150 kg）**：
+  - 機器插銷/掛片（如 大腿推蹬機 `ex-leg-press`）實測重量若高達 140~150 kg，必須自動標示場次時空資訊（如 `150 kg × 8 下 (07/04 交大健身房)`），讓使用者一目了然其出處，避免懷疑系統捏造數據。
+
+- 🥗 **InBody 檢測時段判定**：
+  - 若量測時間在上午 10:00 前（如 08:xx、09:xx），判定為「早晨空腹 (未吃早餐)」。
+
+---
+
+## 3. 動作庫 Canonical ID 映射與去重鐵律
+
+- 🔗 **單一真實來源（Canonical IDs）**：
+  - 槓鈴臥推：`ex-bench`（全庫 170 組，PR 60kg x 5）
+  - 啞鈴平臥推：`ex-db-bench`（全庫 39 組，PR 27.5kg x 5）
+  - 啞鈴上斜臥推：`ex-db-incline-bench`（全庫 167 組，PR 25kg x 8）
+  - 槓鈴深蹲：`ex-squat`
+  - 傳統硬舉：`ex-deadlift`
+  - 自重引體向上：`ex-pullup`
+  - 大腿推蹬機：`ex-leg-press`
+- 🚫 **嚴防舊版別名分裂數據**：
+  - 歷史別名如 `ex-bench-press`、`ex-flat-dumbbell`、`ex-incline-dumbbell` 曾殘留在遠端資料庫並帶有最愛星號，導致置頂並顯示為「1 組 / 5 組」。
+  - **同步與載入時必須 100% 執行 `LEGACY_ID_MAP` 重新映射**：
+    1. 同名動作合併至 Canonical ID。
+    2. 組數（Sets）全部聚合至 Canonical ID。
+    3. 絕不可讓重複動作呈現在使用者畫面上。
+
+---
+
+## 4. 前端圖表（Recharts）與 SVG 渲染防崩潰
+
+- 📉 **嚴格防範 `NaN` 導致的 Error Boundary Crash**：
+  - React 19 與 Turbopack 下，SVG 屬性（如 `path d="M NaN NaN"` 或 `domain` 計算產生的 `Infinity`）會直接引發無法復原的崩潰（「This page couldn’t load. Reload to try again, or go back」）。
+  - 所有 LineChart / BarChart 的 `YAxis domain` 必須使用帶有邊界保護的純函數：
+    ```ts
+    domain={[
+      (dataMin: number) => (isFinite(dataMin) ? Math.max(0, Math.floor(dataMin - 1)) : 50),
+      (dataMax: number) => (isFinite(dataMax) ? Math.ceil(dataMax + 1) : 75),
+    ]}
+    ```
+  - 當切換篩選（如體脂走勢）且有效點數量為 0 時，必須展示空資料提示（「尚無足夠數據繪製趨勢圖」），不可將空資料餵給 `ResponsiveContainer`。
+
+---
+
+## 5. 自我驗證與交付流程
+
+在交付任何修改前，必須依序完成：
+1. **本地編譯檢查**：執行 `npm run build`，確保 0 TypeScript 錯誤、0 Turbopack 錯誤。
+2. **Git Diff 複核**：確認無未經授權的改動，無遺漏的殘留調試碼。
+3. **Commit & Push 部署**：推送到 `origin master`，並自動觸發 Vercel 生產部署。
+4. **線上健康檢查**：使用 HTTP 請求驗證生產站點主要路由正常回傳 200。
