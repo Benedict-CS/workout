@@ -43,5 +43,12 @@
 
 ## 4. 驗證與部署規範 (Deployment Protocol)
 - 每次代碼修改後必須在本地執行 `npm run build` 確認 0 錯誤。
+- 每次代碼提交並推送到 GitHub 後，必須執行 `npx vercel deploy --yes --prod` 確保雲端即時上線。
+
+## 5. 視覺美學調色盤 (Colorist AI Reference)
+- 參考 Colorist AI 記帳 App 簡約乾淨淺色系哲學：
+  - 核心淺冷灰調：`#F1F5F9`, `#E2E8F0`, `#CBD5E0`, `#A0AEC0`
+  - 重點點綴色：天空藍 `#63B3ED`, 薄荷綠 `#B2F5EA` / `#10B981`, 柔和暖色 `#FFD54F` / `#F59E0B`
+  - 介面追求：高對比、不花俏、留白舒適、數據直觀。
 - 檢查 `git status` 與 `git diff` 確保改動純淨精準。
 - 推送至 `origin master` 自動觸發 Vercel 生產部署，並以 HTTP 請求確認線上回傳 200。

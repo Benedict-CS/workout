@@ -9,7 +9,7 @@
 * **前端框架**：Next.js 16 (App Router) + React 19 + TypeScript + Tailwind CSS
 * **本機端資料庫**：Dexie.js (IndexedDB) —— 支援完全離線運行與 PWA
 * **雲端資料庫**：Supabase (PostgreSQL) —— 跨裝置（手機與電腦）即時雙向資料同步
-* **圖表庫**：Recharts（三項重量成長曲線、體重趨勢折線圖）
+* **圖表組件**：100% 原生 React 19 SVG 圖表組件（`NativeCharts.tsx`，零第三方依賴、徹底根絕 React 19 相容性崩潰）
 * **圖標庫**：Lucide React
 * **設計理念**：
   * **Local-First（本機優先）**：所有新增、修改、刪除操作均零延遲先存入 IndexedDB，背景自動發起 Supabase Upsert 同步。

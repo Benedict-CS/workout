@@ -77,8 +77,22 @@ globs: ["*"]
 - 🚫 **嚴禁使用 Recharts（React 19 致命相容性陷阱）**：
   - Recharts 2.x 內部綁定 `react-is@18.3.1`，在 React 19（`react@19.2.8`）環境下無法識別 React 19 的 Virtual DOM 節點，且在 Next.js App Router SSR / Hydration 階段會觸發未捕獲異常，直接導致整頁崩潰（「This page couldn’t load. Reload to try again, or go back」）。
   - **專案一律使用 100% 原生 React 19 SVG 圖表組件**（`NativeCharts.tsx`），零第三方依賴、零 DOM 測量報錯、渲染毫秒級完成。
-  - `/analytics` 路由層級配置 `error.tsx` 邊界保護，杜絕任何未捕獲異常擴散至全域。
+  - `/analytics` 路由層級配置 `error.tsx` 邊界保護，提供詳細異常堆疊與「重置本地快取並修復」按鈕，杜絕死循環崩潰。
   - 嚴格防範 `NaN` 運算，所有 SVG 路徑座標計算必須通過 `isFinite` 檢查。
+
+---
+
+## 5. 設計美學與視覺調色盤（簡約、清新、乾淨、高質感）
+
+- 🎨 **配色靈感（記帳 App 簡約乾淨淺色系哲學）**：
+  - **基底與對比**：採用清爽純淨的冷灰色系與高對比排版，文字層級清晰，留白適度。
+  - **推薦色彩碼（Colorist AI 推薦規範）**：
+    - 淺冷灰底色與文字：`#F1F5F9`（slate-100）、`#E2E8F0`（slate-200）、`#CBD5E0`（slate-300）、`#A0AEC0`（slate-400）
+    - 清新點綴色：
+      - 天空天青藍：`#63B3ED` / `#38BDF8`（主要重點動作、走勢折線）
+      - 薄荷粉綠：`#B2F5EA` / `#10B981`（完成確認、肌肉成長指標）
+      - 柔和珊瑚/琥珀：`#FFD54F` / `#F59E0B`（體脂率、三項總和 PR）
+  - **排版原則**：卡片圓角一致（`rounded-2xl`）、輸入框乾淨對齊（數字居中）、數據與單位清晰分離，單手操作零負擔。
 
 ---
 
