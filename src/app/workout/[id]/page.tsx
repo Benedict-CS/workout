@@ -97,12 +97,14 @@ export default function WorkoutDetailPage({
   const [dockMuscleFilter, setDockMuscleFilter] = useState<string>("default");
   const [dockExerciseSearch, setDockExerciseSearch] = useState<string>("");
 
-  // 休息計時器狀態 (純視覺，無音效震動)
+  // 休息計時器狀態 (Web Audio 原生音效與震動提醒)
   const [targetEndTime, setTargetEndTime] = useState<number | null>(null);
   const [timerSeconds, setTimerSeconds] = useState<number | null>(null);
   const [timerActive, setTimerActive] = useState<boolean>(false);
+  const [timerFinished, setTimerFinished] = useState<boolean>(false);
   const [defaultRestDuration, setDefaultRestDuration] = useState<number>(150); // 預設 2 分半 (150秒)
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   // 做組打勾完成後的快速休息氣泡
   const [restPromptSetId, setRestPromptSetId] = useState<string | null>(null);
@@ -134,7 +136,7 @@ export default function WorkoutDetailPage({
   // 歷史各動作 PR (最高重量與次數) 對照表
   const [prMap, setPrMap] = useState<Record<string, { maxWeight: number; maxReps: number }>>({});
 
-  // 🏆 PR 突破個人紀錄即時高光慶祝
+  // 🏆 PR 突破個人紀錄即時高光慶祝與卡片發光 ID
   const [prCelebration, setPrCelebration] = useState<{
     exerciseName: string;
     weight: number;
@@ -143,8 +145,131 @@ export default function WorkoutDetailPage({
     prevText: string;
   } | null>(null);
   const prCelebrationTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [recentPRSetId, setRecentPRSetId] = useState<string | null>(null);
+  const recentPRTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 計時器倒數邏輯 (手動觸發、跨頁面/鎖屏無縫恢復、結束時震動提醒)
+  // 快速調節重量數值（最低不小於 0，保留 2 位小數防浮點誤差）
+  function adjustWeightValue(currentStr: string, delta: number): string {
+    const current = parseFloat(currentStr) || 0;
+    const next = Math.max(0, Math.round((current + delta) * 100) / 100);
+    return next === 0 ? "0" : next.toString();
+  }
+
+  // 🏆 觸發 PR 突破個人紀錄慶祝與卡片高光微動畫反饋
+  function triggerPRCelebration(
+    exerciseName: string,
+    weight: number,
+    reps: number,
+    diffText: string,
+    prevText: string,
+    setId?: string
+  ) {
+    setPrCelebration({
+      exerciseName,
+      weight,
+      reps,
+      diffText,
+      prevText,
+    });
+
+    if (setId) {
+      setRecentPRSetId(setId);
+      if (recentPRTimerRef.current) clearTimeout(recentPRTimerRef.current);
+      recentPRTimerRef.current = setTimeout(() => {
+        setRecentPRSetId(null);
+      }, 6000);
+    }
+
+    if (typeof window !== "undefined" && "vibrate" in navigator) {
+      try {
+        navigator.vibrate([100, 60, 150, 60, 300]);
+      } catch {}
+    }
+
+    if (prCelebrationTimerRef.current) clearTimeout(prCelebrationTimerRef.current);
+    prCelebrationTimerRef.current = setTimeout(() => {
+      setPrCelebration(null);
+    }, 5500);
+  }
+
+  // 取得或初始化原生 AudioContext（包含瀏覽器互動解鎖保護）
+  function getAudioContext(): AudioContext | null {
+    if (typeof window === "undefined") return null;
+    try {
+      if (!audioCtxRef.current) {
+        const AudioCtx =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        if (AudioCtx) {
+          audioCtxRef.current = new AudioCtx();
+        }
+      }
+      if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+      return audioCtxRef.current;
+    } catch {
+      return null;
+    }
+  }
+
+  // 播放組間休息結束清脆雙音叮咚提示音 (880Hz -> 1760Hz 漸弱正弦波)
+  function playRestTimerBeep() {
+    try {
+      const ctx = getAudioContext();
+      if (!ctx) return;
+      if (ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
+
+      const now = ctx.currentTime;
+
+      // 第一聲：880Hz (A5) 清脆柔和正弦波，柔和淡出
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = "sine";
+      osc1.frequency.setValueAtTime(880, now);
+      gain1.gain.setValueAtTime(0.0001, now);
+      gain1.gain.exponentialRampToValueAtTime(0.2, now + 0.02);
+      gain1.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.25);
+
+      // 第二聲：1760Hz (A6) 清脆叮咚高音，柔和漸弱
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = "sine";
+      osc2.frequency.setValueAtTime(1760, now + 0.18);
+      gain2.gain.setValueAtTime(0.0001, now + 0.18);
+      gain2.gain.exponentialRampToValueAtTime(0.2, now + 0.20);
+      gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.18);
+      osc2.stop(now + 0.55);
+    } catch (err) {
+      console.warn("Rest timer beep failed:", err);
+    }
+  }
+
+  // AudioContext 瀏覽器點擊解鎖保護：若 AudioContext suspended，使用者互動時自動 resume
+  useEffect(() => {
+    const unlockAudio = () => {
+      if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+    };
+    window.addEventListener("pointerdown", unlockAudio, { passive: true });
+    window.addEventListener("keydown", unlockAudio, { passive: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+    };
+  }, []);
+
+  // 計時器倒數邏輯 (手動觸發、跨頁面/鎖屏無縫恢復、結束時原生鈴聲與震動提醒)
   useEffect(() => {
     function syncTimerState() {
       const storedEndStr = localStorage.getItem("workout_timer_end");
@@ -164,15 +289,27 @@ export default function WorkoutDetailPage({
         setTimerActive(false);
         setTargetEndTime(null);
         localStorage.removeItem("workout_timer_end");
-        if (typeof window !== "undefined" && "vibrate" in navigator) {
-          try {
-            navigator.vibrate([200, 100, 200]);
-          } catch {}
+
+        // 若計時歸零剛發生（非背景停留過久剛打開），播放 Web Audio 叮咚鈴聲與震動提醒
+        if (now - endMs < 8000) {
+          playRestTimerBeep();
+          if (typeof window !== "undefined" && "vibrate" in navigator) {
+            try {
+              navigator.vibrate([200, 100, 200]);
+            } catch {}
+          }
         }
+
+        setTimerFinished(true);
+        setTimeout(() => {
+          setTimerFinished(false);
+          setTimerSeconds(null);
+        }, 3500);
       } else {
         setTargetEndTime(endMs);
         setTimerSeconds(remain);
         setTimerActive(true);
+        setTimerFinished(false);
       }
     }
 
@@ -200,10 +337,12 @@ export default function WorkoutDetailPage({
   }, []);
 
   function startRestTimer(seconds: number) {
+    getAudioContext(); // 確保使用者互動當下立即初始化並解鎖 AudioContext
     const end = Date.now() + seconds * 1000;
     setTargetEndTime(end);
     setTimerSeconds(seconds);
     setTimerActive(true);
+    setTimerFinished(false);
     localStorage.setItem("workout_timer_end", end.toString());
     const loc = session?.location ? ` (${session.location})` : "";
     const title = session ? `${session.target_muscle}${loc}` : "訓練休息";
@@ -799,6 +938,20 @@ export default function WorkoutDetailPage({
       );
       runFullSync().catch(() => {});
 
+      // 若新增之組數打破個人紀錄 (PR)，觸發高光慶祝與卡片發光
+      const prDetails = getSetPRDetails(newSet);
+      if (prDetails.isPR) {
+        const exObj = exercises.find((e) => e.id === newSet.exercise_id);
+        triggerPRCelebration(
+          exObj?.name || "此動作",
+          newSet.weight_kg,
+          newSet.reps,
+          prDetails.diffText,
+          prDetails.prevText,
+          newSet.id
+        );
+      }
+
       // 重設子欄位
       setInputSubFields([]);
       setInputNotes("");
@@ -852,6 +1005,20 @@ export default function WorkoutDetailPage({
       await db.sets.add(newSet);
       setSets((prev) => [...prev, newSet]);
       runFullSync().catch(() => {});
+
+      // 若重複之組數打破個人紀錄 (PR)，觸發高光慶祝與卡片發光
+      const prDetails = getSetPRDetails(newSet);
+      if (prDetails.isPR) {
+        const exObj = exercises.find((e) => e.id === newSet.exercise_id);
+        triggerPRCelebration(
+          exObj?.name || "此動作",
+          newSet.weight_kg,
+          newSet.reps,
+          prDetails.diffText,
+          prDetails.prevText,
+          newSet.id
+        );
+      }
     } finally {
       setTimeout(() => {
         isSavingSetRef.current = false;
@@ -895,30 +1062,19 @@ export default function WorkoutDetailPage({
       setSets((prev) => prev.map((s) => (s.id === setId ? updated : s)));
       runFullSync().catch(() => {});
 
-      // 若剛標記為已完成，檢查是否打破個人紀錄 (PR) 並彈出高光慶祝
+      // 若剛標記為已完成，檢查是否打破個人紀錄 (PR) 並彈出高光慶祝與卡片光暈微動畫
       if (newStatus) {
         const prDetails = getSetPRDetails(target);
         if (prDetails.isPR) {
           const exObj = exercises.find((e) => e.id === target.exercise_id);
-          setPrCelebration({
-            exerciseName: exObj?.name || "此動作",
-            weight: target.weight_kg,
-            reps: target.reps,
-            diffText: prDetails.diffText,
-            prevText: prDetails.prevText,
-          });
-
-          // 手機震動反饋節奏
-          if (typeof window !== "undefined" && "vibrate" in navigator) {
-            try {
-              navigator.vibrate([100, 60, 150, 60, 300]);
-            } catch {}
-          }
-
-          if (prCelebrationTimerRef.current) clearTimeout(prCelebrationTimerRef.current);
-          prCelebrationTimerRef.current = setTimeout(() => {
-            setPrCelebration(null);
-          }, 5500);
+          triggerPRCelebration(
+            exObj?.name || "此動作",
+            target.weight_kg,
+            target.reps,
+            prDetails.diffText,
+            prDetails.prevText,
+            target.id
+          );
         }
       }
 
@@ -1404,6 +1560,20 @@ export default function WorkoutDetailPage({
     setSets((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
     setEditingSet(null);
     runFullSync().catch(() => {});
+
+    // 若修改後打破個人紀錄 (PR) 且為已完成狀態，觸發高光慶祝與卡片發光
+    const prDetails = getSetPRDetails(updated);
+    if (prDetails.isPR && isSetCompleted(updated, session?.date)) {
+      const exObj = exercises.find((e) => e.id === updated.exercise_id);
+      triggerPRCelebration(
+        exObj?.name || "此動作",
+        updated.weight_kg,
+        updated.reps,
+        prDetails.diffText,
+        prDetails.prevText,
+        updated.id
+      );
+    }
   }
 
   // 快速切換場地
@@ -1791,17 +1961,25 @@ export default function WorkoutDetailPage({
                       ? exSets.slice(0, sIdx + 1).filter((x) => !isWarmupOrActivation(x)).length
                       : 0;
                     const matchingGhost = getMatchingGhostSet(s, exSets, ghostSets);
+                    const isPR = isSetNewPR(s);
+                    const isRecentPR = recentPRSetId === s.id;
 
                     return (
                       <div
                         key={s.id}
-                        className={`px-3 py-2.5 rounded-xl border transition-all ${
-                          isCurrent
+                        className={`px-3 py-2.5 rounded-xl border transition-all duration-300 relative ${
+                          isPR
+                            ? isCurrent
+                              ? "bg-gradient-to-r from-amber-950/40 via-[#14261f] to-amber-950/40 border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.35)] ring-2 ring-amber-400/80"
+                              : isDone
+                              ? "bg-gradient-to-r from-amber-950/30 via-[#141722] to-amber-950/30 border-amber-400/80 shadow-[0_0_16px_rgba(245,158,11,0.25)] ring-1 ring-amber-400/60"
+                              : "bg-gradient-to-r from-amber-950/20 via-[#181b26] to-amber-950/20 border-amber-400/60 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+                            : isCurrent
                             ? "bg-[#14261f] border-emerald-500 shadow-md shadow-emerald-950/40 ring-1 ring-emerald-500/50"
                             : isDone
                             ? "bg-[#141722] border-[#262b3d]/60 opacity-80"
                             : "bg-[#181b26] border-[#262b3d]/80"
-                        }`}
+                        } ${isRecentPR ? "animate-pulse ring-2 ring-amber-400 shadow-[0_0_28px_rgba(245,158,11,0.55)] scale-[1.01]" : ""}`}
                       >
                         {/* 主行：勾 + 序號 + 重量文字 + 右側按鈕 */}
                         <div className="flex items-center gap-2.5 min-w-0">
@@ -2179,6 +2357,47 @@ export default function WorkoutDetailPage({
             </div>
           </div>
 
+          {/* ⚡ 重量快速增減調節晶片 (Quick Weight Adjuster Chips) & 單組即時推估 1RM 提示 */}
+          <div className="space-y-2 pt-0.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] text-gray-400 font-bold shrink-0">微調重量：</span>
+              <div className="flex items-center gap-1.5 flex-1 min-w-[240px]">
+                {[-5, -2.5, 2.5, 5, 10].map((delta) => (
+                  <button
+                    key={delta}
+                    type="button"
+                    onClick={() => setInputWeight(adjustWeightValue(inputWeight, delta))}
+                    className={`flex-1 py-1.5 px-1 rounded-xl text-xs font-black border transition-all active:scale-95 text-center cursor-pointer select-none shadow-sm ${
+                      delta > 0
+                        ? "bg-[#181b26] hover:bg-emerald-950/40 text-emerald-300 border-emerald-500/30 hover:border-emerald-400"
+                        : "bg-[#181b26] hover:bg-red-950/40 text-red-300 border-red-500/30 hover:border-red-400"
+                    }`}
+                  >
+                    {delta > 0 ? `+${delta}` : delta}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 3. 單組即時推估 1RM 提示 (次數 > 1 且 重量 > 0) */}
+            {(() => {
+              const w = parseFloat(inputWeight) || 0;
+              const r = parseInt(inputReps, 10) || 0;
+              if (w > 0 && r > 1) {
+                const epley1RM = Math.round(w * (1 + r / 30) * 10) / 10;
+                return (
+                  <div className="flex items-center gap-1.5 text-xs text-amber-300/95 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-xl w-fit animate-in fade-in duration-150">
+                    <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>
+                      預估 1RM ≈ <strong className="font-mono font-black text-amber-300 text-sm">{epley1RM}</strong> kg (Epley)
+                    </span>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+          </div>
+
           {/* ⭐ 支援在同一組內增加多個欄位 (休 / 補 / 遞減) */}
           <div className="space-y-2 pt-1 border-t border-[#262b3d]/60">
             <div className="flex items-center justify-between text-xs">
@@ -2397,6 +2616,43 @@ export default function WorkoutDetailPage({
                   className="w-full bg-[#181b26] border border-[#262b3d] text-white text-sm font-bold rounded-xl p-2.5 text-center outline-none"
                 />
               </div>
+            </div>
+
+            {/* 重量微調晶片與 1RM 提示 */}
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1">
+                {[-5, -2.5, 2.5, 5, 10].map((delta) => (
+                  <button
+                    key={delta}
+                    type="button"
+                    onClick={() => setEditSetWeight(adjustWeightValue(editSetWeight, delta))}
+                    className={`flex-1 py-1 rounded-lg text-[11px] font-bold border transition-all active:scale-95 text-center cursor-pointer select-none ${
+                      delta > 0
+                        ? "bg-[#181b26] hover:bg-emerald-950/40 text-emerald-300 border-emerald-500/30 hover:border-emerald-400"
+                        : "bg-[#181b26] hover:bg-red-950/40 text-red-300 border-red-500/30 hover:border-red-400"
+                    }`}
+                  >
+                    {delta > 0 ? `+${delta}` : delta}
+                  </button>
+                ))}
+              </div>
+
+              {(() => {
+                const w = parseFloat(editSetWeight) || 0;
+                const r = parseInt(editSetReps, 10) || 0;
+                if (w > 0 && r > 1) {
+                  const epley1RM = Math.round(w * (1 + r / 30) * 10) / 10;
+                  return (
+                    <div className="flex items-center gap-1.5 text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-lg w-fit">
+                      <Zap className="w-3 h-3 text-amber-400 shrink-0" />
+                      <span>
+                        預估 1RM ≈ <strong className="font-mono font-bold text-amber-300">{epley1RM}</strong> kg (Epley)
+                      </span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
 
             {/* 編輯附加欄位 */}
@@ -2960,41 +3216,54 @@ export default function WorkoutDetailPage({
         </div>
       )}
 
-      {/* 🚀 浮動吸底休息倒數膠囊 (無論滑到哪裡，隨時直覺掌握剩餘休息秒數，緊湊防換行) */}
-      {timerActive && timerSeconds !== null && timerSeconds > 0 && session?.target_muscle !== "游泳" && (
-        <div className="fixed bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 z-50 pointer-events-auto max-w-[94vw]">
-          <div className="bg-[#12141c]/95 border-2 border-amber-400 backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-2xl shadow-amber-500/30 flex items-center gap-2 text-white whitespace-nowrap shrink-0 select-none">
-            <div className="flex items-center gap-1.5 text-amber-400 font-mono font-black text-sm shrink-0">
-              <Timer className="w-4 h-4 animate-spin shrink-0" style={{ animationDuration: "3s" }} />
-              <span className="tabular-nums">
-                {Math.floor(timerSeconds / 60)}:{(timerSeconds % 60).toString().padStart(2, "0")}
-              </span>
-            </div>
-            <div className="h-3.5 w-px bg-white/20 shrink-0" />
-            <button
-              type="button"
-              onClick={() => adjustRestSeconds(-30)}
-              className="text-[11px] font-black bg-red-500/20 hover:bg-red-500/30 text-red-300 px-2.5 py-1 rounded-full border border-red-500/40 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center"
-              title="減少 30 秒"
-            >
-              -30s
-            </button>
-            <button
-              type="button"
-              onClick={() => adjustRestSeconds(30)}
-              className="text-[11px] font-black bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 px-2.5 py-1 rounded-full border border-amber-400/40 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center"
-              title="增加 30 秒"
-            >
-              +30s
-            </button>
-            <button
-              type="button"
-              onClick={stopRestTimer}
-              className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-white/10 active:scale-95 transition-all cursor-pointer shrink-0 ml-0.5"
-              title="結束計時"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+      {/* 🚀 浮動吸底休息倒數膠囊 (無論滑到哪裡，隨時直覺掌握剩餘休息秒數，結束時綠色反饋) */}
+      {(((timerActive && timerSeconds !== null && timerSeconds > 0) || timerFinished)) && session?.target_muscle !== "游泳" && (
+        <div className="fixed bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 z-50 pointer-events-auto max-w-[94vw] animate-in fade-in duration-200">
+          <div className={`backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-2xl flex items-center gap-2 text-white whitespace-nowrap shrink-0 select-none border-2 transition-all ${
+            timerFinished
+              ? "bg-[#0b1f14]/95 border-emerald-400 shadow-emerald-500/30 text-emerald-300 animate-pulse"
+              : "bg-[#12141c]/95 border-amber-400 shadow-amber-500/30"
+          }`}>
+            {timerFinished ? (
+              <div className="flex items-center gap-1.5 text-emerald-400 font-black text-sm shrink-0">
+                <Check className="w-4 h-4 stroke-[3] shrink-0" />
+                <span>休息結束！準備做下一組 💪</span>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-1.5 text-amber-400 font-mono font-black text-sm shrink-0">
+                  <Timer className="w-4 h-4 animate-spin shrink-0" style={{ animationDuration: "3s" }} />
+                  <span className="tabular-nums">
+                    {Math.floor((timerSeconds || 0) / 60)}:{((timerSeconds || 0) % 60).toString().padStart(2, "0")}
+                  </span>
+                </div>
+                <div className="h-3.5 w-px bg-white/20 shrink-0" />
+                <button
+                  type="button"
+                  onClick={() => adjustRestSeconds(-30)}
+                  className="text-[11px] font-black bg-red-500/20 hover:bg-red-500/30 text-red-300 px-2.5 py-1 rounded-full border border-red-500/40 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center"
+                  title="減少 30 秒"
+                >
+                  -30s
+                </button>
+                <button
+                  type="button"
+                  onClick={() => adjustRestSeconds(30)}
+                  className="text-[11px] font-black bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 px-2.5 py-1 rounded-full border border-amber-400/40 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center"
+                  title="增加 30 秒"
+                >
+                  +30s
+                </button>
+                <button
+                  type="button"
+                  onClick={stopRestTimer}
+                  className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-white/10 active:scale-95 transition-all cursor-pointer shrink-0 ml-0.5"
+                  title="結束計時"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

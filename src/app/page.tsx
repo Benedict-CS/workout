@@ -58,6 +58,7 @@ export default function HomePage() {
   // 單月分頁檢視 (順序排列：6月 -> 11月，鎖定僅透過按鈕左右切換或點選切換，絕不允許手勢滑動誤觸)
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(-1);
   const [showMonthDropdown, setShowMonthDropdown] = useState(false);
+  const [selectedMuscleFilter, setSelectedMuscleFilter] = useState<string>("all");
   const hasInitializedMonthRef = useRef(false);
   const selectedMonthKeyRef = useRef<string | null>(null);
   const currentGroup = (selectedMonthIndex >= 0 && selectedMonthIndex < monthGroups.length)
@@ -540,6 +541,34 @@ export default function HomePage() {
                 </button>
               </div>
 
+              {/* 部位快速篩選 Pills (全部 / 胸 / 背 / 腿 / 肩 / 游泳) */}
+              {currentGroup.sessions.length > 0 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                  {(["all", "胸", "背", "腿", "肩", "游泳"] as const).map((m) => {
+                    const label = m === "all" ? "全部" : m;
+                    const count = m === "all"
+                      ? currentGroup.sessions.length
+                      : (currentGroup.stats[m as keyof typeof currentGroup.stats] || 0);
+                    if (m !== "all" && count === 0) return null;
+                    const isActive = selectedMuscleFilter === m;
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setSelectedMuscleFilter(m)}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap active:scale-95 shrink-0 ${
+                          isActive
+                            ? "bg-emerald-500 text-black shadow-sm font-black"
+                            : "bg-[#181b26] text-gray-400 hover:text-white border border-[#262b3d]"
+                        }`}
+                      >
+                        {label} {count > 0 && <span className={`text-[10px] ml-0.5 ${isActive ? "text-black/80 font-black" : "text-gray-500"}`}>{count}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
               {currentGroup.sessions.length === 0 ? (
                 <div className="text-center py-10 space-y-2.5 bg-[#181b26]/50 border border-[#262b3d]/60 rounded-xl">
                   <p className="text-xs text-gray-400">這個月還沒有訓練紀錄</p>
@@ -552,7 +581,28 @@ export default function HomePage() {
                   </Link>
                 </div>
               ) : (
-                currentGroup.sessions.map((sess) => {
+                (() => {
+                  const filteredSessions = currentGroup.sessions.filter((s) => {
+                    if (selectedMuscleFilter === "all") return true;
+                    return s.target_muscle.includes(selectedMuscleFilter);
+                  });
+
+                  if (filteredSessions.length === 0) {
+                    return (
+                      <div className="text-center py-8 space-y-2 bg-[#181b26]/50 border border-[#262b3d]/60 rounded-xl">
+                        <p className="text-xs text-gray-400">本月無【{selectedMuscleFilter}】相關訓練紀錄</p>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMuscleFilter("all")}
+                          className="text-xs text-emerald-400 font-bold hover:underline cursor-pointer"
+                        >
+                          清除篩選顯示全部
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return filteredSessions.map((sess) => {
                 const sessSets = sessionSetsMap[sess.id] || [];
                 const isExpanded = expandedSessionIds.has(sess.id);
 
@@ -800,7 +850,9 @@ export default function HomePage() {
                     )}
                   </div>
                 );
-              }))}
+              });
+            })()
+          )}
             </div>
           </section>
         )}

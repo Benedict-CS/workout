@@ -231,6 +231,33 @@ export default function HistoryPage() {
     }
   }
 
+  // 鍵盤 ← / → 左右鍵切換月份 (防在輸入框中誤觸)
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.getAttribute("contenteditable") === "true")
+      ) {
+        return;
+      }
+      if (viewMode !== "calendar") return;
+
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        handlePrevMonth();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        handleNextMonth();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [calendarMonth, sessions, viewMode]);
+
   async function handleImportMarkdown() {
     if (!importText.trim()) return;
     setImporting(true);
@@ -294,6 +321,14 @@ export default function HistoryPage() {
 
   // 本月份訓練概況統計
   const curMonthSessions = sessions.filter((s) => s.month_key === calendarMonth);
+  const curMonthSessionIds = new Set(curMonthSessions.map((s) => s.id));
+  const curMonthSets = sets.filter((st) => curMonthSessionIds.has(st.session_id) && !st.deleted_at);
+  const curMonthFormalSets = curMonthSets.filter((st) => {
+    if (st.set_type === "warmup") return false;
+    const r = st.raw_text || "";
+    const n = st.notes || "";
+    return !(r.includes("熱身") || r.includes("激發") || r.includes("試重") || n.includes("熱身"));
+  });
   const curMonthMuscleCounts: Record<string, number> = { 胸: 0, 背: 0, 腿: 0, 肩: 0, 游泳: 0 };
   for (const s of curMonthSessions) {
     if (s.target_muscle.includes("胸")) curMonthMuscleCounts["胸"]++;
@@ -462,17 +497,32 @@ export default function HistoryPage() {
                 <span className="shrink-0">上個月</span>
               </button>
 
-              <div className="relative">
+              <div className="relative flex flex-col items-center">
                 <button
                   type="button"
                   onClick={() => setShowMonthDropdown(!showMonthDropdown)}
-                  className="flex items-center gap-1.5 font-black text-sm sm:text-base text-white hover:text-emerald-400 transition-colors cursor-pointer py-1.5 px-3 rounded-xl hover:bg-[#181b26]"
+                  className="flex items-center gap-1.5 font-black text-sm sm:text-base text-white hover:text-emerald-400 transition-colors cursor-pointer py-1 px-3 rounded-xl hover:bg-[#181b26]"
                 >
                   <span>
                     {calYear} 年 {calMonth} 月
                   </span>
                   <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
                 </button>
+
+                {calendarMonth !== todayStr.slice(0, 7) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const curM = todayStr.slice(0, 7);
+                      setCalendarMonth(curM);
+                      setSelectedCalDate(todayStr);
+                    }}
+                    className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-0.5 rounded-full border border-emerald-500/30 transition-all cursor-pointer mt-0.5 shadow-sm active:scale-95"
+                    title="快速回到本月 (今天)"
+                  >
+                    回到本月 (今天)
+                  </button>
+                )}
 
                 {/* 快速切換月份下拉 */}
                 {showMonthDropdown && (
@@ -534,6 +584,11 @@ export default function HistoryPage() {
                   {curMonthSessions.length}
                 </span>{" "}
                 場訓練
+                {curMonthFormalSets.length > 0 && (
+                  <span className="text-gray-400 font-normal ml-1">
+                    • <strong className="text-gray-200 font-bold">{curMonthFormalSets.length}</strong> 正式組
+                  </span>
+                )}
               </span>
               <div className="flex items-center gap-2 text-xs text-gray-400">
                 <span>胸 <strong className="text-white font-black">{curMonthMuscleCounts["胸"]}</strong></span>

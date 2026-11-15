@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import {
   Trophy,
@@ -100,6 +100,7 @@ export default function AnalyticsPage() {
   const [newFatValue, setNewFatValue] = useState("");
   const [newMuscleValue, setNewMuscleValue] = useState("");
   const [bwMetricTab, setBwMetricTab] = useState<"weight" | "fat">("weight");
+  const [bwRange, setBwRange] = useState<"all" | "90d" | "30d">("all");
   const [bwSaving, setBwSaving] = useState(false);
   const [showBwList, setShowBwList] = useState(false);
 
@@ -400,6 +401,12 @@ export default function AnalyticsPage() {
     muscle: b.skeletal_muscle_kg,
   }));
 
+  const filteredBwChartData = useMemo(() => {
+    if (bwRange === "30d") return bwChartData.slice(-30);
+    if (bwRange === "90d") return bwChartData.slice(-90);
+    return bwChartData;
+  }, [bwChartData, bwRange]);
+
   // InBody 里程碑計算
   const latestInbody = inbodyList.length > 0 ? inbodyList[inbodyList.length - 1] : null;
   const firstInbody = inbodyList.length > 0 ? inbodyList[0] : null;
@@ -694,8 +701,8 @@ export default function AnalyticsPage() {
           )}
         </div>
 
-        {/* 曲線切換分頁 */}
-        <div className="flex items-center justify-between pt-1">
+        {/* 曲線切換分頁與時間範圍 */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-1">
           <div className="flex items-center gap-1.5">
             <button
               type="button"
@@ -720,15 +727,27 @@ export default function AnalyticsPage() {
               體脂率趨勢 (%)
             </button>
           </div>
-          <span className="text-[10px] text-gray-500">
-            {bwMetricTab === "weight" ? "藍線：早晨體重" : "黃線：早晨體脂率"}
-          </span>
+
+          <div className="flex items-center gap-1 bg-[#181b26] p-0.5 rounded-lg border border-[#262b3d]">
+            {(["all", "90d", "30d"] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setBwRange(r)}
+                className={`text-[10px] px-2 py-0.5 rounded transition-all cursor-pointer font-bold ${
+                  bwRange === r ? "bg-cyan-500/30 text-cyan-300 shadow-sm" : "text-gray-400 hover:text-gray-200"
+                }`}
+              >
+                {r === "all" ? "全部" : r === "90d" ? "近90天" : "近30天"}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* 歷史折線圖 */}
         <div className="h-44 w-full pt-1">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={bwChartData} margin={{ top: 5, right: 10, left: -25, bottom: 5 }}>
+            <LineChart data={filteredBwChartData} margin={{ top: 5, right: 10, left: -25, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#262b3d" />
               <XAxis dataKey="date" stroke="#6b7280" fontSize={10} tickLine={false} interval="preserveStartEnd" />
               <YAxis stroke="#6b7280" fontSize={10} domain={["dataMin - 1", "dataMax + 1"]} />

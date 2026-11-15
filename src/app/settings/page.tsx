@@ -43,6 +43,8 @@ export default function SettingsPage() {
     const exercises = await db.exercises.toArray();
     const sets = await db.sets.toArray();
     const bigThree = await db.big_three.toArray();
+    const bodyWeights = await db.body_weight.toArray();
+    const inbodyRecords = await db.inbody_records.toArray();
 
     const data = {
       exportDate: new Date().toISOString(),
@@ -50,6 +52,8 @@ export default function SettingsPage() {
       sessions,
       exercises,
       sets,
+      bodyWeights,
+      inbodyRecords,
     };
 
     const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -78,20 +82,27 @@ export default function SettingsPage() {
           throw new Error("無效的 JSON 備份格式 (缺少 sessions 或 sets)");
         }
 
+        const extraInfo = [
+          parsed.bodyWeights?.length ? `體重紀錄: ${parsed.bodyWeights.length} 筆` : "",
+          parsed.inbodyRecords?.length ? `InBody檢測: ${parsed.inbodyRecords.length} 筆` : "",
+        ].filter(Boolean).join("\n");
+
         const confirmRestore = confirm(
-          `偵測到 JSON 備份：\n訓練次數: ${parsed.sessions.length} 次\n動作組數: ${parsed.sets.length} 組\n\n確定要將資料還原合併至資料庫嗎？`
+          `偵測到 JSON 備份：\n訓練次數: ${parsed.sessions.length} 次\n動作組數: ${parsed.sets.length} 組${extraInfo ? `\n${extraInfo}` : ""}\n\n確定要將資料還原合併至資料庫嗎？`
         );
         if (!confirmRestore) return;
 
-        await db.transaction("rw", [db.sessions, db.exercises, db.sets, db.big_three], async () => {
+        await db.transaction("rw", [db.sessions, db.exercises, db.sets, db.big_three, db.body_weight, db.inbody_records], async () => {
           if (parsed.sessions?.length) await db.sessions.bulkPut(parsed.sessions);
           if (parsed.exercises?.length) await db.exercises.bulkPut(parsed.exercises);
           if (parsed.sets?.length) await db.sets.bulkPut(parsed.sets);
           if (parsed.bigThree?.length) await db.big_three.bulkPut(parsed.bigThree);
+          if (parsed.bodyWeights?.length) await db.body_weight.bulkPut(parsed.bodyWeights);
+          if (parsed.inbodyRecords?.length) await db.inbody_records.bulkPut(parsed.inbodyRecords);
         });
 
         runFullSync().catch(() => {});
-        setRestoreStatusMsg(`✅ 成功還原 ${parsed.sessions.length} 次訓練與 ${parsed.sets.length} 組紀錄！`);
+        setRestoreStatusMsg(`✅ 成功還原 ${parsed.sessions.length} 次訓練、${parsed.sets.length} 組紀錄${parsed.bodyWeights?.length ? `、${parsed.bodyWeights.length} 筆體重` : ""}${parsed.inbodyRecords?.length ? `、${parsed.inbodyRecords.length} 筆InBody` : ""}！`);
       } else {
         // Markdown 檔案
         const parsed = parseWorkoutMarkdown(text);
