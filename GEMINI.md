@@ -36,10 +36,10 @@
   - 上午 10:00 前（如 08:xx, 09:xx）量測判定為「早晨空腹 (未吃早餐)」。
 
 ## 3. 圖表渲染與系統防崩潰 (Chart Safety)
-- **防範 Recharts SVG Path `NaN` 崩潰**：
-  - 在 React 19 / Turbopack 環境下，SVG 屬性計算若出現 `NaN`（如 `d="M NaN NaN"`）會引發 Error Boundary 崩潰（"This page couldn't load"）。
-  - 所有圖表的 `YAxis domain` 必須使用帶 `isFinite` 保護的自適應函數。
-  - 當特定維度（如體脂率）資料點為 0 時，必須展示空資料提示，避免空陣列觸發渲染崩潰。
+- **嚴禁使用 Recharts（React 19 致命相容性陷阱）**：
+  - Recharts 2.x 內部綁定 `react-is@18.3.1`，在 React 19（`react@19.2.8`）環境下無法識別 React 19 的 Virtual DOM 節點，且在 Next.js App Router SSR / Hydration 階段會觸發未捕獲異常，直接導致整頁崩潰（"This page couldn't load"）。
+  - **專案一律使用 100% 原生 React 19 SVG 圖表組件**（[NativeCharts.tsx](file:///F:/workout/src/components/charts/NativeCharts.tsx)），零第三方依賴、零 DOM 測量報錯、渲染毫秒級完成。
+  - `/analytics` 路由層級配置 `error.tsx` 邊界保護，杜絕任何未捕獲異常擴散至全域。
 
 ## 4. 驗證與部署規範 (Deployment Protocol)
 - 每次代碼修改後必須在本地執行 `npm run build` 確認 0 錯誤。

@@ -72,18 +72,13 @@ globs: ["*"]
 
 ---
 
-## 4. 前端圖表（Recharts）與 SVG 渲染防崩潰
+## 4. 前端圖表與系統防崩潰鐵律
 
-- 📉 **嚴格防範 `NaN` 導致的 Error Boundary Crash**：
-  - React 19 與 Turbopack 下，SVG 屬性（如 `path d="M NaN NaN"` 或 `domain` 計算產生的 `Infinity`）會直接引發無法復原的崩潰（「This page couldn’t load. Reload to try again, or go back」）。
-  - 所有 LineChart / BarChart 的 `YAxis domain` 必須使用帶有邊界保護的純函數：
-    ```ts
-    domain={[
-      (dataMin: number) => (isFinite(dataMin) ? Math.max(0, Math.floor(dataMin - 1)) : 50),
-      (dataMax: number) => (isFinite(dataMax) ? Math.ceil(dataMax + 1) : 75),
-    ]}
-    ```
-  - 當切換篩選（如體脂走勢）且有效點數量為 0 時，必須展示空資料提示（「尚無足夠數據繪製趨勢圖」），不可將空資料餵給 `ResponsiveContainer`。
+- 🚫 **嚴禁使用 Recharts（React 19 致命相容性陷阱）**：
+  - Recharts 2.x 內部綁定 `react-is@18.3.1`，在 React 19（`react@19.2.8`）環境下無法識別 React 19 的 Virtual DOM 節點，且在 Next.js App Router SSR / Hydration 階段會觸發未捕獲異常，直接導致整頁崩潰（「This page couldn’t load. Reload to try again, or go back」）。
+  - **專案一律使用 100% 原生 React 19 SVG 圖表組件**（`NativeCharts.tsx`），零第三方依賴、零 DOM 測量報錯、渲染毫秒級完成。
+  - `/analytics` 路由層級配置 `error.tsx` 邊界保護，杜絕任何未捕獲異常擴散至全域。
+  - 嚴格防範 `NaN` 運算，所有 SVG 路徑座標計算必須通過 `isFinite` 檢查。
 
 ---
 
