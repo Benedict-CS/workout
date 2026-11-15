@@ -16,14 +16,9 @@ import {
   ChevronUp,
 } from "lucide-react";
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-} from "recharts";
+  MonthlyTrendSvgChart,
+  SingleMetricSvgChart,
+} from "@/components/charts/NativeCharts";
 import { db } from "@/lib/db/schema";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
 import { runFullSync, deleteRemoteBodyWeight } from "@/lib/db/sync";
@@ -577,92 +572,8 @@ export default function AnalyticsPage() {
           </span>
         </div>
 
-        <div className="h-60 w-full pt-2">
-          {monthlyTrend.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-xs text-gray-500">
-              尚無三項訓練紀錄
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={monthlyTrend} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#262b3d" />
-                <XAxis dataKey="monthLabel" stroke="#6b7280" fontSize={11} tickLine={false} />
-                <YAxis
-                  stroke="#6b7280"
-                  fontSize={11}
-                  domain={[
-                    (dataMin: number) => (isFinite(dataMin) ? Math.max(0, Math.floor((dataMin - 10) / 10) * 10) : 0),
-                    (dataMax: number) => (isFinite(dataMax) ? Math.ceil((dataMax + 10) / 10) * 10 : 250),
-                  ]}
-                />
-              <Tooltip
-                content={({ active, payload, label }) => {
-                  if (!active || !payload || !payload.length) return null;
-                  const data = payload[0]?.payload as MonthBigThreeData;
-                  if (!data) return null;
-                  return (
-                    <div className="bg-[#181b26] border border-[#374151] rounded-xl p-3 text-xs shadow-xl space-y-1.5 min-w-[140px]">
-                      <div className="font-bold text-white border-b border-[#262b3d] pb-1 text-[11px]">
-                        {data.monthLabel || label}
-                      </div>
-                      <div className="space-y-1 text-[11px]">
-                        <div className="flex items-center justify-between text-red-300">
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-red-400"></span>
-                            <span>臥推</span>
-                          </span>
-                          <span className="font-bold">{data.bench > 0 ? `${data.bench} Kg` : "-"}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-emerald-300">
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                            <span>深蹲</span>
-                          </span>
-                          <span className="font-bold">{data.squat > 0 ? `${data.squat} Kg` : "-"}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-blue-300">
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-blue-400"></span>
-                            <span>硬舉</span>
-                          </span>
-                          <span className="font-bold">{data.deadlift > 0 ? `${data.deadlift} Kg` : "-"}</span>
-                        </div>
-                        <div className="border-t border-[#262b3d] pt-1.5 mt-1 flex items-center justify-between text-amber-400 font-black">
-                          <span>三項總和</span>
-                          <span>{data.total > 0 ? `${data.total} Kg` : "-"}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }}
-              />
-              <Line
-                type="monotone"
-                dataKey="bench"
-                name="bench"
-                stroke="#f87171"
-                strokeWidth={2.5}
-                dot={{ r: 4, fill: "#f87171" }}
-              />
-              <Line
-                type="monotone"
-                dataKey="squat"
-                name="squat"
-                stroke="#10b981"
-                strokeWidth={2.5}
-                dot={{ r: 4, fill: "#10b981" }}
-              />
-              <Line
-                type="monotone"
-                dataKey="deadlift"
-                name="deadlift"
-                stroke="#60a5fa"
-                strokeWidth={2.5}
-                dot={{ r: 4, fill: "#60a5fa" }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-          )}
+        <div className="pt-2">
+          <MonthlyTrendSvgChart data={monthlyTrend} />
         </div>
       </section>
 
@@ -754,64 +665,32 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {/* 歷史折線圖 */}
-        <div className="h-44 w-full pt-1">
-          {filteredBwChartData.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-xs text-gray-500">
-              尚無足夠數據繪製趨勢圖
-            </div>
+        {/* 歷史折線圖 (Native SVG 零崩潰圖表) */}
+        <div className="pt-1">
+          {bwMetricTab === "weight" ? (
+            <SingleMetricSvgChart
+              data={filteredBwChartData.map((d) => ({
+                date: d.date,
+                fullDate: d.fullDate,
+                value: d.weight,
+              }))}
+              color="#06b6d4"
+              unit="kg"
+              metricName="晨起體重"
+            />
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={filteredBwChartData} margin={{ top: 5, right: 10, left: -25, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#262b3d" />
-                <XAxis dataKey="date" stroke="#6b7280" fontSize={10} tickLine={false} interval="preserveStartEnd" />
-                <YAxis
-                  stroke="#6b7280"
-                  fontSize={10}
-                  domain={[
-                    (dataMin: number) => (isFinite(dataMin) ? Math.max(0, Math.floor(dataMin - 1)) : bwMetricTab === "fat" ? 10 : 50),
-                    (dataMax: number) => (isFinite(dataMax) ? Math.ceil(dataMax + 1) : bwMetricTab === "fat" ? 25 : 75),
-                  ]}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#181b26",
-                    borderColor: "#374151",
-                    borderRadius: "0.75rem",
-                    fontSize: "11px",
-                    color: "#fff",
-                  }}
-                  formatter={(val: any) => [
-                    bwMetricTab === "weight" ? `${val} kg` : `${val} %`,
-                    bwMetricTab === "weight" ? "晨起體重" : "空腹體脂",
-                  ]}
-                  labelFormatter={(lbl, items) => {
-                    const item = items[0]?.payload;
-                    return item ? item.fullDate : lbl;
-                  }}
-                />
-                {bwMetricTab === "weight" ? (
-                  <Line
-                    type="monotone"
-                    dataKey="weight"
-                    stroke="#06b6d4"
-                    strokeWidth={2.5}
-                    dot={false}
-                    activeDot={{ r: 5, fill: "#06b6d4" }}
-                  />
-                ) : (
-                  <Line
-                    type="monotone"
-                    dataKey="bodyFat"
-                    stroke="#f59e0b"
-                    strokeWidth={2.5}
-                    connectNulls
-                    dot={{ r: 2.5, fill: "#f59e0b" }}
-                    activeDot={{ r: 5, fill: "#f59e0b" }}
-                  />
-                )}
-              </LineChart>
-            </ResponsiveContainer>
+            <SingleMetricSvgChart
+              data={filteredBwChartData
+                .filter((d) => typeof d.bodyFat === "number")
+                .map((d) => ({
+                  date: d.date,
+                  fullDate: d.fullDate,
+                  value: d.bodyFat!,
+                }))}
+              color="#f59e0b"
+              unit="%"
+              metricName="空腹體脂"
+            />
           )}
         </div>
 
@@ -1057,80 +936,36 @@ export default function AnalyticsPage() {
           </span>
         </div>
 
-        {/* InBody Line Chart */}
-        <div className="h-44 w-full pt-1">
-          {inbodyChartData.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-xs text-gray-500">
-              尚無 InBody 檢測紀錄
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={inbodyChartData} margin={{ top: 5, right: 10, left: -25, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#262b3d" />
-              <XAxis dataKey="date" stroke="#6b7280" fontSize={10} tickLine={false} />
-              <YAxis
-                stroke="#6b7280"
-                fontSize={10}
-                domain={
-                  inbodyMetricTab === "smm"
-                    ? [27, 31]
-                    : inbodyMetricTab === "pbf"
-                    ? [13, 19]
-                    : [58, 66]
-                }
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#181b26",
-                  borderColor: "#374151",
-                  borderRadius: "0.75rem",
-                  fontSize: "11px",
-                  color: "#fff",
-                }}
-                formatter={(val: any, name: any) => {
-                  if (inbodyMetricTab === "smm") return [`${val} kg`, "骨骼肌 (SMM)"];
-                  if (inbodyMetricTab === "pbf") return [`${val} %`, "體脂率 (PBF)"];
-                  return [`${val} kg`, "實測體重"];
-                }}
-                labelFormatter={(lbl, items) => {
-                  const item = items[0]?.payload;
-                  return item ? `${item.fullDate} (${item.condition})` : lbl;
-                }}
-              />
-              {inbodyMetricTab === "smm" && (
-                <Line
-                  type="monotone"
-                  dataKey="smm"
-                  stroke="#10b981"
-                  strokeWidth={2.5}
-                  dot={{ r: 3, fill: "#10b981" }}
-                  activeDot={{ r: 5, fill: "#10b981" }}
-                />
-              )}
-              {inbodyMetricTab === "pbf" && (
-                <Line
-                  type="monotone"
-                  dataKey="bodyFatPct"
-                  stroke="#f59e0b"
-                  strokeWidth={2.5}
-                  dot={{ r: 3, fill: "#f59e0b" }}
-                  activeDot={{ r: 5, fill: "#f59e0b" }}
-                />
-              )}
-              {inbodyMetricTab === "weight" && (
-                <Line
-                  type="monotone"
-                  dataKey="weight"
-                  name="weight"
-                  stroke="#06b6d4"
-                  strokeWidth={2.5}
-                  dot={{ r: 3, fill: "#06b6d4" }}
-                  activeDot={{ r: 5, fill: "#06b6d4" }}
-                />
-              )}
-            </LineChart>
-          </ResponsiveContainer>
-          )}
+        {/* InBody Line Chart (Native SVG 零崩潰圖表) */}
+        <div className="pt-1">
+          <SingleMetricSvgChart
+            data={inbodyChartData.map((ib) => ({
+              date: ib.date,
+              fullDate: ib.fullDate,
+              value:
+                inbodyMetricTab === "smm"
+                  ? ib.smm
+                  : inbodyMetricTab === "pbf"
+                  ? ib.bodyFatPct
+                  : ib.weight,
+              extra: ib.condition,
+            }))}
+            color={
+              inbodyMetricTab === "smm"
+                ? "#10b981"
+                : inbodyMetricTab === "pbf"
+                ? "#f59e0b"
+                : "#06b6d4"
+            }
+            unit={inbodyMetricTab === "pbf" ? "%" : "kg"}
+            metricName={
+              inbodyMetricTab === "smm"
+                ? "骨骼肌 (SMM)"
+                : inbodyMetricTab === "pbf"
+                ? "體脂率 (PBF)"
+                : "實測體重"
+            }
+          />
         </div>
 
         {/* 新增 InBody 檢測表單 (可收合) */}
