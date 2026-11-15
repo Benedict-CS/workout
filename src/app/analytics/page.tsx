@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Trophy,
@@ -436,15 +436,6 @@ export default function AnalyticsPage() {
     setInbodyList(updated);
   }
 
-  if (!mounted || loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] text-gray-400 gap-3">
-        <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-sm">載入力量進步分析中...</p>
-      </div>
-    );
-  }
-
   // 乾淨安全提取體重列表
   const validBw = bodyWeights.filter(
     (b) => b && typeof b.weight_kg === "number" && isFinite(b.weight_kg) && b.weight_kg > 0
@@ -473,17 +464,14 @@ export default function AnalyticsPage() {
     muscle: b.skeletal_muscle_kg,
   }));
 
-  const filteredBwChartData = useMemo(() => {
-    let list = bwChartData;
-    if (bwMetricTab === "fat") {
-      list = list.filter(
-        (b) => typeof b.bodyFat === "number" && !isNaN(b.bodyFat) && b.bodyFat > 0
-      );
-    }
-    if (bwRange === "30d") return list.slice(-30);
-    if (bwRange === "90d") return list.slice(-90);
-    return list;
-  }, [bwChartData, bwRange, bwMetricTab]);
+  let filteredBwChartData = bwChartData;
+  if (bwMetricTab === "fat") {
+    filteredBwChartData = filteredBwChartData.filter(
+      (b) => typeof b.bodyFat === "number" && !isNaN(b.bodyFat) && b.bodyFat > 0
+    );
+  }
+  if (bwRange === "30d") filteredBwChartData = filteredBwChartData.slice(-30);
+  else if (bwRange === "90d") filteredBwChartData = filteredBwChartData.slice(-90);
 
   // InBody 里程碑計算
   const validInbody = inbodyList.filter(
@@ -539,12 +527,19 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-5 pb-24 max-w-4xl mx-auto">
-      <div>
-        <h1 className="text-xl font-black text-white">訓練與力量分析</h1>
-        <p className="text-xs text-gray-400">
-          全歷史累計訓練總量與每月三項實測最高重量成長
-        </p>
-      </div>
+      {!mounted || loading ? (
+        <div className="flex flex-col items-center justify-center min-h-[50vh] text-gray-400 gap-3">
+          <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-sm">載入力量進步分析中...</p>
+        </div>
+      ) : (
+        <>
+          <div>
+            <h1 className="text-xl font-black text-white">訓練與力量分析</h1>
+            <p className="text-xs text-gray-400">
+              全歷史累計訓練總量與每月三項實測最高重量成長
+            </p>
+          </div>
 
       {/* 全歷史累計訓練總量 */}
       <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 shadow-lg">
@@ -1288,6 +1283,8 @@ export default function AnalyticsPage() {
           </div>
         )}
       </section>
+        </>
+      )}
     </div>
   );
 }

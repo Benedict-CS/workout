@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 
 interface MonthData {
   monthKey: string;
@@ -17,15 +17,14 @@ interface MonthData {
 export function MonthlyTrendSvgChart({ data }: { data: MonthData[] }) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
-  const validData = useMemo(() => {
-    if (!Array.isArray(data)) return [];
-    return data.filter(
-      (d) =>
-        d &&
-        typeof d === "object" &&
-        typeof d.monthLabel === "string"
-    );
-  }, [data]);
+  const validData = Array.isArray(data)
+    ? data.filter(
+        (d) =>
+          d &&
+          typeof d === "object" &&
+          typeof d.monthLabel === "string"
+      )
+    : [];
 
   if (validData.length === 0) {
     return (
@@ -309,16 +308,15 @@ export function SingleMetricSvgChart({
 }) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
-  const validData = useMemo(() => {
-    if (!Array.isArray(data)) return [];
-    return data
-      .filter((d) => d && typeof d.value === "number" && !isNaN(d.value) && isFinite(d.value))
-      .map((d) => ({
-        ...d,
-        date: String(d.date || ""),
-        fullDate: String(d.fullDate || d.date || ""),
-      }));
-  }, [data]);
+  const validData = Array.isArray(data)
+    ? data
+        .filter((d) => d && typeof d.value === "number" && !isNaN(d.value) && isFinite(d.value))
+        .map((d) => ({
+          ...d,
+          date: String(d.date || ""),
+          fullDate: String(d.fullDate || d.date || ""),
+        }))
+    : [];
 
   if (validData.length === 0) {
     return (

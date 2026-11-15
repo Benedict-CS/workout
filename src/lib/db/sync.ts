@@ -504,60 +504,6 @@ export async function runFullSync(): Promise<SyncResult> {
       }
     }
 
-    // 5.5 同步 Body Weights (體重與體脂率，嘗試同步，若資料表未建立則優雅略過)
-    try {
-      const localBw = await db.body_weight.toArray();
-      const pendingBw = localBw.filter((b) => b.sync_status === "pending" || !b.sync_status);
-      if (pendingBw.length > 0) {
-        const bwPayload = pendingBw.map((b) => ({
-          id: b.id,
-          date: b.date,
-          weight_kg: b.weight_kg,
-          body_fat_pct: b.body_fat_pct ?? null,
-          skeletal_muscle_kg: b.skeletal_muscle_kg ?? null,
-          note: b.note ?? null,
-          created_at: b.created_at,
-          updated_at: b.updated_at,
-        }));
-        const { error: bwErr } = await supabase
-          .from("body_weights")
-          .upsert(bwPayload, { onConflict: "id" });
-        if (!bwErr) {
-          pushed += pendingBw.length;
-          await db.body_weight.bulkPut(
-            pendingBw.map((b) => ({ ...b, sync_status: "synced" }))
-          );
-        }
-      }
-
-      const { data: remoteBw } = await supabase
-        .from("body_weights")
-        .select("*")
-        .limit(1000);
-
-      if (remoteBw && remoteBw.length > 0) {
-        for (const rb of remoteBw) {
-          const local = await db.body_weight.get(rb.id);
-          if (!local || new Date(rb.updated_at) > new Date(local.updated_at)) {
-            await db.body_weight.put({
-              id: rb.id,
-              date: rb.date,
-              weight_kg: Number(rb.weight_kg),
-              body_fat_pct: rb.body_fat_pct ? Number(rb.body_fat_pct) : undefined,
-              skeletal_muscle_kg: rb.skeletal_muscle_kg ? Number(rb.skeletal_muscle_kg) : undefined,
-              note: rb.note || undefined,
-              created_at: rb.created_at,
-              updated_at: rb.updated_at,
-              sync_status: "synced",
-            });
-            pulled++;
-          }
-        }
-      }
-    } catch {
-      // 雲端資料表未建立時優雅忽略，不中斷主流程
-    }
-
     const now = new Date().toISOString();
     if (typeof window !== "undefined") {
       localStorage.setItem("workout_last_sync_time", now);
@@ -610,16 +556,10 @@ export async function deleteRemoteSet(setId: string): Promise<void> {
 }
 
 /**
- * 遠端刪除體重紀錄
+ * 遠端刪除體重紀錄（本機優先保存於 Dexie）
  */
-export async function deleteRemoteBodyWeight(id: string): Promise<void> {
-  const supabase = getSupabaseClient();
-  if (!supabase) return;
-  try {
-    await supabase.from("body_weights").delete().eq("id", id);
-  } catch (err) {
-    console.error("Failed to delete remote body weight:", err);
-  }
+export async function deleteRemoteBodyWeight(_id: string): Promise<void> {
+  // Dexie 本地資料庫儲存完整體重與 InBody 數據
 }
 
 /**
