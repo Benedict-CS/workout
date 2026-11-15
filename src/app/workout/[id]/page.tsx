@@ -2389,61 +2389,22 @@ export default function WorkoutDetailPage({
             </div>
           </div>
 
-          {/* ⚡ 重量快速增減調節晶片 (Quick Weight Adjuster Chips) & 單組即時推估 1RM 提示 */}
-          <div className="space-y-2 pt-0.5">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[11px] text-gray-400 font-bold shrink-0">微調重量：</span>
-              <div className="flex items-center gap-1.5 flex-1 min-w-[240px]">
-                {[-5, -2.5, 2.5, 5, 10].map((delta) => (
-                  <button
-                    key={delta}
-                    type="button"
-                    onClick={() => setInputWeight(adjustWeightValue(inputWeight, delta))}
-                    className={`flex-1 py-1.5 px-1 rounded-xl text-xs font-black border transition-all active:scale-95 text-center cursor-pointer select-none shadow-sm ${
-                      delta > 0
-                        ? "bg-[#181b26] hover:bg-emerald-950/40 text-emerald-300 border-emerald-500/30 hover:border-emerald-400"
-                        : "bg-[#181b26] hover:bg-red-950/40 text-red-300 border-red-500/30 hover:border-red-400"
-                    }`}
-                  >
-                    {delta > 0 ? `+${delta}` : delta}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 3. 單組即時推估 1RM 提示 與 奧運槓槓片速算切換 */}
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              {(() => {
-                const w = parseFloat(inputWeight) || 0;
-                const r = parseInt(inputReps, 10) || 0;
-                if (w > 0 && r > 1) {
-                  const epley1RM = Math.round(w * (1 + r / 30) * 10) / 10;
-                  return (
-                    <div className="flex items-center gap-1.5 text-xs text-amber-300/95 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-xl w-fit animate-in fade-in duration-150">
-                      <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span>
-                        預估 1RM ≈ <strong className="font-mono font-black text-amber-300 text-sm">{epley1RM}</strong> kg (Epley)
-                      </span>
-                    </div>
-                  );
-                }
-                return <div />;
-              })()}
-
-              <button
-                type="button"
-                onClick={() => setShowPlateCalc((v) => !v)}
-                className={`text-xs font-bold px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer select-none active:scale-95 ${
-                  showPlateCalc
-                    ? "bg-cyan-500 text-black border-cyan-400 font-black shadow-sm"
-                    : "bg-[#181b26] text-gray-400 hover:text-cyan-300 border-[#262b3d] hover:border-cyan-500/40"
-                }`}
-                title="奧運槓每邊加掛槓片速算"
-              >
-                <Calculator className="w-3.5 h-3.5" />
-                <span>{showPlateCalc ? "收起槓片" : "槓片速算"}</span>
-              </button>
-            </div>
+          {/* 奧運槓槓片速算切換 */}
+          <div className="flex justify-end pt-0.5">
+            <button
+              type="button"
+              onClick={() => setShowPlateCalc((v) => !v)}
+              className={`text-xs font-bold px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer select-none active:scale-95 ${
+                showPlateCalc
+                  ? "bg-cyan-500 text-black border-cyan-400 font-black shadow-sm"
+                  : "bg-[#181b26] text-gray-400 hover:text-cyan-300 border-[#262b3d] hover:border-cyan-500/40"
+              }`}
+              title="奧運槓每邊加掛槓片速算"
+            >
+              <Calculator className="w-3.5 h-3.5" />
+              <span>{showPlateCalc ? "收起槓片" : "槓片速算"}</span>
+            </button>
+          </div>
 
             {/* 🏋️ 槓片速算展開面板 (Barbell Plate Calculator) */}
             {showPlateCalc && (
@@ -2522,7 +2483,6 @@ export default function WorkoutDetailPage({
                 })()}
               </div>
             )}
-          </div>
 
           {/* ⭐ 支援在同一組內增加多個欄位 (休 / 補 / 遞減) */}
           <div className="space-y-2 pt-1 border-t border-[#262b3d]/60">
@@ -2756,43 +2716,6 @@ export default function WorkoutDetailPage({
                   className="w-full bg-[#181b26] border border-[#262b3d] text-white text-sm font-bold rounded-xl p-2.5 text-center outline-none"
                 />
               </div>
-            </div>
-
-            {/* 重量微調晶片與 1RM 提示 */}
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-1">
-                {[-5, -2.5, 2.5, 5, 10].map((delta) => (
-                  <button
-                    key={delta}
-                    type="button"
-                    onClick={() => setEditSetWeight(adjustWeightValue(editSetWeight, delta))}
-                    className={`flex-1 py-1 rounded-lg text-[11px] font-bold border transition-all active:scale-95 text-center cursor-pointer select-none ${
-                      delta > 0
-                        ? "bg-[#181b26] hover:bg-emerald-950/40 text-emerald-300 border-emerald-500/30 hover:border-emerald-400"
-                        : "bg-[#181b26] hover:bg-red-950/40 text-red-300 border-red-500/30 hover:border-red-400"
-                    }`}
-                  >
-                    {delta > 0 ? `+${delta}` : delta}
-                  </button>
-                ))}
-              </div>
-
-              {(() => {
-                const w = parseFloat(editSetWeight) || 0;
-                const r = parseInt(editSetReps, 10) || 0;
-                if (w > 0 && r > 1) {
-                  const epley1RM = Math.round(w * (1 + r / 30) * 10) / 10;
-                  return (
-                    <div className="flex items-center gap-1.5 text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-lg w-fit">
-                      <Zap className="w-3 h-3 text-amber-400 shrink-0" />
-                      <span>
-                        預估 1RM ≈ <strong className="font-mono font-bold text-amber-300">{epley1RM}</strong> kg (Epley)
-                      </span>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
             </div>
 
             {/* 編輯附加欄位 */}

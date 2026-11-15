@@ -402,10 +402,14 @@ export default function AnalyticsPage() {
   }));
 
   const filteredBwChartData = useMemo(() => {
-    if (bwRange === "30d") return bwChartData.slice(-30);
-    if (bwRange === "90d") return bwChartData.slice(-90);
-    return bwChartData;
-  }, [bwChartData, bwRange]);
+    let list = bwChartData;
+    if (bwMetricTab === "fat") {
+      list = list.filter((b) => typeof b.bodyFat === "number" && !isNaN(b.bodyFat) && b.bodyFat > 0);
+    }
+    if (bwRange === "30d") return list.slice(-30);
+    if (bwRange === "90d") return list.slice(-90);
+    return list;
+  }, [bwChartData, bwRange, bwMetricTab]);
 
   // InBody 里程碑計算
   const latestInbody = inbodyList.length > 0 ? inbodyList[inbodyList.length - 1] : null;
@@ -574,18 +578,23 @@ export default function AnalyticsPage() {
         </div>
 
         <div className="h-60 w-full pt-2">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={monthlyTrend} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#262b3d" />
-              <XAxis dataKey="monthLabel" stroke="#6b7280" fontSize={11} tickLine={false} />
-              <YAxis
-                stroke="#6b7280"
-                fontSize={11}
-                domain={[
-                  (dataMin: number) => Math.max(0, Math.floor((dataMin - 10) / 10) * 10),
-                  (dataMax: number) => Math.ceil((dataMax + 10) / 10) * 10,
-                ]}
-              />
+          {monthlyTrend.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-xs text-gray-500">
+              尚無三項訓練紀錄
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={monthlyTrend} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#262b3d" />
+                <XAxis dataKey="monthLabel" stroke="#6b7280" fontSize={11} tickLine={false} />
+                <YAxis
+                  stroke="#6b7280"
+                  fontSize={11}
+                  domain={[
+                    (dataMin: number) => (isFinite(dataMin) ? Math.max(0, Math.floor((dataMin - 10) / 10) * 10) : 0),
+                    (dataMax: number) => (isFinite(dataMax) ? Math.ceil((dataMax + 10) / 10) * 10 : 250),
+                  ]}
+                />
               <Tooltip
                 content={({ active, payload, label }) => {
                   if (!active || !payload || !payload.length) return null;
@@ -653,6 +662,7 @@ export default function AnalyticsPage() {
               />
             </LineChart>
           </ResponsiveContainer>
+          )}
         </div>
       </section>
 
@@ -746,50 +756,63 @@ export default function AnalyticsPage() {
 
         {/* 歷史折線圖 */}
         <div className="h-44 w-full pt-1">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={filteredBwChartData} margin={{ top: 5, right: 10, left: -25, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#262b3d" />
-              <XAxis dataKey="date" stroke="#6b7280" fontSize={10} tickLine={false} interval="preserveStartEnd" />
-              <YAxis stroke="#6b7280" fontSize={10} domain={["dataMin - 1", "dataMax + 1"]} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#181b26",
-                  borderColor: "#374151",
-                  borderRadius: "0.75rem",
-                  fontSize: "11px",
-                  color: "#fff",
-                }}
-                formatter={(val: any) => [
-                  bwMetricTab === "weight" ? `${val} kg` : `${val} %`,
-                  bwMetricTab === "weight" ? "晨起體重" : "空腹體脂",
-                ]}
-                labelFormatter={(lbl, items) => {
-                  const item = items[0]?.payload;
-                  return item ? item.fullDate : lbl;
-                }}
-              />
-              {bwMetricTab === "weight" ? (
-                <Line
-                  type="monotone"
-                  dataKey="weight"
-                  stroke="#06b6d4"
-                  strokeWidth={2.5}
-                  dot={false}
-                  activeDot={{ r: 5, fill: "#06b6d4" }}
+          {filteredBwChartData.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-xs text-gray-500">
+              尚無足夠數據繪製趨勢圖
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={filteredBwChartData} margin={{ top: 5, right: 10, left: -25, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#262b3d" />
+                <XAxis dataKey="date" stroke="#6b7280" fontSize={10} tickLine={false} interval="preserveStartEnd" />
+                <YAxis
+                  stroke="#6b7280"
+                  fontSize={10}
+                  domain={[
+                    (dataMin: number) => (isFinite(dataMin) ? Math.max(0, Math.floor(dataMin - 1)) : bwMetricTab === "fat" ? 10 : 50),
+                    (dataMax: number) => (isFinite(dataMax) ? Math.ceil(dataMax + 1) : bwMetricTab === "fat" ? 25 : 75),
+                  ]}
                 />
-              ) : (
-                <Line
-                  type="monotone"
-                  dataKey="bodyFat"
-                  stroke="#f59e0b"
-                  strokeWidth={2.5}
-                  connectNulls
-                  dot={{ r: 2.5, fill: "#f59e0b" }}
-                  activeDot={{ r: 5, fill: "#f59e0b" }}
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#181b26",
+                    borderColor: "#374151",
+                    borderRadius: "0.75rem",
+                    fontSize: "11px",
+                    color: "#fff",
+                  }}
+                  formatter={(val: any) => [
+                    bwMetricTab === "weight" ? `${val} kg` : `${val} %`,
+                    bwMetricTab === "weight" ? "晨起體重" : "空腹體脂",
+                  ]}
+                  labelFormatter={(lbl, items) => {
+                    const item = items[0]?.payload;
+                    return item ? item.fullDate : lbl;
+                  }}
                 />
-              )}
-            </LineChart>
-          </ResponsiveContainer>
+                {bwMetricTab === "weight" ? (
+                  <Line
+                    type="monotone"
+                    dataKey="weight"
+                    stroke="#06b6d4"
+                    strokeWidth={2.5}
+                    dot={false}
+                    activeDot={{ r: 5, fill: "#06b6d4" }}
+                  />
+                ) : (
+                  <Line
+                    type="monotone"
+                    dataKey="bodyFat"
+                    stroke="#f59e0b"
+                    strokeWidth={2.5}
+                    connectNulls
+                    dot={{ r: 2.5, fill: "#f59e0b" }}
+                    activeDot={{ r: 5, fill: "#f59e0b" }}
+                  />
+                )}
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* 快速記錄體重 / 體脂 / 骨骼肌 輸入列 */}
@@ -1036,8 +1059,13 @@ export default function AnalyticsPage() {
 
         {/* InBody Line Chart */}
         <div className="h-44 w-full pt-1">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={inbodyChartData} margin={{ top: 5, right: 10, left: -25, bottom: 5 }}>
+          {inbodyChartData.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-xs text-gray-500">
+              尚無 InBody 檢測紀錄
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={inbodyChartData} margin={{ top: 5, right: 10, left: -25, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#262b3d" />
               <XAxis dataKey="date" stroke="#6b7280" fontSize={10} tickLine={false} />
               <YAxis
@@ -1102,6 +1130,7 @@ export default function AnalyticsPage() {
               )}
             </LineChart>
           </ResponsiveContainer>
+          )}
         </div>
 
         {/* 新增 InBody 檢測表單 (可收合) */}

@@ -327,6 +327,70 @@ export async function ensureDatabaseSeeded(): Promise<void> {
     }
   }
 
+  // 舊版重複動作 ID 映射至 Canonical 標準 ID
+  const LEGACY_ID_MAP: Record<string, string> = {
+    "ex-bench-press": "ex-bench",
+    "ex-flat-dumbbell": "ex-db-bench",
+    "ex-db-flat-press": "ex-db-bench",
+    "ex-incline-dumbbell": "ex-db-incline-bench",
+    "ex-incline-db-press": "ex-db-incline-bench",
+    "ex-incline-barbell-press": "ex-incline-bench",
+    "ex-db-row": "ex-db-single-row",
+    "ex-one-arm-dumbbell-row": "ex-db-single-row",
+    "ex-pec-deck": "ex-pec-fly",
+    "ex-machine-incline-press": "ex-incline-machine-bench",
+    "ex-chest-press": "ex-chest-press-seated",
+    "ex-seated-row-machine": "ex-seated-row",
+    "ex-tricep-press-chest": "ex-dip-pushdown-machine",
+    "ex-hex-deadlift": "ex-trap-bar-deadlift",
+    "ex-lat-row-machine": "ex-high-row",
+    "ex-seated-back-row-machine": "ex-seated-cable-row",
+    "ex-lying-leg-curl": "ex-leg-curl",
+    "ex-bulgarian-split-squat": "ex-bulgarian-squat",
+    "ex-dumbbell-shoulder-press": "ex-db-shoulder-press",
+    "ex-face-pull": "ex-cable-face-pull",
+    "ex-reverse-pec-deck": "ex-reverse-pec-fly",
+    "ex-rope-tricep-pushdown": "ex-rope-tricep",
+    "ex-dumbbell-hammer-curl": "ex-db-hammer-curl",
+    "ex-incline-dumbbell-curl": "ex-incline-db-curl",
+  };
+
+  // 清除本地重複的舊版動作並將組數遷移至標準動作 ID
+  const legacyExIds = Object.keys(LEGACY_ID_MAP);
+  const foundLegacyEx = await db.exercises.filter((e) => legacyExIds.includes(e.id)).toArray();
+  if (foundLegacyEx.length > 0) {
+    const toDeleteIds = foundLegacyEx.map((e) => e.id);
+    for (const legEx of foundLegacyEx) {
+      if (legEx.is_favorite) {
+        const canonicalId = LEGACY_ID_MAP[legEx.id];
+        if (canonicalId) {
+          await db.exercises.update(canonicalId, { is_favorite: true });
+        }
+      }
+    }
+    await db.exercises.bulkDelete(toDeleteIds);
+  }
+
+  // 檢查是否有組數指向 legacyExIds
+  const setsWithLegacyEx = await db.sets.filter((s) => legacyExIds.includes(s.exercise_id)).toArray();
+  if (setsWithLegacyEx.length > 0) {
+    for (const s of setsWithLegacyEx) {
+      const canonicalId = LEGACY_ID_MAP[s.exercise_id];
+      if (canonicalId) {
+        await db.sets.update(s.id, { exercise_id: canonicalId });
+      }
+    }
+  }
+
+  // 確保核心動作皆有最愛星號標記
+  const keyFavIds = ["ex-bench", "ex-db-bench", "ex-db-incline-bench", "ex-squat", "ex-deadlift", "ex-pullup", "ex-leg-press"];
+  for (const kf of keyFavIds) {
+    const ex = await db.exercises.get(kf);
+    if (ex && !ex.is_favorite) {
+      await db.exercises.update(kf, { is_favorite: true });
+    }
+  }
+
   const updatedSessionCount = await db.sessions.count();
   const currentSetCount = await db.sets.count();
   const currentSwimCount = await db.sessions.where("target_muscle").equals("游泳").count();

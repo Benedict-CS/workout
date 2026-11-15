@@ -22,7 +22,35 @@ import {
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { runFullSync, deleteRemoteExercise } from "@/lib/db/sync";
-import type { Exercise, MuscleGroup, WeightType } from "@/lib/types";
+import type { Exercise, MuscleGroup, WeightType, WorkoutSession } from "@/lib/types";
+
+// 舊版重複動作 ID 映射至 Canonical 標準 ID
+const LEGACY_ID_MAP: Record<string, string> = {
+  "ex-bench-press": "ex-bench",
+  "ex-flat-dumbbell": "ex-db-bench",
+  "ex-db-flat-press": "ex-db-bench",
+  "ex-incline-dumbbell": "ex-db-incline-bench",
+  "ex-incline-db-press": "ex-db-incline-bench",
+  "ex-incline-barbell-press": "ex-incline-bench",
+  "ex-db-row": "ex-db-single-row",
+  "ex-one-arm-dumbbell-row": "ex-db-single-row",
+  "ex-pec-deck": "ex-pec-fly",
+  "ex-machine-incline-press": "ex-incline-machine-bench",
+  "ex-chest-press": "ex-chest-press-seated",
+  "ex-seated-row-machine": "ex-seated-row",
+  "ex-tricep-press-chest": "ex-dip-pushdown-machine",
+  "ex-hex-deadlift": "ex-trap-bar-deadlift",
+  "ex-lat-row-machine": "ex-high-row",
+  "ex-seated-back-row-machine": "ex-seated-cable-row",
+  "ex-lying-leg-curl": "ex-leg-curl",
+  "ex-bulgarian-split-squat": "ex-bulgarian-squat",
+  "ex-dumbbell-shoulder-press": "ex-db-shoulder-press",
+  "ex-face-pull": "ex-cable-face-pull",
+  "ex-reverse-pec-deck": "ex-reverse-pec-fly",
+  "ex-rope-tricep-pushdown": "ex-rope-tricep",
+  "ex-dumbbell-hammer-curl": "ex-db-hammer-curl",
+  "ex-incline-dumbbell-curl": "ex-incline-db-curl",
+};
 
 interface ExerciseStat {
   exercise: Exercise;
@@ -30,6 +58,9 @@ interface ExerciseStat {
   maxWeight: number;
   maxWeightReps: number;
   bestSet: string;
+  bestSetDetail?: string;
+  isAssisted: boolean;
+  isSwimming: boolean;
 }
 
 type SortMode = "sets" | "pr" | "name";
@@ -225,25 +256,79 @@ export default function ExercisesPage() {
   const [deletingEx, setDeletingEx] = useState<Exercise | null>(null);
 
   async function loadData() {
-    const allEx = await db.exercises
+    setLoading(true);
+    const rawExList = await db.exercises
       .filter((e) => !e.deleted_at && !e.name.includes("繩索夾胸"))
       .toArray();
     const allSets = await db.sets.filter((s) => !s.deleted_at).toArray();
+    const allSessions = await db.sessions.toArray();
+    const sessionMap = new Map<string, WorkoutSession>();
+    for (const sess of allSessions) {
+      sessionMap.set(sess.id, sess);
+    }
+
+    // 1. 去重與合併重複動作 (以標準動作名稱與 ID 為準，排除 legacy 重複項目)
+    const dedupedExMap = new Map<string, Exercise>();
+    for (const ex of rawExList) {
+      const canonicalId = LEGACY_ID_MAP[ex.id] || ex.id;
+      // 若該舊 ID 屬於別名，且目標 canonical 已存在或即將存在，跳過該舊項目
+      if (LEGACY_ID_MAP[ex.id]) {
+        const canonical = dedupedExMap.get(canonicalId);
+        if (canonical && ex.is_favorite) {
+          canonical.is_favorite = true;
+        }
+        continue;
+      }
+      // 依名稱去重 (避免重複同名動作)
+      const existing = Array.from(dedupedExMap.values()).find((e) => e.name === ex.name);
+      if (existing) {
+        if (ex.is_favorite) existing.is_favorite = true;
+        continue;
+      }
+      dedupedExMap.set(ex.id, ex);
+    }
+    const allEx = Array.from(dedupedExMap.values());
+
+    // 2. 映射組數到 canonical ID，使臥推、啞鈴臥推、上斜等所有歷史組數 100% 聚合
+    const setsByExId = new Map<string, typeof allSets>();
+    for (const s of allSets) {
+      const cId = LEGACY_ID_MAP[s.exercise_id] || s.exercise_id;
+      let list = setsByExId.get(cId);
+      if (!list) {
+        list = [];
+        setsByExId.set(cId, list);
+      }
+      list.push(s);
+    }
 
     const calculated: ExerciseStat[] = allEx.map((ex) => {
-      const exSets = allSets.filter((s) => s.exercise_id === ex.id);
+      const exSets = setsByExId.get(ex.id) || [];
+      const isSwimming = ex.id === "ex-swim" || ex.name.includes("游泳");
+      const isAssisted = ex.weight_type === "assisted_inverse" || ex.name.includes("輔助");
+
       let maxWeight = 0;
       let maxWeightReps = 0;
       let bestSet = "";
+      let bestSetDetail = "";
 
       for (const s of exSets) {
+        let isBetter = false;
         if (s.weight_kg > maxWeight || (s.weight_kg === maxWeight && s.reps > maxWeightReps)) {
+          isBetter = true;
+        } else if (maxWeight === 0 && s.reps > maxWeightReps) {
+          isBetter = true;
+        }
+
+        if (isBetter) {
           maxWeight = s.weight_kg;
           maxWeightReps = s.reps;
           bestSet = s.raw_text || `${s.weight_kg}Kg x ${s.reps}`;
-        } else if (maxWeight === 0 && s.reps > maxWeightReps) {
-          maxWeightReps = s.reps;
-          bestSet = s.raw_text || `自重 x ${s.reps}`;
+          const sess = sessionMap.get(s.session_id);
+          if (sess) {
+            const datePart = sess.date ? sess.date.slice(5).replace("-", "/") : "";
+            const locPart = sess.location ? ` ${sess.location}` : "";
+            bestSetDetail = `${datePart}${locPart}`.trim();
+          }
         }
       }
 
@@ -253,6 +338,9 @@ export default function ExercisesPage() {
         maxWeight,
         maxWeightReps,
         bestSet: bestSet || "尚未開始記錄",
+        bestSetDetail,
+        isAssisted,
+        isSwimming,
       };
     });
 
@@ -727,12 +815,44 @@ export default function ExercisesPage() {
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#181b26] border border-[#262b3d] text-xs text-gray-300">
                     <Layers className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                     <span>
-                      累積訓練 <strong className="text-white font-bold">{item.totalSets}</strong> 組
+                      {item.isSwimming ? (
+                        <>
+                          完成 <strong className="text-white font-bold">{item.totalSets}</strong> 場泳訓
+                        </>
+                      ) : (
+                        <>
+                          累積訓練 <strong className="text-white font-bold">{item.totalSets}</strong> 組
+                        </>
+                      )}
                     </span>
                   </div>
 
                   {/* 歷史最佳 PR 膠囊 */}
-                  {item.maxWeight > 0 ? (
+                  {item.isSwimming ? (
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-xs text-cyan-300">
+                      <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                      <span>專項有氧心肺訓練</span>
+                    </div>
+                  ) : item.isAssisted ? (
+                    <div
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-purple-500/10 border border-purple-500/30 text-xs text-purple-300"
+                      title="反向配重：配重為輔助減重磅數"
+                    >
+                      <Trophy className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                      <span>
+                        輔助配重:{" "}
+                        <strong className="text-white font-bold">{item.maxWeight} kg</strong>
+                        {item.maxWeightReps > 0 && (
+                          <span className="text-purple-200/90 ml-1">× {item.maxWeightReps} 下</span>
+                        )}
+                        {item.bestSetDetail && (
+                          <span className="text-gray-400 font-normal ml-1.5 text-[11px]">
+                            ({item.bestSetDetail})
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  ) : item.maxWeight > 0 ? (
                     <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300">
                       <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                       <span>
@@ -740,6 +860,11 @@ export default function ExercisesPage() {
                         <strong className="text-white font-bold">{item.maxWeight} kg</strong>
                         {item.maxWeightReps > 0 && (
                           <span className="text-amber-200/90 ml-1">× {item.maxWeightReps} 下</span>
+                        )}
+                        {item.bestSetDetail && (
+                          <span className="text-gray-400 font-normal ml-1.5 text-[11px]">
+                            ({item.bestSetDetail})
+                          </span>
                         )}
                       </span>
                     </div>
@@ -751,6 +876,11 @@ export default function ExercisesPage() {
                         <strong className="text-white font-bold">
                           {item.maxWeightReps > 0 ? `${item.maxWeightReps} 下 (自重)` : "自重完成"}
                         </strong>
+                        {item.bestSetDetail && (
+                          <span className="text-gray-400 font-normal ml-1.5 text-[11px]">
+                            ({item.bestSetDetail})
+                          </span>
+                        )}
                       </span>
                     </div>
                   ) : (

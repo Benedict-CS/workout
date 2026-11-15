@@ -367,8 +367,44 @@ export async function runFullSync(): Promise<SyncResult> {
       .select("*")
       .limit(500);
 
+    const LEGACY_ID_MAP: Record<string, string> = {
+      "ex-bench-press": "ex-bench",
+      "ex-flat-dumbbell": "ex-db-bench",
+      "ex-db-flat-press": "ex-db-bench",
+      "ex-incline-dumbbell": "ex-db-incline-bench",
+      "ex-incline-db-press": "ex-db-incline-bench",
+      "ex-incline-barbell-press": "ex-incline-bench",
+      "ex-db-row": "ex-db-single-row",
+      "ex-one-arm-dumbbell-row": "ex-db-single-row",
+      "ex-pec-deck": "ex-pec-fly",
+      "ex-machine-incline-press": "ex-incline-machine-bench",
+      "ex-chest-press": "ex-chest-press-seated",
+      "ex-seated-row-machine": "ex-seated-row",
+      "ex-tricep-press-chest": "ex-dip-pushdown-machine",
+      "ex-hex-deadlift": "ex-trap-bar-deadlift",
+      "ex-lat-row-machine": "ex-high-row",
+      "ex-seated-back-row-machine": "ex-seated-cable-row",
+      "ex-lying-leg-curl": "ex-leg-curl",
+      "ex-bulgarian-split-squat": "ex-bulgarian-squat",
+      "ex-dumbbell-shoulder-press": "ex-db-shoulder-press",
+      "ex-face-pull": "ex-cable-face-pull",
+      "ex-reverse-pec-deck": "ex-reverse-pec-fly",
+      "ex-rope-tricep-pushdown": "ex-rope-tricep",
+      "ex-dumbbell-hammer-curl": "ex-db-hammer-curl",
+      "ex-incline-dumbbell-curl": "ex-incline-db-curl",
+    };
+
     if (remoteExercises && remoteExercises.length > 0) {
       for (const re of remoteExercises) {
+        // 若屬於舊版重複別名，則跳過寫入，但若標記最愛則將最愛轉移給 Canonical
+        if (LEGACY_ID_MAP[re.id]) {
+          const canonicalId = LEGACY_ID_MAP[re.id];
+          if (re.is_favorite) {
+            await db.exercises.update(canonicalId, { is_favorite: true });
+          }
+          continue;
+        }
+
         const local = await db.exercises.get(re.id);
         if (!local || new Date(re.updated_at) > new Date(local.updated_at)) {
           await db.exercises.put({
@@ -409,6 +445,7 @@ export async function runFullSync(): Promise<SyncResult> {
       }
 
       for (const rst of remoteSets) {
+        const targetExId = LEGACY_ID_MAP[rst.exercise_id] || rst.exercise_id;
         const local = await db.sets.get(rst.id);
         if (!local || new Date(rst.updated_at) > new Date(local.updated_at)) {
           let subFields = undefined;
@@ -420,7 +457,7 @@ export async function runFullSync(): Promise<SyncResult> {
           await db.sets.put({
             id: rst.id,
             session_id: rst.session_id,
-            exercise_id: rst.exercise_id,
+            exercise_id: targetExId,
             set_order: rst.set_order,
             set_type: rst.set_type,
             weight_kg: Number(rst.weight_kg),
