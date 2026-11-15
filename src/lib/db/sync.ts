@@ -291,6 +291,7 @@ export async function runFullSync(): Promise<SyncResult> {
       // 依 date + target_muscle + display_title 自然去重，保證同日多次訓練 (如 7/22 早上與晚上游泳) 均獨立保留
       const validRemoteMap = new Map<string, typeof remoteSessions[0]>();
       for (const rs of remoteSessions) {
+        if (!rs || !rs.id) continue;
         if (rs.id.startsWith("session-swim-")) continue;
         const key = `${rs.date}_${rs.target_muscle}_${rs.display_title || rs.id}`;
         if (!validRemoteMap.has(key)) {
@@ -397,6 +398,7 @@ export async function runFullSync(): Promise<SyncResult> {
 
     if (remoteExercises && remoteExercises.length > 0) {
       for (const re of remoteExercises) {
+        if (!re || !re.id) continue;
         // 若屬於舊版重複別名，則跳過寫入，但若標記最愛則將最愛轉移給 Canonical
         if (LEGACY_ID_MAP[re.id]) {
           const canonicalId = LEGACY_ID_MAP[re.id];
@@ -442,15 +444,19 @@ export async function runFullSync(): Promise<SyncResult> {
     }
 
     if (remoteSets && remoteSets.length > 0) {
-      const remoteIds = new Set(remoteSets.map((s) => s.id));
-      const remoteSessionIds = new Set(remoteSets.map((s) => s.session_id));
+      const validRemoteSets = remoteSets.filter((s) => s && s.id);
+      const remoteIds = new Set(validRemoteSets.map((s) => s.id));
+      const remoteSessionIds = new Set(validRemoteSets.filter((s) => s.session_id).map((s) => s.session_id));
 
       // 嚴格保持本地與遠端一致：對於遠端已收錄的 session，清除本地已被遠端淘汰的過期組數 (例如 11/14 髒資料)
       for (const sId of remoteSessionIds) {
+        if (!sId) continue;
         const localSets = await db.sets.where("session_id").equals(sId).toArray();
         // 嚴格保護本機端未同步或新建立的組數，絕對不可誤刪！
         const orphaned = localSets.filter(
           (ls) =>
+            ls &&
+            ls.id &&
             !remoteIds.has(ls.id) &&
             ls.sync_status === "synced" &&
             Date.now() - new Date(ls.created_at).getTime() > 24 * 60 * 60 * 1000
@@ -460,7 +466,8 @@ export async function runFullSync(): Promise<SyncResult> {
         }
       }
 
-      for (const rst of remoteSets) {
+      for (const rst of validRemoteSets) {
+        if (!rst || !rst.id) continue;
         const targetExId = LEGACY_ID_MAP[rst.exercise_id] || rst.exercise_id;
         const local = await db.sets.get(rst.id);
         if (!local || new Date(rst.updated_at) > new Date(local.updated_at)) {
@@ -504,6 +511,7 @@ export async function runFullSync(): Promise<SyncResult> {
 
     if (remoteB3 && remoteB3.length > 0) {
       for (const rb of remoteB3) {
+        if (!rb || !rb.id) continue;
         await db.big_three.put({
           id: rb.id,
           bench_press_kg: Number(rb.bench_press_kg),
