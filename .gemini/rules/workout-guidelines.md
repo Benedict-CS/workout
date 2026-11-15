@@ -80,12 +80,49 @@ globs: ["*"]
   - `/analytics` 路由層級配置 `error.tsx` 邊界保護，提供詳細異常堆疊與「重置本地快取並修復」按鈕，杜絕死循環崩潰。
   - 嚴格防範 `NaN` 運算，所有 SVG 路徑座標計算必須通過 `isFinite` 檢查。
 
+- 🚫 **嚴格遵守 React Rules of Hooks，杜絕 React Error #310**：
+  - **嚴禁在任何 Hook 前方寫提早返回（Early Return: `if (...) return ...`）**：
+    - 若在 `useMemo` / `useEffect` / `useState` 前方存在 `if (!mounted || loading) return <Spinner />`，在狀態切換時 React 會拋出致命的 **Minified React error #310 ("Rendered more hooks than during the previous render")**。
+    - **鐵則**：所有 Hook 必須無條件置於組件最頂層；加載中畫面一律在 JSX 內透過三元運算符 `{(!mounted || loading) ? <Spinner /> : <Content />}` 呈現，絕不可提早 `return`。
+  - **嚴禁濫用 `useMemo`**：
+    - 體重數據（~90 筆）、月份統計（~12 個月）等小規模數據的過濾與計算，耗時 < 0.001 毫秒，一律使用純 JavaScript 變數計算，不使用 `useMemo`，消除多餘 Hook 相依性及順序錯亂風險。
+
+- 🚫 **嚴防資料亂跳、畫面閃爍與無限重新整理（Infinite Loop / Flickering）**：
+  - **事件循環互斥鎖**：`AutoSyncManager` 與各頁面的 `workout:data_changed` 監聽器嚴格隔離，只有當 `pulled > 0 || pushed > 0` 且真有資料變更時才觸發廣播，嚴禁在讀取或初次渲染時無差別發布事件引發無限 re-render。
+  - **依賴項安全**：`useEffect` 依賴項絕不放置在組件內部每次 render 重新宣告的物件或陣列（如未 memoized 的 array），避免無限迴圈觸發。
+  - **數據初值與快照保護**：狀態變更必須平滑過渡，有數據時直接渲染，絕不可在重整或點擊按鈕時將已載入數據清空跳回 `0` 再跳回原數值（避免「數據亂跳、數值從 19 跳 17」的不穩定感）。
+
 ---
 
 ## 5. 設計美學與視覺調色盤（簡約、清新、乾淨、高質感）
 
 - 🎨 **配色靈感（記帳 App 簡約乾淨淺色系哲學）**：
   - **基底與對比**：採用清爽純淨的冷灰色系與高對比排版，文字層級清晰，留白適度。
+  - **調色盤推薦**：
+    - 主背景 / 卡片基底：`#0e1017` / `#12141c` / `#181b26`
+    - 卡片邊框：細緻冷灰 `#262b3d`，高貴不刺眼。
+    - 文字層級：主要文字 `#FFFFFF`、次要標籤 `#E2E8F0` / `#CBD5E0`、輔助說明 `#A0AEC0` / `#64748B`。
+    - 清爽點綴色：天空藍 `#63B3ED`、薄荷綠 `#B2F5EA`、柔和琥珀 `#FFD54F`。
+  - 嚴禁刺眼純螢光色或厚重暗影，維持如現代記帳 App 般精緻、純淨、舒適的閱讀體驗。
+
+---
+
+## 6. 資料庫同步與雲端分頁鐵律
+
+- 🚫 **Supabase PostgREST 單次查詢上限 1000 筆之致命陷阱**：
+  - Supabase 預設單次 API 請求最多回傳 **1000 筆資料**（`max-rows: 1000`）。
+  - 若使用 `.select("*").limit(5000)`，後端依然強制只截斷回傳 1000 筆！
+  - **歷史血淚教訓**：本專案組數（`workout_sets`）已超過 1570 筆，若未分頁只抓回 1000 筆，同步邏輯會誤以為剩餘 570+ 筆在遠端已被刪除，進而將本地 IndexedDB 早期月份的組數當成「孤兒數據 (orphaned)」批量刪除，直接導致使用者歷史臥推 PR 暴跌（如 60kg x5 跌至 60kg x3，170 組跌至 5 組）。
+  - **鐵則**：所有組數與歷史資料的拉取，一律採用 `.range(offset, offset + batchSize - 1)` 進行全量分頁拉取，直到取得完整資料集。
+  - **本地保護**：本地新增或狀態為 `pending` 之組數，絕對禁止在 pull 過程中刪除。
+
+---
+
+## 7. PWA 快取與版本控制鐵律
+
+- 🔄 **Service Worker 靜態資源更新與版號同步**：
+  - 當任何 UI 元件、Modal 欄位（如移除重量調節晶片）更新時，必須同步遞增 `public/sw.js` 中的 `CACHE_NAME`（如 `workout-pwa-v5`）。
+  - Service Worker 必須配置 `self.skipWaiting()` 與 `self.clients.claim()`，並在 `activate` 階段主動清除所有舊版 Cache，杜絕客戶端瀏覽器持續加載舊版快取 JS chunk 的情況。
   - **推薦色彩碼（Colorist AI 推薦規範）**：
     - 淺冷灰底色與文字：`#F1F5F9`（slate-100）、`#E2E8F0`（slate-200）、`#CBD5E0`（slate-300）、`#A0AEC0`（slate-400）
     - 清新點綴色：

@@ -35,11 +35,18 @@
 - **InBody 量測時機**：
   - 上午 10:00 前（如 08:xx, 09:xx）量測判定為「早晨空腹 (未吃早餐)」。
 
-## 3. 圖表渲染與系統防崩潰 (Chart Safety)
+## 3. 圖表渲染與系統防崩潰 (Chart Safety & Hook Rules)
 - **嚴禁使用 Recharts（React 19 致命相容性陷阱）**：
   - Recharts 2.x 內部綁定 `react-is@18.3.1`，在 React 19（`react@19.2.8`）環境下無法識別 React 19 的 Virtual DOM 節點，且在 Next.js App Router SSR / Hydration 階段會觸發未捕獲異常，直接導致整頁崩潰（"This page couldn't load"）。
   - **專案一律使用 100% 原生 React 19 SVG 圖表組件**（[NativeCharts.tsx](file:///F:/workout/src/components/charts/NativeCharts.tsx)），零第三方依賴、零 DOM 測量報錯、渲染毫秒級完成。
   - `/analytics` 路由層級配置 `error.tsx` 邊界保護，杜絕任何未捕獲異常擴散至全域。
+- **嚴格遵守 React Rules of Hooks，杜絕 React Error #310**：
+  - 絕不在任何 Hook 前方寫 Early Return（`if (...) return ...`）。
+  - 所有 Hook 必須無條件置於組件最頂層；加載狀態一律在 JSX 中透過三元運算符 `{loading ? <Spinner /> : <Content />}` 處理。
+  - 小規模數據過濾計算直接使用純 JS 變數，不濫用 `useMemo`。
+- **杜絕畫面閃爍與無限重新整理 (Infinite Loop Protection)**：
+  - `AutoSyncManager` 與各頁面資料監聽嚴格鎖定互斥，避免重複發送廣播引發死循環。
+  - 狀態變更平滑過渡，有數據時直接渲染，絕不可在重整或點擊按鈕時將已載入數據清空跳回 `0` 再跳回原數值。
 
 ## 4. 驗證與部署規範 (Deployment Protocol)
 - 每次代碼修改後必須在本地執行 `npm run build` 確認 0 錯誤。
@@ -51,4 +58,11 @@
   - 重點點綴色：天空藍 `#63B3ED`, 薄荷綠 `#B2F5EA` / `#10B981`, 柔和暖色 `#FFD54F` / `#F59E0B`
   - 介面追求：高對比、不花俏、留白舒適、數據直觀。
 - 檢查 `git status` 與 `git diff` 確保改動純淨精準。
+
+## 6. 資料庫同步分頁與數據保護 (Supabase Pagination & Local Protection)
+- **Supabase PostgREST 1000 筆上限**：單一查詢若超過 1000 筆，必須使用 `.range(offset, offset + batchSize - 1)` 進行全量分頁拉取，絕不可使用 `.limit(5000)`（會被截斷在 1000 筆導致 570+ 筆歷史組數遭誤判為孤兒刪除）。
+- **本地待同步保護**：本地新增或狀態為 `pending` 之組數，絕不可在同步時遭刪除。
+
+## 7. PWA 快取與版本控制 (PWA Cache Control)
+- **Service Worker 版本遞增**：修改 Modal 或重要 UI 後，必須在 `public/sw.js` 遞增 `CACHE_NAME`（如 `workout-pwa-v5`），並強制 `skipWaiting()` 與清理過期快取，確保客戶端載入最新 JS。
 - 推送至 `origin master` 自動觸發 Vercel 生產部署，並以 HTTP 請求確認線上回傳 200。

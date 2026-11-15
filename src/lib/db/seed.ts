@@ -332,6 +332,7 @@ export async function ensureDatabaseSeeded(): Promise<void> {
     "ex-bench-press": "ex-bench",
     "ex-flat-dumbbell": "ex-db-bench",
     "ex-db-flat-press": "ex-db-bench",
+    "ex-flat-dumbbell-press": "ex-db-bench",
     "ex-incline-dumbbell": "ex-db-incline-bench",
     "ex-incline-db-press": "ex-db-incline-bench",
     "ex-incline-barbell-press": "ex-incline-bench",

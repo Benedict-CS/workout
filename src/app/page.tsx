@@ -170,28 +170,29 @@ export default function HomePage() {
 
       // 辨認傳統三大項動作 ID (純槓鈴臥推、深蹲、硬舉)
       const benchExIds = allEx
-        .filter((e) => e.id === "ex-bench-press" || (e.name.includes("臥推") && !e.name.includes("啞鈴") && !e.name.includes("機器") && !e.name.includes("上斜") && !e.name.includes("下斜") && !e.name.includes("史密斯")))
+        .filter((e) => e.id === "ex-bench" || e.id === "ex-bench-press" || (e.name && e.name.includes("臥推") && !e.name.includes("啞鈴") && !e.name.includes("機器") && !e.name.includes("上斜") && !e.name.includes("下斜") && !e.name.includes("史密斯")))
         .map((e) => e.id);
       const squatExIds = allEx
-        .filter((e) => e.id === "ex-squat" || (e.name.includes("深蹲") && !e.name.includes("分腿") && !e.name.includes("哈克")))
+        .filter((e) => e.id === "ex-squat" || (e.name && e.name.includes("深蹲") && !e.name.includes("分腿") && !e.name.includes("哈克")))
         .map((e) => e.id);
       const deadliftExIds = allEx
-        .filter((e) => e.id === "ex-deadlift" || (e.name.includes("硬舉") && !e.name.includes("六角")))
+        .filter((e) => e.id === "ex-deadlift" || (e.name && e.name.includes("硬舉") && !e.name.includes("六角")))
         .map((e) => e.id);
 
       for (const mk of sortedMonthKeys) {
         const rawSessList = monthMap.get(mk) || [];
         // 該月內訓練按日期由先至後順序排列
-        const sessList = [...rawSessList].sort((a, b) => a.date.localeCompare(b.date));
+        const sessList = [...rawSessList].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
         const mStats = { 胸: 0, 背: 0, 腿: 0, 肩: 0, 游泳: 0, total: sessList.length };
 
         // 計算該月部位頻率
         for (const s of sessList) {
-          if (s.target_muscle.includes("胸")) mStats["胸"]++;
-          else if (s.target_muscle.includes("背")) mStats["背"]++;
-          else if (s.target_muscle.includes("腿")) mStats["腿"]++;
-          else if (s.target_muscle.includes("肩")) mStats["肩"]++;
-          else if (s.target_muscle.includes("泳")) mStats["游泳"]++;
+          const muscle = s?.target_muscle || "";
+          if (muscle.includes("胸")) mStats["胸"]++;
+          else if (muscle.includes("背")) mStats["背"]++;
+          else if (muscle.includes("腿")) mStats["腿"]++;
+          else if (muscle.includes("肩")) mStats["肩"]++;
+          else if (muscle.includes("泳")) mStats["游泳"]++;
         }
 
         // 計算該月三項實測最高重量

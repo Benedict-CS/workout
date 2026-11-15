@@ -371,6 +371,7 @@ export async function runFullSync(): Promise<SyncResult> {
       "ex-bench-press": "ex-bench",
       "ex-flat-dumbbell": "ex-db-bench",
       "ex-db-flat-press": "ex-db-bench",
+      "ex-flat-dumbbell-press": "ex-db-bench",
       "ex-incline-dumbbell": "ex-db-incline-bench",
       "ex-incline-db-press": "ex-db-incline-bench",
       "ex-incline-barbell-press": "ex-incline-bench",
@@ -424,12 +425,21 @@ export async function runFullSync(): Promise<SyncResult> {
       }
     }
 
-    // 5.3 Pull Sets (in batches if needed)
-    const { data: remoteSets } = await supabase
-      .from("workout_sets")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(5000);
+    // 5.3 Pull Sets in full with pagination (PostgREST max 1000 per request)
+    const remoteSets: any[] = [];
+    let setOffset = 0;
+    const setBatchSize = 1000;
+    while (true) {
+      const { data: batch, error: batchErr } = await supabase
+        .from("workout_sets")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .range(setOffset, setOffset + setBatchSize - 1);
+      if (batchErr || !batch || batch.length === 0) break;
+      remoteSets.push(...batch);
+      if (batch.length < setBatchSize) break;
+      setOffset += setBatchSize;
+    }
 
     if (remoteSets && remoteSets.length > 0) {
       const remoteIds = new Set(remoteSets.map((s) => s.id));
@@ -438,7 +448,13 @@ export async function runFullSync(): Promise<SyncResult> {
       // 嚴格保持本地與遠端一致：對於遠端已收錄的 session，清除本地已被遠端淘汰的過期組數 (例如 11/14 髒資料)
       for (const sId of remoteSessionIds) {
         const localSets = await db.sets.where("session_id").equals(sId).toArray();
-        const orphaned = localSets.filter((ls) => !remoteIds.has(ls.id));
+        // 嚴格保護本機端未同步或新建立的組數，絕對不可誤刪！
+        const orphaned = localSets.filter(
+          (ls) =>
+            !remoteIds.has(ls.id) &&
+            ls.sync_status === "synced" &&
+            Date.now() - new Date(ls.created_at).getTime() > 24 * 60 * 60 * 1000
+        );
         if (orphaned.length > 0) {
           await db.sets.bulkDelete(orphaned.map((o) => o.id));
         }

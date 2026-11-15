@@ -1,4 +1,4 @@
-const CACHE_NAME = "workout-pwa-v3";
+const CACHE_NAME = "workout-pwa-v5";
 const PRECACHE_URLS = [
   "/",
   "/manifest.json",

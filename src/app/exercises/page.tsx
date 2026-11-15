@@ -29,6 +29,7 @@ const LEGACY_ID_MAP: Record<string, string> = {
   "ex-bench-press": "ex-bench",
   "ex-flat-dumbbell": "ex-db-bench",
   "ex-db-flat-press": "ex-db-bench",
+  "ex-flat-dumbbell-press": "ex-db-bench",
   "ex-incline-dumbbell": "ex-db-incline-bench",
   "ex-incline-db-press": "ex-db-incline-bench",
   "ex-incline-barbell-press": "ex-incline-bench",
@@ -293,16 +294,32 @@ export default function ExercisesPage() {
     const setsByExId = new Map<string, typeof allSets>();
     for (const s of allSets) {
       const cId = LEGACY_ID_MAP[s.exercise_id] || s.exercise_id;
-      let list = setsByExId.get(cId);
-      if (!list) {
-        list = [];
-        setsByExId.set(cId, list);
+      let listC = setsByExId.get(cId);
+      if (!listC) {
+        listC = [];
+        setsByExId.set(cId, listC);
       }
-      list.push(s);
+      listC.push(s);
+
+      if (s.exercise_id !== cId) {
+        let listRaw = setsByExId.get(s.exercise_id);
+        if (!listRaw) {
+          listRaw = [];
+          setsByExId.set(s.exercise_id, listRaw);
+        }
+        listRaw.push(s);
+      }
     }
 
     const calculated: ExerciseStat[] = allEx.map((ex) => {
-      const exSets = setsByExId.get(ex.id) || [];
+      const canonicalExId = LEGACY_ID_MAP[ex.id] || ex.id;
+      const setListA = setsByExId.get(ex.id) || [];
+      const setListB = canonicalExId !== ex.id ? setsByExId.get(canonicalExId) || [] : [];
+      const combinedMap = new Map<string, (typeof allSets)[0]>();
+      for (const s of [...setListA, ...setListB]) {
+        combinedMap.set(s.id, s);
+      }
+      const exSets = Array.from(combinedMap.values());
       const isSwimming = ex.id === "ex-swim" || ex.name.includes("游泳");
       const isAssisted = ex.weight_type === "assisted_inverse" || ex.name.includes("輔助");
 
