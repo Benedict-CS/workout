@@ -1,14 +1,18 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { db } from "./schema";
-import type { WorkoutSession, Exercise, SetItem, BigThreeRecord } from "@/lib/types";
 
 let cachedClient: SupabaseClient | null = null;
 let cachedUrl = "";
 let cachedKey = "";
+let inFlightSync: Promise<SyncResult> | null = null;
 
 const DEFAULT_SUPABASE_URL = "https://sbvcbkvnvhwalypmzbvt.supabase.co";
 const DEFAULT_SUPABASE_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNidmNia3Zudmh3YWx5cG16YnZ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQyNTkzODksImV4cCI6MjEwOTgzNTM4OX0.flhfWoAIdfpp-5cQ98R_H1Hs6y5xTnCKD16eG6-VP_8";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNidmNia3Zudmh3YWx5cG16YnZ0IiwiaWF0IjoxNzk0MjU5Mzg5LCJleHAiOjIxMDk4MzUzODl9.flhfWoAIdfpp-5cQ98R_H1Hs6y5xTnCKD16eG6-VP_8";
+const PAGE_SIZE = 500;
+const CURSOR_OVERLAP_MS = 60 * 1000;
+const TAB_LOCK_KEY = "workout_sync_lock";
+const TAB_LOCK_TTL_MS = 10 * 60 * 1000;
 
 export function getSupabaseClient(): SupabaseClient | null {
   const url =
@@ -21,15 +25,10 @@ export function getSupabaseClient(): SupabaseClient | null {
     DEFAULT_SUPABASE_KEY;
 
   if (!url || !key) return null;
-
-  if (cachedClient && cachedUrl === url && cachedKey === key) {
-    return cachedClient;
-  }
+  if (cachedClient && cachedUrl === url && cachedKey === key) return cachedClient;
 
   try {
-    cachedClient = createClient(url, key, {
-      auth: { persistSession: false },
-    });
+    cachedClient = createClient(url, key, { auth: { persistSession: false } });
     cachedUrl = url;
     cachedKey = key;
     return cachedClient;
@@ -46,9 +45,6 @@ export interface SyncResult {
   pulledCount: number;
 }
 
-/**
- * 測試與 Supabase 雲端專案的連線是否通暢
- */
 export async function testSupabaseConnection(
   customUrl?: string,
   customKey?: string
@@ -65,26 +61,16 @@ export async function testSupabaseConnection(
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
       DEFAULT_SUPABASE_KEY;
 
-    if (!url || !key) {
-      return { ok: false, message: "請先輸入 Project URL 與 Public Anon Key" };
-    }
-
+    if (!url || !key) return { ok: false, message: "請先輸入 Project URL 與 Public Anon Key" };
     const testClient = createClient(url, key, { auth: { persistSession: false } });
     const { error } = await testClient.from("workout_sessions").select("id").limit(1);
-
-    if (error) {
-      return { ok: false, message: `連線失敗: ${error.message}` };
-    }
-
+    if (error) return { ok: false, message: `連線失敗: ${error.message}` };
     return { ok: true, message: "雲端資料庫連線測試成功！" };
   } catch (e: any) {
     return { ok: false, message: `連線發生錯誤: ${e?.message || e}` };
   }
 }
 
-/**
- * 解析 session 的場地名稱
- */
 export function extractLocationFromSession(s: any): string | undefined {
   if (s.location) return s.location;
   if (s.notes) {
@@ -101,501 +87,392 @@ export function extractLocationFromSession(s: any): string | undefined {
   if (title.includes("交大游泳池")) return "交大游泳池";
   if (title.includes("交大健身房")) return "交大健身房";
   if (title.includes("三健客") || title.includes("三劍客")) return "三健客";
-
-  const date = s.date || "";
   if (s.target_muscle === "游泳") return "交大游泳池";
-  if (date <= "2026-08-31") return "交大健身房";
-  return "三健客";
+  return (s.date || "") <= "2026-08-31" ? "交大健身房" : "三健客";
+}
+
+function cursorStorageKey(table: string): string {
+  // Keep independent cursors when users switch between Supabase projects.
+  return `workout_sync_cursor:${encodeURIComponent(cachedUrl)}:${table}`;
+}
+
+function readCursor(table: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return localStorage.getItem(cursorStorageKey(table));
+  } catch {
+    return null;
+  }
+}
+
+function writeCursors(cursors: Record<string, string | null>): void {
+  if (typeof window === "undefined") return;
+  try {
+    for (const [table, cursor] of Object.entries(cursors)) {
+      if (cursor) localStorage.setItem(cursorStorageKey(table), cursor);
+    }
+  } catch (err) {
+    console.warn("Could not save sync cursors; next sync may download more rows:", err);
+  }
 }
 
 /**
- * 執行雙向同步：
- * 1. 將本機 pending 或 modified 資料上傳 (Upsert) 到 Supabase
- * 2. 下載雲端較新的資料更新至本機 IndexedDB (包括跨裝置手機讀取)
+ * Fetches all rows on first sync, then only rows changed since the saved cursor.
+ * A one-minute overlap makes timestamp ties and small clock/precision differences safe;
+ * processing is idempotent because rows are upserted into IndexedDB by primary key.
  */
-export async function runFullSync(): Promise<SyncResult> {
+async function pullRows(
+  supabase: SupabaseClient,
+  table: string,
+  columns: string,
+  cursor: string | null
+): Promise<{ rows: any[]; nextCursor: string | null }> {
+  const rows: any[] = [];
+  const since = cursor ? new Date(new Date(cursor).getTime() - CURSOR_OVERLAP_MS).toISOString() : null;
+  let offset = 0;
+
+  while (true) {
+    let query = (supabase.from(table) as any)
+      .select(columns)
+      .order("updated_at", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (since) query = query.gt("updated_at", since);
+
+    const { data, error } = await query;
+    if (error) throw new Error(`Pull ${table} failed: ${error.message}`);
+    const page = (data || []) as any[];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  const latest = rows.reduce<string | null>((max, row) => {
+    const value = row?.updated_at;
+    return value && (!max || value > max) ? value : max;
+  }, cursor);
+  return { rows, nextCursor: latest };
+}
+
+const LEGACY_ID_MAP: Record<string, string> = {
+  "ex-bench-press": "ex-bench",
+  "ex-flat-dumbbell": "ex-db-bench",
+  "ex-db-flat-press": "ex-db-bench",
+  "ex-flat-dumbbell-press": "ex-db-bench",
+  "ex-incline-dumbbell": "ex-db-incline-bench",
+  "ex-incline-db-press": "ex-db-incline-bench",
+  "ex-incline-barbell-press": "ex-incline-bench",
+  "ex-db-row": "ex-db-single-row",
+  "ex-one-arm-dumbbell-row": "ex-db-single-row",
+  "ex-pec-deck": "ex-pec-fly",
+  "ex-machine-incline-press": "ex-incline-machine-bench",
+  "ex-chest-press": "ex-chest-press-seated",
+  "ex-seated-row-machine": "ex-seated-row",
+  "ex-tricep-press-chest": "ex-dip-pushdown-machine",
+  "ex-hex-deadlift": "ex-trap-bar-deadlift",
+  "ex-lat-row-machine": "ex-high-row",
+  "ex-seated-back-row-machine": "ex-seated-cable-row",
+  "ex-lying-leg-curl": "ex-leg-curl",
+  "ex-bulgarian-split-squat": "ex-bulgarian-squat",
+  "ex-dumbbell-shoulder-press": "ex-db-shoulder-press",
+  "ex-face-pull": "ex-cable-face-pull",
+  "ex-reverse-pec-deck": "ex-reverse-pec-fly",
+  "ex-rope-tricep-pushdown": "ex-rope-tricep",
+  "ex-dumbbell-hammer-curl": "ex-db-hammer-curl",
+  "ex-incline-dumbbell-curl": "ex-incline-db-curl",
+};
+
+/** Serialize same-tab syncs and use a browser lock / lease to avoid duplicate pulls across tabs. */
+export function runFullSync(): Promise<SyncResult> {
+  if (inFlightSync) return inFlightSync;
+  const task = runSyncWithLock();
+  inFlightSync = task.finally(() => {
+    inFlightSync = null;
+  });
+  return inFlightSync;
+}
+
+async function runSyncWithLock(): Promise<SyncResult> {
+  if (typeof navigator !== "undefined") {
+    const lockManager = (navigator as any).locks;
+    if (lockManager?.request) {
+      return lockManager.request(
+        "workout-supabase-sync",
+        { ifAvailable: true },
+        async (lock: unknown) =>
+          lock ? performFullSync() : {
+            success: true,
+            message: "同步已在另一個分頁執行，略過本次同步",
+            pushedCount: 0,
+            pulledCount: 0,
+          }
+      );
+    }
+  }
+
+  if (typeof window !== "undefined") {
+    const owner = `${Date.now()}-${Math.random()}`;
+    try {
+      const current = JSON.parse(localStorage.getItem(TAB_LOCK_KEY) || "null");
+      if (current?.expiresAt > Date.now()) {
+        return { success: true, message: "同步已在另一個分頁執行，略過本次同步", pushedCount: 0, pulledCount: 0 };
+      }
+      localStorage.setItem(TAB_LOCK_KEY, JSON.stringify({ owner, expiresAt: Date.now() + TAB_LOCK_TTL_MS }));
+      const verified = JSON.parse(localStorage.getItem(TAB_LOCK_KEY) || "null");
+      if (verified?.owner !== owner) {
+        return { success: true, message: "同步已在另一個分頁執行，略過本次同步", pushedCount: 0, pulledCount: 0 };
+      }
+      try {
+        return await performFullSync();
+      } finally {
+        const latest = JSON.parse(localStorage.getItem(TAB_LOCK_KEY) || "null");
+        if (latest?.owner === owner) localStorage.removeItem(TAB_LOCK_KEY);
+      }
+    } catch (err) {
+      console.warn("Sync tab lock unavailable; using in-tab lock only:", err);
+    }
+  }
+  return performFullSync();
+}
+
+async function performFullSync(): Promise<SyncResult> {
   const supabase = getSupabaseClient();
   if (!supabase) {
-    return {
-      success: false,
-      message: "未設定 Supabase 憑證或無效",
-      pushedCount: 0,
-      pulledCount: 0,
-    };
+    return { success: false, message: "未設定 Supabase 憑證或無效", pushedCount: 0, pulledCount: 0 };
   }
 
   let pushed = 0;
   let pulled = 0;
-
   try {
-    // 0. 清理本地歷史遺留的舊 ID (例如 session-swim-* 系列)，防止污染雲端
+    // Remove known legacy/corrupt local rows before they can be uploaded.
     const legacySwims = await db.sessions.filter((s) => s.id.startsWith("session-swim-")).toArray();
-    if (legacySwims.length > 0) {
-      const legIds = legacySwims.map((s) => s.id);
-      await db.sessions.bulkDelete(legIds);
-      const legSets = await db.sets.filter((st) => legIds.includes(st.session_id)).toArray();
-      if (legSets.length > 0) {
-        await db.sets.bulkDelete(legSets.map((s) => s.id));
-      }
+    if (legacySwims.length) {
+      const ids = legacySwims.map((s) => s.id);
+      await db.sessions.bulkDelete(ids);
+      const sets = await db.sets.filter((s) => ids.includes(s.session_id)).toArray();
+      if (sets.length) await db.sets.bulkDelete(sets.map((s) => s.id));
     }
-
-    // 預先清理本地 11/14 髒組數 (舊版隨機生成之 set-179464... 或任何非標準組數)，絕不推送至遠端
     const corruptedSets = await db.sets.filter((s) => s.id.startsWith("set-179464")).toArray();
-    if (corruptedSets.length > 0) {
-      await db.sets.bulkDelete(corruptedSets.map((c) => c.id));
-    }
+    if (corruptedSets.length) await db.sets.bulkDelete(corruptedSets.map((s) => s.id));
 
-    // 1. 同步 Sessions
-    const localSessions = await db.sessions.toArray();
-    const pendingSessions = localSessions.filter(
+    const pendingSessions = (await db.sessions.toArray()).filter(
       (s) => (s.sync_status === "pending" || !s.sync_status) && !s.id.startsWith("session-swim-")
     );
-
-    if (pendingSessions.length > 0) {
+    if (pendingSessions.length) {
       const payload = pendingSessions.map((s) => ({
-        id: s.id,
-        date: s.date,
-        month_key: s.month_key,
-        display_title: s.display_title,
-        target_muscle: s.target_muscle,
-        monthly_index: s.monthly_index || 1,
+        id: s.id, date: s.date, month_key: s.month_key, display_title: s.display_title,
+        target_muscle: s.target_muscle, monthly_index: s.monthly_index || 1,
         notes: JSON.stringify({ note: s.notes || "", location: s.location || "" }),
-        created_at: s.created_at,
-        updated_at: s.updated_at,
-        deleted_at: s.deleted_at || null,
+        created_at: s.created_at, updated_at: s.updated_at, deleted_at: s.deleted_at || null,
       }));
-
-      const { error: pushErr } = await supabase
-        .from("workout_sessions")
-        .upsert(payload, { onConflict: "id" });
-
-      if (!pushErr) {
-        pushed += pendingSessions.length;
-        await db.sessions.bulkPut(
-          pendingSessions.map((s) => ({ ...s, sync_status: "synced" }))
-        );
-      } else {
-        console.error("Error pushing sessions:", pushErr);
-      }
+      const { error } = await supabase.from("workout_sessions").upsert(payload, { onConflict: "id" });
+      if (error) throw new Error(`Push workout_sessions failed: ${error.message}`);
+      pushed += pendingSessions.length;
+      await db.sessions.bulkPut(pendingSessions.map((s) => ({ ...s, sync_status: "synced" })));
     }
 
-    // 2. 同步 Exercises
-    const localExercises = await db.exercises.toArray();
-    const pendingExercises = localExercises.filter(
+    const pendingExercises = (await db.exercises.toArray()).filter(
       (e) => e.sync_status === "pending" || !e.sync_status
     );
-
-    if (pendingExercises.length > 0) {
+    if (pendingExercises.length) {
       const payload = pendingExercises.map((e) => ({
-        id: e.id,
-        name: e.name,
-        muscle_group: e.muscle_group,
-        weight_type: e.weight_type,
-        default_notes: e.default_notes || null,
-        is_favorite: !!e.is_favorite,
-        created_at: e.created_at,
-        updated_at: e.updated_at,
-        deleted_at: e.deleted_at || null,
+        id: e.id, name: e.name, muscle_group: e.muscle_group, weight_type: e.weight_type,
+        default_notes: e.default_notes || null, is_favorite: !!e.is_favorite,
+        created_at: e.created_at, updated_at: e.updated_at, deleted_at: e.deleted_at || null,
       }));
-
-      const { error: pushExErr } = await supabase
-        .from("exercises")
-        .upsert(payload, { onConflict: "id" });
-
-      if (!pushExErr) {
-        pushed += pendingExercises.length;
-        await db.exercises.bulkPut(
-          pendingExercises.map((e) => ({ ...e, sync_status: "synced" }))
-        );
-      }
+      const { error } = await supabase.from("exercises").upsert(payload, { onConflict: "id" });
+      if (error) throw new Error(`Push exercises failed: ${error.message}`);
+      pushed += pendingExercises.length;
+      await db.exercises.bulkPut(pendingExercises.map((e) => ({ ...e, sync_status: "synced" })));
     }
 
-    // 3. 同步 Sets
-    const localSets = await db.sets.toArray();
-    const pendingSets = localSets.filter(
-      (st) => st.sync_status === "pending" || !st.sync_status
+    const pendingSets = (await db.sets.toArray()).filter(
+      (s) => s.sync_status === "pending" || !s.sync_status
     );
-
-    if (pendingSets.length > 0) {
-      const chunkSize = 150;
-      for (let i = 0; i < pendingSets.length; i += chunkSize) {
-        const chunk = pendingSets.slice(i, i + chunkSize);
-        const payload = chunk.map((st) => ({
-          id: st.id,
-          session_id: st.session_id,
-          exercise_id: st.exercise_id,
-          set_order: st.set_order,
-          set_type: st.set_type,
-          weight_kg: st.weight_kg,
-          reps: Math.round(st.reps ?? 0),
-          raw_text: st.raw_text || null,
-          rest_pause_detail: st.sub_fields ? JSON.stringify(st.sub_fields) : (st.rest_pause_detail || null),
-          forced_reps: st.forced_reps || null,
-          is_failure: !!st.is_failure,
-          feedback: st.is_completed
-            ? (st.feedback ? `${st.feedback.replace(/\|?completed/g, "")}|completed` : "completed")
-            : (st.feedback ? st.feedback.replace(/\|?completed/g, "").trim() || null : null),
-          notes: st.notes || null,
-          created_at: st.created_at,
-          updated_at: st.updated_at,
-          deleted_at: st.deleted_at || null,
-        }));
-
-        const { error: pushSetErr } = await supabase
-          .from("workout_sets")
-          .upsert(payload, { onConflict: "id" });
-
-        if (!pushSetErr) {
-          pushed += chunk.length;
-          await db.sets.bulkPut(chunk.map((st) => ({ ...st, sync_status: "synced" })));
-        } else {
-          console.error("Error pushing sets chunk:", pushSetErr);
-        }
-      }
+    for (let i = 0; i < pendingSets.length; i += 150) {
+      const chunk = pendingSets.slice(i, i + 150);
+      const payload = chunk.map((s) => ({
+        id: s.id, session_id: s.session_id, exercise_id: s.exercise_id, set_order: s.set_order,
+        set_type: s.set_type, weight_kg: s.weight_kg, reps: Math.round(s.reps ?? 0),
+        raw_text: s.raw_text || null,
+        rest_pause_detail: s.sub_fields ? JSON.stringify(s.sub_fields) : (s.rest_pause_detail || null),
+        forced_reps: s.forced_reps || null, is_failure: !!s.is_failure,
+        feedback: s.is_completed
+          ? (s.feedback ? `${s.feedback.replace(/\|?completed/g, "")}|completed` : "completed")
+          : (s.feedback ? s.feedback.replace(/\|?completed/g, "").trim() || null : null),
+        notes: s.notes || null, created_at: s.created_at, updated_at: s.updated_at,
+        deleted_at: s.deleted_at || null,
+      }));
+      const { error } = await supabase.from("workout_sets").upsert(payload, { onConflict: "id" });
+      if (error) throw new Error(`Push workout_sets failed: ${error.message}`);
+      pushed += chunk.length;
+      await db.sets.bulkPut(chunk.map((s) => ({ ...s, sync_status: "synced" })));
     }
 
-    // 4. 同步 Big Three
     const localB3 = await db.big_three.toArray();
-    if (localB3.length > 0) {
+    if (localB3.length) {
       const payload = localB3.map((b) => ({
-        id: b.id,
-        bench_press_kg: b.bench_press_kg,
-        squat_kg: b.squat_kg,
-        deadlift_kg: b.deadlift_kg,
-        total_kg: b.total_kg,
-        body_weight_kg: b.body_weight_kg || null,
-        bench_ratio: b.bench_ratio || null,
-        squat_ratio: b.squat_ratio || null,
-        deadlift_ratio: b.deadlift_ratio || null,
+        id: b.id, bench_press_kg: b.bench_press_kg, squat_kg: b.squat_kg,
+        deadlift_kg: b.deadlift_kg, total_kg: b.total_kg,
+        body_weight_kg: b.body_weight_kg || null, bench_ratio: b.bench_ratio || null,
+        squat_ratio: b.squat_ratio || null, deadlift_ratio: b.deadlift_ratio || null,
         updated_at: b.updated_at,
       }));
-
-      const { error: b3Err } = await supabase
-        .from("big_three_records")
-        .upsert(payload, { onConflict: "id" });
-
-      if (!b3Err) {
-        pushed += localB3.length;
-      }
+      const { error } = await supabase.from("big_three_records").upsert(payload, { onConflict: "id" });
+      if (error) throw new Error(`Push big_three_records failed: ${error.message}`);
+      pushed += localB3.length;
     }
 
-    // 5. 下載雲端更新 (Pull latest for all tables)
-    // 5.1 Pull Sessions
-    const { data: remoteSessions } = await supabase
-      .from("workout_sessions")
-      .select("*")
-      .order("date", { ascending: false })
-      .limit(1000);
+    // Pull narrow columns, paginated. The first run per project fetches all rows;
+    // later runs fetch only changed rows plus a small overlap for timestamp safety.
+    const tables = [
+      ["workout_sessions", "id,date,month_key,display_title,target_muscle,monthly_index,notes,created_at,updated_at,deleted_at"],
+      ["exercises", "id,name,muscle_group,weight_type,default_notes,is_favorite,created_at,updated_at,deleted_at"],
+      ["workout_sets", "id,session_id,exercise_id,set_order,set_type,weight_kg,reps,raw_text,rest_pause_detail,forced_reps,is_failure,feedback,notes,created_at,updated_at,deleted_at"],
+      ["big_three_records", "id,bench_press_kg,squat_kg,deadlift_kg,total_kg,body_weight_kg,bench_ratio,squat_ratio,deadlift_ratio,updated_at"],
+    ] as const;
+    const pulledData: Record<string, { rows: any[]; nextCursor: string | null }> = {};
+    for (const [table, columns] of tables) {
+      pulledData[table] = await pullRows(supabase, table, columns, readCursor(table));
+    }
 
-    if (remoteSessions && remoteSessions.length > 0) {
-      // 依 date + target_muscle + display_title 自然去重，保證同日多次訓練 (如 7/22 早上與晚上游泳) 均獨立保留
-      const validRemoteMap = new Map<string, typeof remoteSessions[0]>();
-      for (const rs of remoteSessions) {
-        if (!rs || !rs.id) continue;
-        if (rs.id.startsWith("session-swim-")) continue;
-        const key = `${rs.date}_${rs.target_muscle}_${rs.display_title || rs.id}`;
-        if (!validRemoteMap.has(key)) {
-          validRemoteMap.set(key, rs);
-        } else {
-          const existing = validRemoteMap.get(key)!;
-          if (new Date(rs.updated_at) > new Date(existing.updated_at)) {
-            validRemoteMap.set(key, rs);
-          }
+    const remoteSessions = pulledData.workout_sessions.rows as any[];
+    for (const rs of remoteSessions) {
+      if (!rs?.id || rs.id.startsWith("session-swim-")) continue;
+      const local = await db.sessions.get(rs.id);
+      if (!local || new Date(rs.updated_at) > new Date(local.updated_at)) {
+        const isSwim = rs.target_muscle === "游泳" || (rs.display_title && rs.display_title.includes("泳"));
+        let noteText = rs.notes;
+        if (rs.notes?.startsWith("{")) {
+          try { noteText = JSON.parse(rs.notes).note; } catch {}
         }
-      }
-
-      const deduplicatedRemotes = Array.from(validRemoteMap.values());
-      const remoteIdSet = new Set(deduplicatedRemotes.map((r) => r.id));
-
-      for (const rs of deduplicatedRemotes) {
-        const local = await db.sessions.get(rs.id);
-        if (!local || new Date(rs.updated_at) > new Date(local.updated_at)) {
-          const loc = extractLocationFromSession(rs);
-          let noteText = rs.notes;
-          if (rs.notes && rs.notes.startsWith("{")) {
-            try {
-              noteText = JSON.parse(rs.notes).note;
-            } catch {}
-          }
-          const isSwim = rs.target_muscle === "游泳" || (rs.display_title && rs.display_title.includes("泳"));
-          const effectiveDeletedAt = isSwim ? null : rs.deleted_at;
-
-          await db.sessions.put({
-            id: rs.id,
-            date: rs.date,
-            month_key: rs.month_key,
-            display_title: rs.display_title,
-            target_muscle: isSwim ? "游泳" : rs.target_muscle,
-            monthly_index: rs.monthly_index,
-            location: loc,
-            notes: noteText,
-            created_at: rs.created_at,
-            updated_at: rs.updated_at,
-            deleted_at: effectiveDeletedAt,
-            sync_status: "synced",
-          });
-          pulled++;
-        }
-      }
-
-      // 單一真實來源 (SSOT) 修復：清除本地已標記 synced 但雲端已被刪除的孤兒記錄（例如已被清理的 16 筆重複游泳或 11/13 測試記錄）
-      const localAll = await db.sessions.toArray();
-      const nowMs = Date.now();
-      const orphaned = localAll.filter((s) => {
-        // 絕對保護游泳訓練紀錄，永不視為孤兒資料刪除！
-        if (s.target_muscle === "游泳" || (s.display_title && s.display_title.includes("泳"))) return false;
-        if (remoteIdSet.has(s.id)) return false;
-        if (s.date === "2026-11-13") return true;
-        if (s.sync_status === "synced" || s.id.startsWith("session-swim-")) return true;
-        const createdMs = new Date(s.created_at).getTime();
-        if (!isNaN(createdMs) && nowMs - createdMs > 5 * 60 * 1000) return true;
-        return false;
-      });
-      if (orphaned.length > 0) {
-        const orpIds = orphaned.map((o) => o.id);
-        await db.sessions.bulkDelete(orpIds);
-        const orpSets = await db.sets.filter((st) => orpIds.includes(st.session_id)).toArray();
-        if (orpSets.length > 0) {
-          await db.sets.bulkDelete(orpSets.map((s) => s.id));
-        }
+        await db.sessions.put({
+          id: rs.id, date: rs.date, month_key: rs.month_key, display_title: rs.display_title,
+          target_muscle: isSwim ? "游泳" : rs.target_muscle, monthly_index: rs.monthly_index,
+          location: extractLocationFromSession(rs), notes: noteText,
+          created_at: rs.created_at, updated_at: rs.updated_at,
+          deleted_at: isSwim ? null : rs.deleted_at, sync_status: "synced",
+        });
         pulled++;
       }
     }
 
-    // 5.2 Pull Exercises
-    const { data: remoteExercises } = await supabase
-      .from("exercises")
-      .select("*")
-      .limit(500);
-
-    const LEGACY_ID_MAP: Record<string, string> = {
-      "ex-bench-press": "ex-bench",
-      "ex-flat-dumbbell": "ex-db-bench",
-      "ex-db-flat-press": "ex-db-bench",
-      "ex-flat-dumbbell-press": "ex-db-bench",
-      "ex-incline-dumbbell": "ex-db-incline-bench",
-      "ex-incline-db-press": "ex-db-incline-bench",
-      "ex-incline-barbell-press": "ex-incline-bench",
-      "ex-db-row": "ex-db-single-row",
-      "ex-one-arm-dumbbell-row": "ex-db-single-row",
-      "ex-pec-deck": "ex-pec-fly",
-      "ex-machine-incline-press": "ex-incline-machine-bench",
-      "ex-chest-press": "ex-chest-press-seated",
-      "ex-seated-row-machine": "ex-seated-row",
-      "ex-tricep-press-chest": "ex-dip-pushdown-machine",
-      "ex-hex-deadlift": "ex-trap-bar-deadlift",
-      "ex-lat-row-machine": "ex-high-row",
-      "ex-seated-back-row-machine": "ex-seated-cable-row",
-      "ex-lying-leg-curl": "ex-leg-curl",
-      "ex-bulgarian-split-squat": "ex-bulgarian-squat",
-      "ex-dumbbell-shoulder-press": "ex-db-shoulder-press",
-      "ex-face-pull": "ex-cable-face-pull",
-      "ex-reverse-pec-deck": "ex-reverse-pec-fly",
-      "ex-rope-tricep-pushdown": "ex-rope-tricep",
-      "ex-dumbbell-hammer-curl": "ex-db-hammer-curl",
-      "ex-incline-dumbbell-curl": "ex-incline-db-curl",
-    };
-
-    if (remoteExercises && remoteExercises.length > 0) {
-      for (const re of remoteExercises) {
-        if (!re || !re.id) continue;
-        // 若屬於舊版重複別名，則跳過寫入，但若標記最愛則將最愛轉移給 Canonical
-        if (LEGACY_ID_MAP[re.id]) {
-          const canonicalId = LEGACY_ID_MAP[re.id];
-          if (re.is_favorite) {
-            await db.exercises.update(canonicalId, { is_favorite: true });
-          }
-          continue;
-        }
-
-        const local = await db.exercises.get(re.id);
-        if (!local || new Date(re.updated_at) > new Date(local.updated_at)) {
-          await db.exercises.put({
-            id: re.id,
-            name: re.name,
-            muscle_group: re.muscle_group,
-            weight_type: re.weight_type,
-            default_notes: re.default_notes,
-            is_favorite: re.is_favorite,
-            created_at: re.created_at,
-            updated_at: re.updated_at,
-            deleted_at: re.deleted_at,
-            sync_status: "synced",
-          });
-          pulled++;
-        }
+    for (const re of pulledData.exercises.rows) {
+      if (!re?.id) continue;
+      if (LEGACY_ID_MAP[re.id]) {
+        if (re.is_favorite) await db.exercises.update(LEGACY_ID_MAP[re.id], { is_favorite: true });
+        continue;
+      }
+      const local = await db.exercises.get(re.id);
+      if (!local || new Date(re.updated_at) > new Date(local.updated_at)) {
+        await db.exercises.put({
+          id: re.id, name: re.name, muscle_group: re.muscle_group, weight_type: re.weight_type,
+          default_notes: re.default_notes, is_favorite: re.is_favorite,
+          created_at: re.created_at, updated_at: re.updated_at, deleted_at: re.deleted_at,
+          sync_status: "synced",
+        });
+        pulled++;
       }
     }
 
-    // 5.3 Pull Sets in full with pagination (PostgREST max 1000 per request)
-    const remoteSets: any[] = [];
-    let setOffset = 0;
-    const setBatchSize = 1000;
-    while (true) {
-      const { data: batch, error: batchErr } = await supabase
-        .from("workout_sets")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .range(setOffset, setOffset + setBatchSize - 1);
-      if (batchErr || !batch || batch.length === 0) break;
-      remoteSets.push(...batch);
-      if (batch.length < setBatchSize) break;
-      setOffset += setBatchSize;
-    }
-
-    if (remoteSets && remoteSets.length > 0) {
-      const validRemoteSets = remoteSets.filter((s) => s && s.id);
-      const remoteIds = new Set(validRemoteSets.map((s) => s.id));
-      const remoteSessionIds = new Set(validRemoteSets.filter((s) => s.session_id).map((s) => s.session_id));
-
-      // 嚴格保持本地與遠端一致：對於遠端已收錄的 session，清除本地已被遠端淘汰的過期組數 (例如 11/14 髒資料)
-      for (const sId of remoteSessionIds) {
-        if (!sId) continue;
-        const localSets = await db.sets.where("session_id").equals(sId).toArray();
-        // 嚴格保護本機端未同步或新建立的組數，絕對不可誤刪！
-        const orphaned = localSets.filter(
-          (ls) =>
-            ls &&
-            ls.id &&
-            !remoteIds.has(ls.id) &&
-            ls.sync_status === "synced" &&
-            Date.now() - new Date(ls.created_at).getTime() > 24 * 60 * 60 * 1000
-        );
-        if (orphaned.length > 0) {
-          await db.sets.bulkDelete(orphaned.map((o) => o.id));
+    for (const rst of pulledData.workout_sets.rows) {
+      if (!rst?.id) continue;
+      const local = await db.sets.get(rst.id);
+      if (!local || new Date(rst.updated_at) > new Date(local.updated_at)) {
+        let subFields: any;
+        if (rst.rest_pause_detail?.startsWith("[")) {
+          try { subFields = JSON.parse(rst.rest_pause_detail); } catch {}
         }
-      }
-
-      for (const rst of validRemoteSets) {
-        if (!rst || !rst.id) continue;
-        const targetExId = LEGACY_ID_MAP[rst.exercise_id] || rst.exercise_id;
-        const local = await db.sets.get(rst.id);
-        if (!local || new Date(rst.updated_at) > new Date(local.updated_at)) {
-          let subFields = undefined;
-          if (rst.rest_pause_detail && rst.rest_pause_detail.startsWith("[")) {
-            try {
-              subFields = JSON.parse(rst.rest_pause_detail);
-            } catch {}
-          }
-          await db.sets.put({
-            id: rst.id,
-            session_id: rst.session_id,
-            exercise_id: targetExId,
-            set_order: rst.set_order,
-            set_type: rst.set_type,
-            weight_kg: Number(rst.weight_kg),
-            reps: Number(rst.reps),
-            raw_text: rst.raw_text,
-            sub_fields: subFields,
-            rest_pause_detail: rst.rest_pause_detail,
-            forced_reps: rst.forced_reps,
-            is_failure: rst.is_failure,
-            is_completed: rst.feedback?.includes("completed") || false,
-            feedback: rst.feedback,
-            notes: rst.notes,
-            created_at: rst.created_at,
-            updated_at: rst.updated_at,
-            deleted_at: rst.deleted_at,
-            sync_status: "synced",
-          });
-          pulled++;
-        }
+        await db.sets.put({
+          id: rst.id, session_id: rst.session_id,
+          exercise_id: LEGACY_ID_MAP[rst.exercise_id] || rst.exercise_id,
+          set_order: rst.set_order, set_type: rst.set_type,
+          weight_kg: Number(rst.weight_kg), reps: Number(rst.reps), raw_text: rst.raw_text,
+          sub_fields: subFields, rest_pause_detail: rst.rest_pause_detail,
+          forced_reps: rst.forced_reps, is_failure: rst.is_failure,
+          is_completed: rst.feedback?.includes("completed") || false,
+          feedback: rst.feedback, notes: rst.notes, created_at: rst.created_at,
+          updated_at: rst.updated_at, deleted_at: rst.deleted_at, sync_status: "synced",
+        });
+        pulled++;
       }
     }
 
-    // 5.4 Pull Big Three
-    const { data: remoteB3 } = await supabase
-      .from("big_three_records")
-      .select("*")
-      .limit(5);
-
-    if (remoteB3 && remoteB3.length > 0) {
-      for (const rb of remoteB3) {
-        if (!rb || !rb.id) continue;
+    for (const rb of pulledData.big_three_records.rows) {
+      if (!rb?.id) continue;
+      const local = await db.big_three.get(rb.id);
+      if (!local || new Date(rb.updated_at) > new Date(local.updated_at)) {
         await db.big_three.put({
-          id: rb.id,
-          bench_press_kg: Number(rb.bench_press_kg),
-          squat_kg: Number(rb.squat_kg),
-          deadlift_kg: Number(rb.deadlift_kg),
+          id: rb.id, bench_press_kg: Number(rb.bench_press_kg),
+          squat_kg: Number(rb.squat_kg), deadlift_kg: Number(rb.deadlift_kg),
           total_kg: Number(rb.total_kg),
           body_weight_kg: rb.body_weight_kg ? Number(rb.body_weight_kg) : undefined,
           bench_ratio: rb.bench_ratio ? Number(rb.bench_ratio) : undefined,
           squat_ratio: rb.squat_ratio ? Number(rb.squat_ratio) : undefined,
           deadlift_ratio: rb.deadlift_ratio ? Number(rb.deadlift_ratio) : undefined,
-          updated_at: rb.updated_at,
-          sync_status: "synced",
+          updated_at: rb.updated_at, sync_status: "synced",
         });
+        pulled++;
       }
     }
 
-    const now = new Date().toISOString();
+    // Commit cursors only when every pull succeeded. Never infer deletions from an incremental result;
+    // remote deletions are represented by deleted_at tombstones instead.
+    writeCursors(Object.fromEntries(
+      Object.entries(pulledData).map(([table, result]) => [table, result.nextCursor])
+    ));
     if (typeof window !== "undefined") {
-      localStorage.setItem("workout_last_sync_time", now);
-      if (pulled > 0 || pushed > 0) {
-        window.dispatchEvent(new CustomEvent("workout:data_changed"));
-      }
+      localStorage.setItem("workout_last_sync_time", new Date().toISOString());
+      if (pulled > 0 || pushed > 0) window.dispatchEvent(new CustomEvent("workout:data_changed"));
     }
 
-    return {
-      success: true,
-      message: `同步完成！已上傳 ${pushed} 筆資料、下載 ${pulled} 筆雲端更新`,
-      pushedCount: pushed,
-      pulledCount: pulled,
-    };
+    return { success: true, message: `同步完成！已上傳 ${pushed} 筆資料、下載 ${pulled} 筆雲端更新`, pushedCount: pushed, pulledCount: pulled };
   } catch (err: any) {
-    return {
-      success: false,
-      message: `同步失敗: ${err?.message || err}`,
-      pushedCount: pushed,
-      pulledCount: pulled,
-    };
+    return { success: false, message: `同步失敗: ${err?.message || err}`, pushedCount: pushed, pulledCount: pulled };
   }
 }
 
-/**
- * 遠端刪除訓練場次（連同其下的所有組數）
- */
+/** Mark a session and its sets deleted so other devices receive tombstones via incremental sync. */
 export async function deleteRemoteSession(sessionId: string): Promise<void> {
   const supabase = getSupabaseClient();
   if (!supabase) return;
+  const now = new Date().toISOString();
   try {
-    await supabase.from("workout_sets").delete().eq("session_id", sessionId);
-    await supabase.from("workout_sessions").delete().eq("id", sessionId);
+    const { error: setsError } = await supabase.from("workout_sets")
+      .update({ deleted_at: now, updated_at: now }).eq("session_id", sessionId);
+    if (setsError) throw setsError;
+    const { error } = await supabase.from("workout_sessions")
+      .update({ deleted_at: now, updated_at: now }).eq("id", sessionId);
+    if (error) throw error;
   } catch (err) {
     console.error("Failed to delete remote session:", err);
   }
 }
 
-/**
- * 遠端刪除單一組數
- */
 export async function deleteRemoteSet(setId: string): Promise<void> {
   const supabase = getSupabaseClient();
   if (!supabase) return;
+  const now = new Date().toISOString();
   try {
-    await supabase.from("workout_sets").delete().eq("id", setId);
+    const { error } = await supabase.from("workout_sets")
+      .update({ deleted_at: now, updated_at: now }).eq("id", setId);
+    if (error) throw error;
   } catch (err) {
     console.error("Failed to delete remote set:", err);
   }
 }
 
-/**
- * 遠端刪除體重紀錄（本機優先保存於 Dexie）
- */
-export async function deleteRemoteBodyWeight(_id: string): Promise<void> {
-  // Dexie 本地資料庫儲存完整體重與 InBody 數據
-}
+/** Body weight is stored locally in Dexie. */
+export async function deleteRemoteBodyWeight(_id: string): Promise<void> {}
 
-/**
- * 遠端刪除自訂動作紀錄
- */
 export async function deleteRemoteExercise(id: string): Promise<void> {
   const supabase = getSupabaseClient();
   if (!supabase) return;
+  const now = new Date().toISOString();
   try {
-    await supabase.from("exercises").delete().eq("id", id);
+    const { error } = await supabase.from("exercises")
+      .update({ deleted_at: now, updated_at: now }).eq("id", id);
+    if (error) throw error;
   } catch (err) {
     console.error("Failed to delete remote exercise:", err);
   }
 }
-
