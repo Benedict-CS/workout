@@ -9,9 +9,8 @@ let inFlightSync: Promise<SyncResult> | null = null;
 
 const DEFAULT_SUPABASE_URL = "https://sbvcbkvnvhwalypmzbvt.supabase.co";
 const DEFAULT_SUPABASE_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIUzI1NiIsInJlZiI6InNidmNia3Zudmh3YWx5cG16YnZ0IiwiaWF0IjoxNzk0MjU5Mzg5LCJleHAiOjIxMDk4MzUzODl9.flhfWoAIdfpp-5cQ98R_H1Hs6y5xTnCKD16eG6-VP_8";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNidmNia3Zudmh3YWx5cG16YnZ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQyNTkzODksImV4cCI6MjEwOTgzNTM4OX0.flhfWoAIdfpp-5cQ98R_H1Hs6y5xTnCKD16eG6-VP_8";
 const PAGE_SIZE = 500;
-const CURSOR_OVERLAP_MS = 60_000;
 const TAB_LOCK_KEY = "workout_sync_lock";
 const TAB_LOCK_TTL_MS = 10 * 60_000;
 const CURSOR_TABLES = ["workout_sessions", "exercises", "workout_sets", "big_three_records"] as const;
@@ -120,17 +119,15 @@ async function pullChangedRows(
   previousCursor: string | null
 ): Promise<{ rows: any[]; nextCursor: string | null }> {
   const rows: any[] = [];
-  const since = previousCursor
-    ? new Date(new Date(previousCursor).getTime() - CURSOR_OVERLAP_MS).toISOString()
-    : null;
+  // Use the last successful timestamp directly. Rewinding a fixed overlap while
+  // storing the max row timestamp makes the same recent rows repeat forever.
   let offset = 0;
-
   while (true) {
     let query = (supabase as any).from(table).select(columns)
       .order("updated_at", { ascending: true })
       .order("id", { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
-    if (since) query = query.gt("updated_at", since);
+    if (previousCursor) query = query.gt("updated_at", previousCursor);
     const { data, error } = await query;
     if (error) throw new Error(`Pull ${table} failed: ${error.message}`);
     const page = (data || []) as any[];
@@ -256,9 +253,11 @@ async function performSync(): Promise<SyncResult> {
       await db.sets.bulkPut(chunk.map((s) => ({ ...s, sync_status: "synced" })));
     }
 
-    const localB3 = await db.big_three.toArray();
-    if (localB3.length) {
-      const payload = localB3.map((b) => ({
+    const pendingB3 = (await db.big_three.toArray()).filter(
+      (b) => b.sync_status === "pending" || !b.sync_status
+    );
+    if (pendingB3.length) {
+      const payload = pendingB3.map((b) => ({
         id: b.id, bench_press_kg: b.bench_press_kg, squat_kg: b.squat_kg,
         deadlift_kg: b.deadlift_kg, total_kg: b.total_kg, body_weight_kg: b.body_weight_kg || null,
         bench_ratio: b.bench_ratio || null, squat_ratio: b.squat_ratio || null,
@@ -267,6 +266,7 @@ async function performSync(): Promise<SyncResult> {
       const { error } = await supabase.from("big_three_records").upsert(payload, { onConflict: "id" });
       if (error) throw new Error(`Push big_three_records failed: ${error.message}`);
       pushed += payload.length;
+      await db.big_three.bulkPut(pendingB3.map((b) => ({ ...b, sync_status: "synced" })));
     }
 
     const columns: Record<CursorTable, string> = {
@@ -367,7 +367,6 @@ async function performSync(): Promise<SyncResult> {
       }
     }
 
-    // Advance each table cursor only after every pull and local apply succeeded.
     if (typeof window !== "undefined") {
       for (const table of CURSOR_TABLES) {
         const cursor = pulls[table].nextCursor;
@@ -421,4 +420,105 @@ export async function deleteRemoteExercise(id: string): Promise<void> {
       .update({ deleted_at: now, updated_at: now }).eq("id", id);
     if (error) throw error;
   } catch (err) { console.error("Failed to delete remote exercise:", err); }
+}
+
+export async function getRecentSessions(limit = 30): Promise<WorkoutSession[]> {
+  const all = await db.sessions.filter((s) => !s.deleted_at).sortBy("date");
+  return all.reverse().slice(0, limit);
+}
+
+export async function getSessionById(id: string): Promise<WorkoutSession | undefined> {
+  return db.sessions.get(id);
+}
+
+export async function getSessionSets(sessionId: string): Promise<SetItem[]> {
+  return db.sets.where("session_id").equals(sessionId).filter((s) => !s.deleted_at).sortBy("set_order");
+}
+
+export async function getAllExercises(): Promise<Exercise[]> {
+  return db.exercises.filter((e) => !e.deleted_at).sortBy("name");
+}
+
+export async function getLatestBigThree(): Promise<BigThreeRecord | undefined> {
+  const records = await db.big_three.toArray();
+  return records[0];
+}
+
+export async function getLastExerciseSets(
+  exerciseId: string,
+  excludeSessionId?: string
+): Promise<{ session: WorkoutSession; sets: SetItem[] } | null> {
+  const sets = await db.sets.where("exercise_id").equals(exerciseId)
+    .filter((s) => !s.deleted_at && s.session_id !== excludeSessionId).toArray();
+  if (!sets.length) return null;
+  const sessionIds = Array.from(new Set(sets.map((s) => s.session_id)));
+  const sessions = await db.sessions.where("id").anyOf(sessionIds)
+    .filter((s) => !s.deleted_at).sortBy("date");
+  const lastSession = sessions[sessions.length - 1];
+  if (!lastSession) return null;
+  return {
+    session: lastSession,
+    sets: sets.filter((s) => s.session_id === lastSession.id).sort((a, b) => a.set_order - b.set_order),
+  };
+}
+
+export async function getExerciseHistorySessions(
+  exerciseId: string,
+  limit = 5
+): Promise<{ session: WorkoutSession; sets: SetItem[] }[]> {
+  const sets = await db.sets.where("exercise_id").equals(exerciseId)
+    .filter((s) => !s.deleted_at && s.weight_kg > 0).toArray();
+  if (!sets.length) return [];
+  const sessionIds = Array.from(new Set(sets.map((s) => s.session_id)));
+  const sessions = (await db.sessions.where("id").anyOf(sessionIds)
+    .filter((s) => !s.deleted_at).sortBy("date")).reverse();
+  const result: { session: WorkoutSession; sets: SetItem[] }[] = [];
+  for (const sess of sessions.slice(0, limit)) {
+    result.push({
+      session: sess,
+      sets: sets.filter((s) => s.session_id === sess.id).sort((a, b) => a.set_order - b.set_order),
+    });
+  }
+  return result;
+}
+
+export async function getPreviousSessionTemplate(
+  targetMuscle: string
+): Promise<{ session: WorkoutSession; exerciseIds: string[]; sets: SetItem[] } | null> {
+  const sessions = (await db.sessions.filter((s) => !s.deleted_at && s.target_muscle.includes(targetMuscle))
+    .sortBy("date")).reverse();
+  if (!sessions.length) return null;
+  const session = sessions[0];
+  const sets = await db.sets.where("session_id").equals(session.id)
+    .filter((s) => !s.deleted_at).sortBy("set_order");
+  const exerciseIds: string[] = [];
+  for (const set of sets) if (!exerciseIds.includes(set.exercise_id)) exerciseIds.push(set.exercise_id);
+  return { session, exerciseIds, sets };
+}
+
+export async function getExerciseMaxPR(exerciseId: string): Promise<{
+  maxWeight: number;
+  maxWeightReps: number;
+  max1RM: number;
+  bestSet: SetItem | null;
+}> {
+  const sets = await db.sets.where("exercise_id").equals(exerciseId)
+    .filter((s) => !s.deleted_at && s.weight_kg > 0).toArray();
+  if (!sets.length) return { maxWeight: 0, maxWeightReps: 0, max1RM: 0, bestSet: null };
+  let maxWeight = 0;
+  let maxWeightReps = 0;
+  let max1RM = 0;
+  let bestSet: SetItem | null = null;
+  for (const set of sets) {
+    if (set.weight_kg > maxWeight) { maxWeight = set.weight_kg; maxWeightReps = set.reps; }
+    const current1RM = estimate1RM(set.weight_kg, set.reps);
+    if (current1RM > max1RM) { max1RM = current1RM; bestSet = set; }
+  }
+  return { maxWeight, maxWeightReps, max1RM, bestSet };
+}
+
+export function estimate1RM(weight: number, reps: number): number {
+  if (reps <= 0 || weight <= 0) return 0;
+  if (reps === 1) return weight;
+  return Math.round(weight * (1 + reps / 30) * 10) / 10;
 }
