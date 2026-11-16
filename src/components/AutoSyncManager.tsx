@@ -4,16 +4,25 @@ import { useEffect, useRef } from "react";
 import { runFullSync } from "@/lib/db/sync";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
 
+const MIN_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+
 export function AutoSyncManager() {
   const isSyncingRef = useRef(false);
+  const lastSyncAttemptRef = useRef(0);
 
-  const triggerSync = async () => {
+  const triggerSync = async (force = false) => {
     if (isSyncingRef.current) return;
     if (typeof navigator !== "undefined" && !navigator.onLine) return;
 
+    const now = Date.now();
+    if (!force && now - lastSyncAttemptRef.current < MIN_SYNC_INTERVAL_MS) {
+      return;
+    }
+
     try {
       isSyncingRef.current = true;
-      await runFullSync();
+      lastSyncAttemptRef.current = now;
+      await runFullSync(force);
     } catch (err) {
       console.warn("Background auto-sync skipped/failed:", err);
     } finally {
@@ -22,37 +31,35 @@ export function AutoSyncManager() {
   };
 
   useEffect(() => {
-    // 1. 初次載入：確保基礎資料完整並自動同步雲端
     ensureDatabaseSeeded().catch(() => {});
 
-    // 2. 當網路重新連線時 (online 事件) 自動觸發同步
     const handleOnline = () => {
-      triggerSync();
+      triggerSync(false);
     };
 
-    // 3. 當使用者切換分頁回本 App 或解鎖螢幕時 (visibilitychange) 自動檢查雲端更新
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        triggerSync();
+        triggerSync(false);
       }
+    };
+
+    const handleExplicitSync = () => {
+      triggerSync(true);
     };
 
     window.addEventListener("online", handleOnline);
-    window.addEventListener("focus", handleVisibilityChange);
-    window.addEventListener("workout:sync", handleVisibilityChange);
+    window.addEventListener("workout:sync", handleExplicitSync);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
-    // 4. 定期背景自動同步 (每 90 秒檢查一次)
     const intervalId = setInterval(() => {
       if (document.visibilityState === "visible") {
-        triggerSync();
+        triggerSync(false);
       }
-    }, 90 * 1000);
+    }, 10 * 60 * 1000);
 
     return () => {
       window.removeEventListener("online", handleOnline);
-      window.removeEventListener("focus", handleVisibilityChange);
-      window.removeEventListener("workout:sync", handleVisibilityChange);
+      window.removeEventListener("workout:sync", handleExplicitSync);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       clearInterval(intervalId);
     };
