@@ -17,14 +17,10 @@ export function AutoSyncManager() {
 
     const now = Date.now();
     let lastAttempt = lastSyncAttemptRef.current;
-
-    // Share the cooldown between tabs on this device to avoid each tab syncing independently.
     try {
       const storedAttempt = Number(localStorage.getItem(LAST_SYNC_ATTEMPT_KEY));
       if (Number.isFinite(storedAttempt)) lastAttempt = Math.max(lastAttempt, storedAttempt);
-    } catch {
-      // Continue with the in-memory cooldown if storage is unavailable.
-    }
+    } catch {}
 
     if (!force && now - lastAttempt < MIN_SYNC_INTERVAL_MS) return;
 
@@ -33,10 +29,8 @@ export function AutoSyncManager() {
       lastSyncAttemptRef.current = now;
       try {
         localStorage.setItem(LAST_SYNC_ATTEMPT_KEY, String(now));
-      } catch {
-        // The in-memory cooldown still protects this tab.
-      }
-      // runFullSync currently takes no arguments; `force` only bypasses this manager's cooldown.
+      } catch {}
+      // `force` bypasses this manager's cooldown only. runFullSync has no force parameter.
       await runFullSync();
     } catch (err) {
       console.warn("Background auto-sync skipped/failed:", err);
