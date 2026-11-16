@@ -30,7 +30,7 @@ export function AutoSyncManager() {
       try {
         localStorage.setItem(LAST_SYNC_ATTEMPT_KEY, String(now));
       } catch {}
-      // `force` bypasses this manager's cooldown only. runFullSync has no force parameter.
+      // `force` bypasses this manager's cooldown only. runFullSync has no options parameter.
       await runFullSync();
     } catch (err) {
       console.warn("Background auto-sync skipped/failed:", err);
@@ -40,7 +40,9 @@ export function AutoSyncManager() {
   };
 
   useEffect(() => {
-    ensureDatabaseSeeded().catch(() => {});
+    ensureDatabaseSeeded()
+      .then(() => triggerSync(false))
+      .catch((err) => console.warn("Database initialization failed:", err));
 
     const handleOnline = () => triggerSync(false);
     const handleVisibilityChange = () => {
