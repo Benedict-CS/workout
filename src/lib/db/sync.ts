@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { db } from "./schema";
+import type { WorkoutSession, Exercise, SetItem, BigThreeRecord } from "@/lib/types";
 
 let cachedClient: SupabaseClient | null = null;
 let cachedUrl = "";
@@ -8,11 +9,13 @@ let inFlightSync: Promise<SyncResult> | null = null;
 
 const DEFAULT_SUPABASE_URL = "https://sbvcbkvnvhwalypmzbvt.supabase.co";
 const DEFAULT_SUPABASE_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNidmNia3Zudmh3YWx5cG16YnZ0IiwiaWF0IjoxNzk0MjU5Mzg5LCJleHAiOjIxMDk4MzUzODl9.flhfWoAIdfpp-5cQ98R_H1Hs6y5xTnCKD16eG6-VP_8";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIUzI1NiIsInJlZiI6InNidmNia3Zudmh3YWx5cG16YnZ0IiwiaWF0IjoxNzk0MjU5Mzg5LCJleHAiOjIxMDk4MzUzODl9.flhfWoAIdfpp-5cQ98R_H1Hs6y5xTnCKD16eG6-VP_8";
 const PAGE_SIZE = 500;
-const CURSOR_OVERLAP_MS = 60 * 1000;
+const CURSOR_OVERLAP_MS = 60_000;
 const TAB_LOCK_KEY = "workout_sync_lock";
-const TAB_LOCK_TTL_MS = 10 * 60 * 1000;
+const TAB_LOCK_TTL_MS = 10 * 60_000;
+const CURSOR_TABLES = ["workout_sessions", "exercises", "workout_sets", "big_three_records"] as const;
+type CursorTable = (typeof CURSOR_TABLES)[number];
 
 export function getSupabaseClient(): SupabaseClient | null {
   const url =
@@ -26,7 +29,6 @@ export function getSupabaseClient(): SupabaseClient | null {
 
   if (!url || !key) return null;
   if (cachedClient && cachedUrl === url && cachedKey === key) return cachedClient;
-
   try {
     cachedClient = createClient(url, key, { auth: { persistSession: false } });
     cachedUrl = url;
@@ -50,20 +52,15 @@ export async function testSupabaseConnection(
   customKey?: string
 ): Promise<{ ok: boolean; message: string }> {
   try {
-    const url =
-      customUrl ||
+    const url = customUrl ||
       (typeof window !== "undefined" ? localStorage.getItem("workout_supabase_url") || "" : "") ||
-      process.env.NEXT_PUBLIC_SUPABASE_URL ||
-      DEFAULT_SUPABASE_URL;
-    const key =
-      customKey ||
+      process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+    const key = customKey ||
       (typeof window !== "undefined" ? localStorage.getItem("workout_supabase_key") || "" : "") ||
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-      DEFAULT_SUPABASE_KEY;
-
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_KEY;
     if (!url || !key) return { ok: false, message: "請先輸入 Project URL 與 Public Anon Key" };
-    const testClient = createClient(url, key, { auth: { persistSession: false } });
-    const { error } = await testClient.from("workout_sessions").select("id").limit(1);
+    const client = createClient(url, key, { auth: { persistSession: false } });
+    const { error } = await client.from("workout_sessions").select("id").limit(1);
     if (error) return { ok: false, message: `連線失敗: ${error.message}` };
     return { ok: true, message: "雲端資料庫連線測試成功！" };
   } catch (e: any) {
@@ -91,53 +88,49 @@ export function extractLocationFromSession(s: any): string | undefined {
   return (s.date || "") <= "2026-08-31" ? "交大健身房" : "三健客";
 }
 
-function cursorStorageKey(table: string): string {
-  // Keep independent cursors when users switch between Supabase projects.
+const LEGACY_ID_MAP: Record<string, string> = {
+  "ex-bench-press": "ex-bench", "ex-flat-dumbbell": "ex-db-bench",
+  "ex-db-flat-press": "ex-db-bench", "ex-flat-dumbbell-press": "ex-db-bench",
+  "ex-incline-dumbbell": "ex-db-incline-bench", "ex-incline-db-press": "ex-db-incline-bench",
+  "ex-incline-barbell-press": "ex-incline-bench", "ex-db-row": "ex-db-single-row",
+  "ex-one-arm-dumbbell-row": "ex-db-single-row", "ex-pec-deck": "ex-pec-fly",
+  "ex-machine-incline-press": "ex-incline-machine-bench", "ex-chest-press": "ex-chest-press-seated",
+  "ex-seated-row-machine": "ex-seated-row", "ex-tricep-press-chest": "ex-dip-pushdown-machine",
+  "ex-hex-deadlift": "ex-trap-bar-deadlift", "ex-lat-row-machine": "ex-high-row",
+  "ex-seated-back-row-machine": "ex-seated-cable-row", "ex-lying-leg-curl": "ex-leg-curl",
+  "ex-bulgarian-split-squat": "ex-bulgarian-squat",
+  "ex-dumbbell-shoulder-press": "ex-db-shoulder-press", "ex-face-pull": "ex-cable-face-pull",
+  "ex-reverse-pec-deck": "ex-reverse-pec-fly", "ex-rope-tricep-pushdown": "ex-rope-tricep",
+  "ex-dumbbell-hammer-curl": "ex-db-hammer-curl", "ex-incline-dumbbell-curl": "ex-incline-db-curl",
+};
+
+function cursorKey(table: CursorTable): string {
   return `workout_sync_cursor:${encodeURIComponent(cachedUrl)}:${table}`;
 }
 
-function readCursor(table: string): string | null {
+function readCursor(table: CursorTable): string | null {
   if (typeof window === "undefined") return null;
-  try {
-    return localStorage.getItem(cursorStorageKey(table));
-  } catch {
-    return null;
-  }
+  try { return localStorage.getItem(cursorKey(table)); } catch { return null; }
 }
 
-function writeCursors(cursors: Record<string, string | null>): void {
-  if (typeof window === "undefined") return;
-  try {
-    for (const [table, cursor] of Object.entries(cursors)) {
-      if (cursor) localStorage.setItem(cursorStorageKey(table), cursor);
-    }
-  } catch (err) {
-    console.warn("Could not save sync cursors; next sync may download more rows:", err);
-  }
-}
-
-/**
- * Fetches all rows on first sync, then only rows changed since the saved cursor.
- * A one-minute overlap makes timestamp ties and small clock/precision differences safe;
- * processing is idempotent because rows are upserted into IndexedDB by primary key.
- */
-async function pullRows(
+async function pullChangedRows(
   supabase: SupabaseClient,
-  table: string,
+  table: CursorTable,
   columns: string,
-  cursor: string | null
+  previousCursor: string | null
 ): Promise<{ rows: any[]; nextCursor: string | null }> {
   const rows: any[] = [];
-  const since = cursor ? new Date(new Date(cursor).getTime() - CURSOR_OVERLAP_MS).toISOString() : null;
+  const since = previousCursor
+    ? new Date(new Date(previousCursor).getTime() - CURSOR_OVERLAP_MS).toISOString()
+    : null;
   let offset = 0;
 
   while (true) {
-    let query = (supabase.from(table) as any)
-      .select(columns)
+    let query = (supabase as any).from(table).select(columns)
       .order("updated_at", { ascending: true })
+      .order("id", { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
     if (since) query = query.gt("updated_at", since);
-
     const { data, error } = await query;
     if (error) throw new Error(`Pull ${table} failed: ${error.message}`);
     const page = (data || []) as any[];
@@ -149,64 +142,25 @@ async function pullRows(
   const latest = rows.reduce<string | null>((max, row) => {
     const value = row?.updated_at;
     return value && (!max || value > max) ? value : max;
-  }, cursor);
+  }, previousCursor);
   return { rows, nextCursor: latest };
 }
 
-const LEGACY_ID_MAP: Record<string, string> = {
-  "ex-bench-press": "ex-bench",
-  "ex-flat-dumbbell": "ex-db-bench",
-  "ex-db-flat-press": "ex-db-bench",
-  "ex-flat-dumbbell-press": "ex-db-bench",
-  "ex-incline-dumbbell": "ex-db-incline-bench",
-  "ex-incline-db-press": "ex-db-incline-bench",
-  "ex-incline-barbell-press": "ex-incline-bench",
-  "ex-db-row": "ex-db-single-row",
-  "ex-one-arm-dumbbell-row": "ex-db-single-row",
-  "ex-pec-deck": "ex-pec-fly",
-  "ex-machine-incline-press": "ex-incline-machine-bench",
-  "ex-chest-press": "ex-chest-press-seated",
-  "ex-seated-row-machine": "ex-seated-row",
-  "ex-tricep-press-chest": "ex-dip-pushdown-machine",
-  "ex-hex-deadlift": "ex-trap-bar-deadlift",
-  "ex-lat-row-machine": "ex-high-row",
-  "ex-seated-back-row-machine": "ex-seated-cable-row",
-  "ex-lying-leg-curl": "ex-leg-curl",
-  "ex-bulgarian-split-squat": "ex-bulgarian-squat",
-  "ex-dumbbell-shoulder-press": "ex-db-shoulder-press",
-  "ex-face-pull": "ex-cable-face-pull",
-  "ex-reverse-pec-deck": "ex-reverse-pec-fly",
-  "ex-rope-tricep-pushdown": "ex-rope-tricep",
-  "ex-dumbbell-hammer-curl": "ex-db-hammer-curl",
-  "ex-incline-dumbbell-curl": "ex-incline-db-curl",
-};
-
-/** Serialize same-tab syncs and use a browser lock / lease to avoid duplicate pulls across tabs. */
 export function runFullSync(): Promise<SyncResult> {
   if (inFlightSync) return inFlightSync;
-  const task = runSyncWithLock();
-  inFlightSync = task.finally(() => {
-    inFlightSync = null;
-  });
+  const task = runWithCrossTabLock();
+  inFlightSync = task.finally(() => { inFlightSync = null; });
   return inFlightSync;
 }
 
-async function runSyncWithLock(): Promise<SyncResult> {
-  if (typeof navigator !== "undefined") {
-    const lockManager = (navigator as any).locks;
-    if (lockManager?.request) {
-      return lockManager.request(
-        "workout-supabase-sync",
-        { ifAvailable: true },
-        async (lock: unknown) =>
-          lock ? performFullSync() : {
-            success: true,
-            message: "同步已在另一個分頁執行，略過本次同步",
-            pushedCount: 0,
-            pulledCount: 0,
-          }
-      );
-    }
+async function runWithCrossTabLock(): Promise<SyncResult> {
+  if (typeof navigator !== "undefined" && (navigator as any).locks?.request) {
+    return (navigator as any).locks.request(
+      "workout-supabase-sync", { ifAvailable: true },
+      (lock: unknown) => lock ? performSync() : ({
+        success: true, message: "另一個分頁正在同步，略過本次同步", pushedCount: 0, pulledCount: 0,
+      })
+    );
   }
 
   if (typeof window !== "undefined") {
@@ -214,36 +168,32 @@ async function runSyncWithLock(): Promise<SyncResult> {
     try {
       const current = JSON.parse(localStorage.getItem(TAB_LOCK_KEY) || "null");
       if (current?.expiresAt > Date.now()) {
-        return { success: true, message: "同步已在另一個分頁執行，略過本次同步", pushedCount: 0, pulledCount: 0 };
+        return { success: true, message: "另一個分頁正在同步，略過本次同步", pushedCount: 0, pulledCount: 0 };
       }
       localStorage.setItem(TAB_LOCK_KEY, JSON.stringify({ owner, expiresAt: Date.now() + TAB_LOCK_TTL_MS }));
-      const verified = JSON.parse(localStorage.getItem(TAB_LOCK_KEY) || "null");
-      if (verified?.owner !== owner) {
-        return { success: true, message: "同步已在另一個分頁執行，略過本次同步", pushedCount: 0, pulledCount: 0 };
+      const acquired = JSON.parse(localStorage.getItem(TAB_LOCK_KEY) || "null");
+      if (acquired?.owner !== owner) {
+        return { success: true, message: "另一個分頁正在同步，略過本次同步", pushedCount: 0, pulledCount: 0 };
       }
-      try {
-        return await performFullSync();
-      } finally {
+      try { return await performSync(); }
+      finally {
         const latest = JSON.parse(localStorage.getItem(TAB_LOCK_KEY) || "null");
         if (latest?.owner === owner) localStorage.removeItem(TAB_LOCK_KEY);
       }
     } catch (err) {
-      console.warn("Sync tab lock unavailable; using in-tab lock only:", err);
+      console.warn("Cross-tab lock unavailable; continuing with in-tab guard:", err);
     }
   }
-  return performFullSync();
+  return performSync();
 }
 
-async function performFullSync(): Promise<SyncResult> {
+async function performSync(): Promise<SyncResult> {
   const supabase = getSupabaseClient();
-  if (!supabase) {
-    return { success: false, message: "未設定 Supabase 憑證或無效", pushedCount: 0, pulledCount: 0 };
-  }
-
+  if (!supabase) return { success: false, message: "未設定 Supabase 憑證或無效", pushedCount: 0, pulledCount: 0 };
   let pushed = 0;
   let pulled = 0;
+
   try {
-    // Remove known legacy/corrupt local rows before they can be uploaded.
     const legacySwims = await db.sessions.filter((s) => s.id.startsWith("session-swim-")).toArray();
     if (legacySwims.length) {
       const ids = legacySwims.map((s) => s.id);
@@ -251,8 +201,8 @@ async function performFullSync(): Promise<SyncResult> {
       const sets = await db.sets.filter((s) => ids.includes(s.session_id)).toArray();
       if (sets.length) await db.sets.bulkDelete(sets.map((s) => s.id));
     }
-    const corruptedSets = await db.sets.filter((s) => s.id.startsWith("set-179464")).toArray();
-    if (corruptedSets.length) await db.sets.bulkDelete(corruptedSets.map((s) => s.id));
+    const corrupt = await db.sets.filter((s) => s.id.startsWith("set-179464")).toArray();
+    if (corrupt.length) await db.sets.bulkDelete(corrupt.map((s) => s.id));
 
     const pendingSessions = (await db.sessions.toArray()).filter(
       (s) => (s.sync_status === "pending" || !s.sync_status) && !s.id.startsWith("session-swim-")
@@ -266,7 +216,7 @@ async function performFullSync(): Promise<SyncResult> {
       }));
       const { error } = await supabase.from("workout_sessions").upsert(payload, { onConflict: "id" });
       if (error) throw new Error(`Push workout_sessions failed: ${error.message}`);
-      pushed += pendingSessions.length;
+      pushed += payload.length;
       await db.sessions.bulkPut(pendingSessions.map((s) => ({ ...s, sync_status: "synced" })));
     }
 
@@ -281,13 +231,11 @@ async function performFullSync(): Promise<SyncResult> {
       }));
       const { error } = await supabase.from("exercises").upsert(payload, { onConflict: "id" });
       if (error) throw new Error(`Push exercises failed: ${error.message}`);
-      pushed += pendingExercises.length;
+      pushed += payload.length;
       await db.exercises.bulkPut(pendingExercises.map((e) => ({ ...e, sync_status: "synced" })));
     }
 
-    const pendingSets = (await db.sets.toArray()).filter(
-      (s) => s.sync_status === "pending" || !s.sync_status
-    );
+    const pendingSets = (await db.sets.toArray()).filter((s) => s.sync_status === "pending" || !s.sync_status);
     for (let i = 0; i < pendingSets.length; i += 150) {
       const chunk = pendingSets.slice(i, i + 150);
       const payload = chunk.map((s) => ({
@@ -312,35 +260,42 @@ async function performFullSync(): Promise<SyncResult> {
     if (localB3.length) {
       const payload = localB3.map((b) => ({
         id: b.id, bench_press_kg: b.bench_press_kg, squat_kg: b.squat_kg,
-        deadlift_kg: b.deadlift_kg, total_kg: b.total_kg,
-        body_weight_kg: b.body_weight_kg || null, bench_ratio: b.bench_ratio || null,
-        squat_ratio: b.squat_ratio || null, deadlift_ratio: b.deadlift_ratio || null,
-        updated_at: b.updated_at,
+        deadlift_kg: b.deadlift_kg, total_kg: b.total_kg, body_weight_kg: b.body_weight_kg || null,
+        bench_ratio: b.bench_ratio || null, squat_ratio: b.squat_ratio || null,
+        deadlift_ratio: b.deadlift_ratio || null, updated_at: b.updated_at,
       }));
       const { error } = await supabase.from("big_three_records").upsert(payload, { onConflict: "id" });
       if (error) throw new Error(`Push big_three_records failed: ${error.message}`);
-      pushed += localB3.length;
+      pushed += payload.length;
     }
 
-    // Pull narrow columns, paginated. The first run per project fetches all rows;
-    // later runs fetch only changed rows plus a small overlap for timestamp safety.
-    const tables = [
-      ["workout_sessions", "id,date,month_key,display_title,target_muscle,monthly_index,notes,created_at,updated_at,deleted_at"],
-      ["exercises", "id,name,muscle_group,weight_type,default_notes,is_favorite,created_at,updated_at,deleted_at"],
-      ["workout_sets", "id,session_id,exercise_id,set_order,set_type,weight_kg,reps,raw_text,rest_pause_detail,forced_reps,is_failure,feedback,notes,created_at,updated_at,deleted_at"],
-      ["big_three_records", "id,bench_press_kg,squat_kg,deadlift_kg,total_kg,body_weight_kg,bench_ratio,squat_ratio,deadlift_ratio,updated_at"],
-    ] as const;
-    const pulledData: Record<string, { rows: any[]; nextCursor: string | null }> = {};
-    for (const [table, columns] of tables) {
-      pulledData[table] = await pullRows(supabase, table, columns, readCursor(table));
+    const columns: Record<CursorTable, string> = {
+      workout_sessions: "id,date,month_key,display_title,target_muscle,monthly_index,notes,created_at,updated_at,deleted_at",
+      exercises: "id,name,muscle_group,weight_type,default_notes,is_favorite,created_at,updated_at,deleted_at",
+      workout_sets: "id,session_id,exercise_id,set_order,set_type,weight_kg,reps,raw_text,rest_pause_detail,forced_reps,is_failure,feedback,notes,created_at,updated_at,deleted_at",
+      big_three_records: "id,bench_press_kg,squat_kg,deadlift_kg,total_kg,body_weight_kg,bench_ratio,squat_ratio,deadlift_ratio,updated_at",
+    };
+    const pulls = {} as Record<CursorTable, { rows: any[]; nextCursor: string | null }>;
+    for (const table of CURSOR_TABLES) {
+      pulls[table] = await pullChangedRows(supabase, table, columns[table], readCursor(table));
     }
 
-    const remoteSessions = pulledData.workout_sessions.rows as any[];
-    for (const rs of remoteSessions) {
-      if (!rs?.id || rs.id.startsWith("session-swim-")) continue;
+    for (const rs of pulls.workout_sessions.rows) {
+      if (!rs?.id) continue;
+      const isSwim = rs.target_muscle === "游泳" || (rs.display_title && rs.display_title.includes("泳"));
+      if (rs.deleted_at && !isSwim) {
+        const local = await db.sessions.get(rs.id);
+        if (local) {
+          await db.sessions.delete(rs.id);
+          const sets = await db.sets.where("session_id").equals(rs.id).toArray();
+          if (sets.length) await db.sets.bulkDelete(sets.map((s) => s.id));
+          pulled++;
+        }
+        continue;
+      }
+      if (rs.id.startsWith("session-swim-")) continue;
       const local = await db.sessions.get(rs.id);
       if (!local || new Date(rs.updated_at) > new Date(local.updated_at)) {
-        const isSwim = rs.target_muscle === "游泳" || (rs.display_title && rs.display_title.includes("泳"));
         let noteText = rs.notes;
         if (rs.notes?.startsWith("{")) {
           try { noteText = JSON.parse(rs.notes).note; } catch {}
@@ -348,16 +303,16 @@ async function performFullSync(): Promise<SyncResult> {
         await db.sessions.put({
           id: rs.id, date: rs.date, month_key: rs.month_key, display_title: rs.display_title,
           target_muscle: isSwim ? "游泳" : rs.target_muscle, monthly_index: rs.monthly_index,
-          location: extractLocationFromSession(rs), notes: noteText,
-          created_at: rs.created_at, updated_at: rs.updated_at,
-          deleted_at: isSwim ? null : rs.deleted_at, sync_status: "synced",
+          location: extractLocationFromSession(rs), notes: noteText, created_at: rs.created_at,
+          updated_at: rs.updated_at, deleted_at: isSwim ? null : rs.deleted_at, sync_status: "synced",
         });
         pulled++;
       }
     }
 
-    for (const re of pulledData.exercises.rows) {
+    for (const re of pulls.exercises.rows) {
       if (!re?.id) continue;
+      if (re.deleted_at) { await db.exercises.delete(re.id); pulled++; continue; }
       if (LEGACY_ID_MAP[re.id]) {
         if (re.is_favorite) await db.exercises.update(LEGACY_ID_MAP[re.id], { is_favorite: true });
         continue;
@@ -366,30 +321,28 @@ async function performFullSync(): Promise<SyncResult> {
       if (!local || new Date(re.updated_at) > new Date(local.updated_at)) {
         await db.exercises.put({
           id: re.id, name: re.name, muscle_group: re.muscle_group, weight_type: re.weight_type,
-          default_notes: re.default_notes, is_favorite: re.is_favorite,
-          created_at: re.created_at, updated_at: re.updated_at, deleted_at: re.deleted_at,
-          sync_status: "synced",
+          default_notes: re.default_notes, is_favorite: re.is_favorite, created_at: re.created_at,
+          updated_at: re.updated_at, deleted_at: re.deleted_at, sync_status: "synced",
         });
         pulled++;
       }
     }
 
-    for (const rst of pulledData.workout_sets.rows) {
+    for (const rst of pulls.workout_sets.rows) {
       if (!rst?.id) continue;
+      if (rst.deleted_at) { await db.sets.delete(rst.id); pulled++; continue; }
       const local = await db.sets.get(rst.id);
       if (!local || new Date(rst.updated_at) > new Date(local.updated_at)) {
-        let subFields: any;
+        let subFields = undefined;
         if (rst.rest_pause_detail?.startsWith("[")) {
           try { subFields = JSON.parse(rst.rest_pause_detail); } catch {}
         }
         await db.sets.put({
-          id: rst.id, session_id: rst.session_id,
-          exercise_id: LEGACY_ID_MAP[rst.exercise_id] || rst.exercise_id,
-          set_order: rst.set_order, set_type: rst.set_type,
-          weight_kg: Number(rst.weight_kg), reps: Number(rst.reps), raw_text: rst.raw_text,
-          sub_fields: subFields, rest_pause_detail: rst.rest_pause_detail,
-          forced_reps: rst.forced_reps, is_failure: rst.is_failure,
-          is_completed: rst.feedback?.includes("completed") || false,
+          id: rst.id, session_id: rst.session_id, exercise_id: LEGACY_ID_MAP[rst.exercise_id] || rst.exercise_id,
+          set_order: rst.set_order, set_type: rst.set_type, weight_kg: Number(rst.weight_kg),
+          reps: Number(rst.reps), raw_text: rst.raw_text, sub_fields: subFields,
+          rest_pause_detail: rst.rest_pause_detail, forced_reps: rst.forced_reps,
+          is_failure: rst.is_failure, is_completed: rst.feedback?.includes("completed") || false,
           feedback: rst.feedback, notes: rst.notes, created_at: rst.created_at,
           updated_at: rst.updated_at, deleted_at: rst.deleted_at, sync_status: "synced",
         });
@@ -397,14 +350,13 @@ async function performFullSync(): Promise<SyncResult> {
       }
     }
 
-    for (const rb of pulledData.big_three_records.rows) {
+    for (const rb of pulls.big_three_records.rows) {
       if (!rb?.id) continue;
       const local = await db.big_three.get(rb.id);
       if (!local || new Date(rb.updated_at) > new Date(local.updated_at)) {
         await db.big_three.put({
-          id: rb.id, bench_press_kg: Number(rb.bench_press_kg),
-          squat_kg: Number(rb.squat_kg), deadlift_kg: Number(rb.deadlift_kg),
-          total_kg: Number(rb.total_kg),
+          id: rb.id, bench_press_kg: Number(rb.bench_press_kg), squat_kg: Number(rb.squat_kg),
+          deadlift_kg: Number(rb.deadlift_kg), total_kg: Number(rb.total_kg),
           body_weight_kg: rb.body_weight_kg ? Number(rb.body_weight_kg) : undefined,
           bench_ratio: rb.bench_ratio ? Number(rb.bench_ratio) : undefined,
           squat_ratio: rb.squat_ratio ? Number(rb.squat_ratio) : undefined,
@@ -415,23 +367,22 @@ async function performFullSync(): Promise<SyncResult> {
       }
     }
 
-    // Commit cursors only when every pull succeeded. Never infer deletions from an incremental result;
-    // remote deletions are represented by deleted_at tombstones instead.
-    writeCursors(Object.fromEntries(
-      Object.entries(pulledData).map(([table, result]) => [table, result.nextCursor])
-    ));
+    // Advance each table cursor only after every pull and local apply succeeded.
     if (typeof window !== "undefined") {
+      for (const table of CURSOR_TABLES) {
+        const cursor = pulls[table].nextCursor;
+        if (cursor) localStorage.setItem(cursorKey(table), cursor);
+      }
       localStorage.setItem("workout_last_sync_time", new Date().toISOString());
       if (pulled > 0 || pushed > 0) window.dispatchEvent(new CustomEvent("workout:data_changed"));
     }
-
     return { success: true, message: `同步完成！已上傳 ${pushed} 筆資料、下載 ${pulled} 筆雲端更新`, pushedCount: pushed, pulledCount: pulled };
   } catch (err: any) {
     return { success: false, message: `同步失敗: ${err?.message || err}`, pushedCount: pushed, pulledCount: pulled };
   }
 }
 
-/** Mark a session and its sets deleted so other devices receive tombstones via incremental sync. */
+/** Use tombstones for deletes so other clients can receive them through incremental pulls. */
 export async function deleteRemoteSession(sessionId: string): Promise<void> {
   const supabase = getSupabaseClient();
   if (!supabase) return;
@@ -443,9 +394,7 @@ export async function deleteRemoteSession(sessionId: string): Promise<void> {
     const { error } = await supabase.from("workout_sessions")
       .update({ deleted_at: now, updated_at: now }).eq("id", sessionId);
     if (error) throw error;
-  } catch (err) {
-    console.error("Failed to delete remote session:", err);
-  }
+  } catch (err) { console.error("Failed to delete remote session:", err); }
 }
 
 export async function deleteRemoteSet(setId: string): Promise<void> {
@@ -456,13 +405,12 @@ export async function deleteRemoteSet(setId: string): Promise<void> {
     const { error } = await supabase.from("workout_sets")
       .update({ deleted_at: now, updated_at: now }).eq("id", setId);
     if (error) throw error;
-  } catch (err) {
-    console.error("Failed to delete remote set:", err);
-  }
+  } catch (err) { console.error("Failed to delete remote set:", err); }
 }
 
-/** Body weight is stored locally in Dexie. */
-export async function deleteRemoteBodyWeight(_id: string): Promise<void> {}
+export async function deleteRemoteBodyWeight(_id: string): Promise<void> {
+  // Dexie stores the full body-weight and InBody data locally.
+}
 
 export async function deleteRemoteExercise(id: string): Promise<void> {
   const supabase = getSupabaseClient();
@@ -472,7 +420,5 @@ export async function deleteRemoteExercise(id: string): Promise<void> {
     const { error } = await supabase.from("exercises")
       .update({ deleted_at: now, updated_at: now }).eq("id", id);
     if (error) throw error;
-  } catch (err) {
-    console.error("Failed to delete remote exercise:", err);
-  }
+  } catch (err) { console.error("Failed to delete remote exercise:", err); }
 }
