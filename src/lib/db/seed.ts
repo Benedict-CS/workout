@@ -2,7 +2,6 @@ import { db } from "./schema";
 import seedData from "./seed-data.json";
 import bwData from "./bodyweight-data.json";
 import inbodyData from "./inbody-data.json";
-import { runFullSync } from "./sync";
 import type { SetItem } from "@/lib/types";
 
 export const CLEAN_NOV14_SETS: SetItem[] = [
@@ -233,7 +232,6 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
     updated_at: "2026-11-14T08:44:00.000Z",
     sync_status: "synced",
   },
-  // 啞鈴側平舉
   {
     id: "set-1794661032754-16",
     session_id: "session-2026-11-14-1794661032737",
@@ -313,8 +311,6 @@ export const CLEAN_NOV14_SETS: SetItem[] = [
 
 export async function ensureDatabaseSeeded(): Promise<void> {
   const existingExercises = await db.exercises.toArray();
-  const sessionCount = await db.sessions.count();
-  const hasSwimSession = (await db.sessions.where("target_muscle").equals("游泳").count()) > 0;
 
   // 檢查並清理歷史舊版 session-swim-* 幽靈資料與重複訓練
   const legacySwims = await db.sessions.filter((s) => s.id.startsWith("session-swim-")).toArray();
@@ -394,21 +390,10 @@ export async function ensureDatabaseSeeded(): Promise<void> {
 
   const updatedSessionCount = await db.sessions.count();
   const currentSetCount = await db.sets.count();
-  const currentSwimCount = await db.sessions.where("target_muscle").equals("游泳").count();
-  const pullupSetCount = await db.sets.where("exercise_id").equals("ex-pullup").count();
-  const hasOldNovSession = (await db.sessions.where("id").equals("session-2026-11-10-1").count()) > 0;
 
-  // 若尚未初始化，或場次不完整 (全庫 102 場 / 22 場游泳) / 組數不完整 (全庫共 1503 組) / 引體向上組數缺漏 / 舊版 session ID 不匹配，則自動更新為 100% 完整歷史資料
-  if (
-    updatedSessionCount === 0 ||
-    updatedSessionCount < seedData.sessions.length ||
-    currentSwimCount < 22 ||
-    currentSetCount < seedData.sets.length ||
-    pullupSetCount < 80 ||
-    hasOldNovSession ||
-    !hasSwimSession
-  ) {
-    console.log("Seeding / Migrating to 100% complete full-history exercises & sets (including all pull-ups)...");
+  // ⭐ 僅在資料庫為空（初次載入）時初始化 seedData，並強制標記 sync_status: "synced"，防止全表重推！
+  if (updatedSessionCount === 0 || currentSetCount === 0) {
+    console.log("Seeding initial full-history exercises & sets...");
 
     await db.transaction("rw", [db.sessions, db.exercises, db.sets, db.big_three], async () => {
       const userCustomExercises = existingExercises.filter(
@@ -416,7 +401,9 @@ export async function ensureDatabaseSeeded(): Promise<void> {
       );
 
       await db.exercises.clear();
-      await db.exercises.bulkPut(seedData.exercises as any);
+      await db.exercises.bulkPut(
+        (seedData.exercises as any[]).map((e) => ({ ...e, sync_status: "synced" }))
+      );
       if (userCustomExercises.length > 0) {
         await db.exercises.bulkPut(userCustomExercises);
       }
@@ -426,13 +413,17 @@ export async function ensureDatabaseSeeded(): Promise<void> {
       await db.big_three.clear();
 
       if (seedData.bigThree) {
-        await db.big_three.put(seedData.bigThree as any);
+        await db.big_three.put({ ...(seedData.bigThree as any), sync_status: "synced" });
       }
       if (seedData.sessions?.length) {
-        await db.sessions.bulkPut(seedData.sessions as any);
+        await db.sessions.bulkPut(
+          (seedData.sessions as any[]).map((s) => ({ ...s, sync_status: "synced" }))
+        );
       }
       if (seedData.sets?.length) {
-        await db.sets.bulkPut(seedData.sets as any);
+        await db.sets.bulkPut(
+          (seedData.sets as any[]).map((st) => ({ ...st, sync_status: "synced" }))
+        );
       }
     });
 
@@ -489,13 +480,15 @@ export async function ensureDatabaseSeeded(): Promise<void> {
     }
   }
 
-  // 檢查並補齊缺失的歷史訓練場次 (確保本地全庫 103 場齊全)
+  // 檢查並補齊缺失的歷史訓練場次 (強制標記 sync_status: "synced")
   const allCurSessions = await db.sessions.toArray();
   const allCurIds = new Set(allCurSessions.map((s) => s.id));
   const missingCurated = (seedData.sessions as any[]).filter((s) => !allCurIds.has(s.id));
   if (missingCurated.length > 0) {
     console.log(`Injecting ${missingCurated.length} missing sessions from seedData...`);
-    await db.sessions.bulkPut(missingCurated);
+    await db.sessions.bulkPut(
+      missingCurated.map((s) => ({ ...s, sync_status: "synced" }))
+    );
   }
 
   // 強制清除本地所有 InBody 舊版「(穿衣)」與未吃/午餐錯誤標籤 (以 10:00 與 13:00 為界)
@@ -584,8 +577,8 @@ export async function ensureDatabaseSeeded(): Promise<void> {
     console.warn("Session title normalization skipped:", err);
   }
 
-  // 嘗試在背景與 Supabase 雙向同步 (確保手機與電腦資料一致)
+  // ⭐ 交由 AutoSyncManager 統一透過 5 分鐘冷卻機制決定是否需要同步，不直接呼叫 runFullSync()
   if (typeof window !== "undefined") {
-    runFullSync().catch((err) => console.log("Background sync info:", err));
+    window.dispatchEvent(new Event("online"));
   }
 }
