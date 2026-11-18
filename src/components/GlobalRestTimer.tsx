@@ -145,15 +145,15 @@ export function GlobalRestTimer() {
         </div>
 
         <div className="min-w-0 flex-1 truncate">
-          <div className="flex items-center gap-1.5 truncate">
-            <span className="text-sm font-black font-mono text-amber-300 tracking-wider shrink-0 tabular-nums">
+          <div className="flex items-baseline gap-2 truncate">
+            <span className="text-xl sm:text-2xl font-black font-mono text-amber-300 tracking-wider shrink-0 tabular-nums drop-shadow-sm">
               {isFinished ? "休息結束！" : timeFormatted}
             </span>
-            <span className="text-[11px] text-gray-300 font-medium truncate">
-              {isFinished ? "準備做下一組" : timerInfo?.title || "訓練組間休息"}
+            <span className="text-xs text-gray-300 font-medium truncate">
+              {isFinished ? "準備下一組 💪" : timerInfo?.title || "訓練組間休息"}
             </span>
           </div>
-          <div className="text-[10px] text-gray-400 flex items-center gap-0.5 hover:text-white mt-0.5 truncate">
+          <div className="text-[11px] text-gray-400 flex items-center gap-0.5 hover:text-white mt-0.5 truncate">
             <span>點擊返回訓練頁</span>
             <ArrowUpRight className="w-3 h-3 text-gray-400 shrink-0" />
           </div>

@@ -1,4 +1,4 @@
-const CACHE_NAME = "workout-pwa-v5";
+const CACHE_NAME = "workout-pwa-v6";
 const PRECACHE_URLS = [
   "/",
   "/manifest.json",
@@ -87,9 +87,12 @@ self.addEventListener("fetch", (event) => {
       .catch(async () => {
         const cachedResponse = await caches.match(request);
         if (cachedResponse) return cachedResponse;
-        // 若完全斷網且未快取該路徑，回退至首頁 App Shell
-        const fallback = await caches.match("/");
-        if (fallback) return fallback;
+        // 只有在真正的 HTML 頁面導航（request.mode === "navigate"）且不是 Next.js RSC 請求時，才回退至首頁 App Shell
+        const isRSC = request.headers.get("RSC") === "1" || url.searchParams.has("_rsc");
+        if (request.mode === "navigate" && !isRSC) {
+          const fallback = await caches.match("/");
+          if (fallback) return fallback;
+        }
         return new Response("離線狀態", { status: 503, statusText: "Offline" });
       })
   );

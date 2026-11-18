@@ -540,15 +540,46 @@ export async function ensureDatabaseSeeded(): Promise<void> {
         const updatedCleanSets = CLEAN_NOV14_SETS.map((st) => ({ ...st, session_id: sess.id }));
         await db.sets.bulkPut(updatedCleanSets as any);
       }
-      if (sess.target_muscle !== "腿" || sess.display_title !== "11/14 (腿) - 交大健身房 - 第 10 次") {
+      if (sess.target_muscle !== "腿" || sess.display_title !== "11/14 (腿) - 交大健身房 - 第 10 次" || sess.monthly_index !== 10) {
         await db.sessions.update(sess.id, {
           display_title: "11/14 (腿) - 交大健身房 - 第 10 次",
           target_muscle: "腿",
+          monthly_index: 10,
         });
       }
     }
   } catch (err) {
     console.warn("Nov 14 session check skipped:", err);
+  }
+
+  // 檢查並校準 11 月訓練序號（游泳不計入重訓次數，11/14 第10次、11/16 第11次、11/17 第12次）
+  try {
+    const novSessions = await db.sessions
+      .filter((s) => !s.deleted_at && (s.month_key === "2026-11" || (s.date && s.date.startsWith("2026-11"))))
+      .toArray();
+
+    for (const sess of novSessions) {
+      if (sess.date === "2026-11-14" && (sess.monthly_index !== 10 || sess.display_title !== "11/14 (腿) - 交大健身房 - 第 10 次")) {
+        await db.sessions.update(sess.id, {
+          monthly_index: 10,
+          display_title: "11/14 (腿) - 交大健身房 - 第 10 次",
+        });
+      }
+      if (sess.date === "2026-11-16" && (sess.monthly_index !== 11 || sess.display_title !== "11/16 (背) - 三健客 - 第 11 次")) {
+        await db.sessions.update(sess.id, {
+          monthly_index: 11,
+          display_title: "11/16 (背) - 三健客 - 第 11 次",
+        });
+      }
+      if (sess.date === "2026-11-17" && (sess.monthly_index !== 12 || sess.display_title !== "11/17 (胸) - 三健客 - 第 12 次")) {
+        await db.sessions.update(sess.id, {
+          monthly_index: 12,
+          display_title: "11/17 (胸) - 三健客 - 第 12 次",
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("Nov session sequence check skipped:", err);
   }
 
   // 檢查並標準化所有訓練場次標題與主要部位 (胸/背/腿/肩/游泳，去除贅字贅詞如「+ 三頭」、「+ 後肩」)
@@ -577,8 +608,5 @@ export async function ensureDatabaseSeeded(): Promise<void> {
     console.warn("Session title normalization skipped:", err);
   }
 
-  // ⭐ 交由 AutoSyncManager 統一透過 5 分鐘冷卻機制決定是否需要同步，不直接呼叫 runFullSync()
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event("online"));
-  }
+  // ⭐ 同步交由 AutoSyncManager 統一透過 5 分鐘冷卻機制管控，不觸發重複事件
 }

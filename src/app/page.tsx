@@ -141,11 +141,14 @@ export default function HomePage() {
         .filter((s) => !s.deleted_at)
         .toArray();
 
-      // 整理組數 Map
+      // 整理組數 Map，並依 set_order 嚴格排序
       const setsMap: Record<string, SetItem[]> = {};
       for (const s of allSets) {
         if (!setsMap[s.session_id]) setsMap[s.session_id] = [];
         setsMap[s.session_id].push(s);
+      }
+      for (const sid in setsMap) {
+        setsMap[sid].sort((a, b) => a.set_order - b.set_order);
       }
       setSessionSetsMap(setsMap);
 
@@ -616,10 +619,11 @@ export default function HomePage() {
                 };
                 const formalSets = sessSets.filter((st) => !isWarmup(st));
 
-                // 依動作群組分類組數
+                // 依動作群組分類組數（嚴格依 set_order 順序，確保與現場訓練先後次序 100% 一致）
+                const sortedSessSets = [...sessSets].sort((a, b) => a.set_order - b.set_order);
                 const exMap = new Map<string, SetItem[]>();
                 const exOrder: string[] = [];
-                for (const st of sessSets) {
+                for (const st of sortedSessSets) {
                   if (!exMap.has(st.exercise_id)) {
                     exMap.set(st.exercise_id, []);
                     exOrder.push(st.exercise_id);

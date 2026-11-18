@@ -41,6 +41,7 @@ export function formatSessionToMarkdown(
     const lines: string[] = [];
     lines.push("<details>");
     lines.push(`<summary><b>${summaryTitle}</b></summary>`);
+    lines.push(""); // 必須有空行，以符合 HackMD 與標準 CommonMark 解析清單
     if (sets.length === 0) {
       lines.push("- 游泳");
     } else {
@@ -57,11 +58,12 @@ export function formatSessionToMarkdown(
     return lines.join("\n");
   }
 
-  // 依動作群組化
+  // 依動作群組化（先依 set_order 嚴格正序排列，確保動作先後順序與實際訓練 100% 一致）
+  const sortedInputSets = [...sets].sort((a, b) => a.set_order - b.set_order);
   const groupedSets: { exercise: Exercise | undefined; sets: SetItem[] }[] = [];
   const exerciseIdOrder: string[] = [];
 
-  for (const s of sets) {
+  for (const s of sortedInputSets) {
     if (!exerciseIdOrder.includes(s.exercise_id)) {
       exerciseIdOrder.push(s.exercise_id);
     }
@@ -83,7 +85,7 @@ export function formatSessionToMarkdown(
 
   for (const exId of exerciseIdOrder) {
     const ex = exMap.get(exId);
-    const exSets = sets.filter((s) => s.exercise_id === exId);
+    const exSets = sortedInputSets.filter((s) => s.exercise_id === exId);
     // 嚴格排序：熱身/激發組永遠在最前面，正式組依序排在後方！
     const sortedSets = [...exSets].sort((a, b) => {
       const aW = isWarmupCheck(a);
@@ -98,6 +100,7 @@ export function formatSessionToMarkdown(
   const lines: string[] = [];
   lines.push("<details>");
   lines.push(`<summary><b>${summaryTitle}</b></summary>`);
+  lines.push(""); // 必須有空行，以讓 HackMD 正常識別內層 Markdown 清單語法
 
   for (const group of groupedSets) {
     const exName = group.exercise?.name || "自訂動作";

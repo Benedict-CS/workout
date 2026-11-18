@@ -241,14 +241,20 @@ function NewWorkoutForm() {
         const swimCount = await db.sessions
           .where("month_key")
           .equals(monthKey)
-          .filter((s) => !s.deleted_at && s.target_muscle === "游泳")
+          .filter((s) => !s.deleted_at && (s.target_muscle === "游泳" || s.display_title.includes("泳")))
           .count();
         monthlyIndex = swimCount + 1;
       } else {
         const weightSessionsInMonth = await db.sessions
           .where("month_key")
           .equals(monthKey)
-          .filter((s) => !s.deleted_at && s.target_muscle !== "游泳")
+          .filter(
+            (s) =>
+              !s.deleted_at &&
+              s.target_muscle !== "游泳" &&
+              !s.target_muscle.includes("泳") &&
+              !s.display_title.includes("泳")
+          )
           .toArray();
         const maxMonthlyIndex = weightSessionsInMonth.reduce(
           (max, s) => Math.max(max, s.monthly_index || 0),

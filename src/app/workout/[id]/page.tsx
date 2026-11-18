@@ -291,6 +291,12 @@ export default function WorkoutDetailPage({
     return () => {
       window.removeEventListener("pointerdown", unlockAudio);
       window.removeEventListener("keydown", unlockAudio);
+      try {
+        if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+          audioCtxRef.current.close().catch(() => {});
+          audioCtxRef.current = null;
+        }
+      } catch {}
     };
   }, []);
 
@@ -368,23 +374,25 @@ export default function WorkoutDetailPage({
     setTimerSeconds(seconds);
     setTimerActive(true);
     setTimerFinished(false);
-    localStorage.setItem("workout_timer_end", end.toString());
-    const loc = session?.location ? ` (${session.location})` : "";
-    const title = session ? `${session.target_muscle}${loc}` : "訓練休息";
-    localStorage.setItem(
-      "workout_timer_info",
-      JSON.stringify({
-        sessionId: id,
-        title,
-      })
-    );
+    try {
+      localStorage.setItem("workout_timer_end", end.toString());
+      const loc = session?.location ? ` (${session.location})` : "";
+      const title = session ? `${session.target_muscle}${loc}` : "訓練休息";
+      localStorage.setItem(
+        "workout_timer_info",
+        JSON.stringify({
+          sessionId: id,
+          title,
+        })
+      );
+    } catch {}
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("workout_timer_update"));
     }
   }
 
   function adjustRestSeconds(seconds: number) {
-    const storedEndStr = localStorage.getItem("workout_timer_end");
+    const storedEndStr = typeof window !== "undefined" ? localStorage.getItem("workout_timer_end") : null;
     const currentEnd = storedEndStr ? parseInt(storedEndStr, 10) : (targetEndTime || Date.now());
     const newEnd = currentEnd + seconds * 1000;
     const now = Date.now();
@@ -398,7 +406,9 @@ export default function WorkoutDetailPage({
     setTargetEndTime(newEnd);
     setTimerSeconds(remain);
     setTimerActive(true);
-    localStorage.setItem("workout_timer_end", newEnd.toString());
+    try {
+      localStorage.setItem("workout_timer_end", newEnd.toString());
+    } catch {}
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("workout_timer_update"));
     }
@@ -408,21 +418,25 @@ export default function WorkoutDetailPage({
     setTimerActive(false);
     setTimerSeconds(null);
     setTargetEndTime(null);
-    localStorage.removeItem("workout_timer_end");
-    localStorage.removeItem("workout_timer_info");
+    try {
+      localStorage.removeItem("workout_timer_end");
+      localStorage.removeItem("workout_timer_info");
+    } catch {}
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("workout_timer_update"));
     }
   }
 
   function updateActiveSessionStorage(newId?: string, title?: string) {
-    if (newId && title) {
-      localStorage.setItem("active_workout_session_id", newId);
-      localStorage.setItem("active_workout_session_title", title);
-    } else {
-      localStorage.removeItem("active_workout_session_id");
-      localStorage.removeItem("active_workout_session_title");
-    }
+    try {
+      if (newId && title) {
+        localStorage.setItem("active_workout_session_id", newId);
+        localStorage.setItem("active_workout_session_title", title);
+      } else {
+        localStorage.removeItem("active_workout_session_id");
+        localStorage.removeItem("active_workout_session_title");
+      }
+    } catch {}
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("workout_session_update"));
     }
@@ -514,16 +528,16 @@ export default function WorkoutDetailPage({
           const res = await getLastExerciseSets(exId, id);
           if (res) ghostRecord[exId] = res.sets;
 
-          const exObj = allEx.find((e) => e.id === exId);
           const historySets = await db.sets
+            .where("exercise_id")
+            .equals(exId)
             .filter(
               (s) =>
                 !s.deleted_at &&
                 s.session_id !== id &&
                 s.weight_kg > 0 &&
                 !isWarmupOrActivation(s) &&
-                s.is_completed !== false &&
-                Boolean(s.exercise_id === exId || (exObj && allEx.find((e) => e.id === s.exercise_id)?.name === exObj.name))
+                s.is_completed !== false
             )
             .toArray();
 
@@ -542,31 +556,37 @@ export default function WorkoutDetailPage({
         setGhostMap(ghostRecord);
         setPrMap(prRecord);
 
-        // 初始化選取的動作
-        if (distinctExIds.length > 0) {
-          const initialExId = distinctExIds[0];
-          setSelectedExId(initialExId);
-          const exSets = currentSets.filter((s) => s.exercise_id === initialExId);
-          if (exSets.length > 0) {
-            const last = exSets[exSets.length - 1];
-            setInputWeight(last.weight_kg.toString());
-            setInputReps(last.reps.toString());
+        // 智慧保留目前選取的動作（避免鎖屏喚醒或背景同步時洗掉使用者正在記錄的動作與數值，杜絕跳頁與假性閃退感）
+        setSelectedExId((prev) => {
+          if (prev && (distinctExIds.includes(prev) || allEx.some((e) => e.id === prev))) {
+            return prev;
           }
-        } else {
-          // 根據部位選取第一個推薦動作
-          const matchingEx = allEx.filter((e) => e.muscle_group === sess.target_muscle);
-          const initial = matchingEx[0] || allEx[0];
-          if (initial) {
-            setSelectedExId(initial.id);
-            const res = await getLastExerciseSets(initial.id, id);
-            if (res && res.sets.length > 0) {
-              const normalSet = res.sets.find((s) => s.set_type === "normal") || res.sets[0];
-              setInputWeight(normalSet.weight_kg.toString());
-              setInputReps(normalSet.reps.toString());
-              setGhostMap((prev) => ({ ...prev, [initial.id]: res.sets }));
+          if (distinctExIds.length > 0) {
+            const initialExId = distinctExIds[0];
+            const exSets = currentSets.filter((s) => s.exercise_id === initialExId);
+            if (exSets.length > 0) {
+              const last = exSets[exSets.length - 1];
+              setInputWeight((prevW) => prevW || (last.weight_kg > 0 ? last.weight_kg.toString() : ""));
+              setInputReps((prevR) => prevR || (last.reps > 0 ? last.reps.toString() : ""));
+            }
+            return initialExId;
+          } else {
+            const matchingEx = allEx.filter((e) => e.muscle_group === sess.target_muscle);
+            const initial = matchingEx[0] || allEx[0];
+            if (initial) {
+              getLastExerciseSets(initial.id, id).then((res) => {
+                if (res && res.sets.length > 0) {
+                  const normalSet = res.sets.find((s) => s.set_type === "normal") || res.sets[0];
+                  setInputWeight((prevW) => prevW || (normalSet.weight_kg > 0 ? normalSet.weight_kg.toString() : ""));
+                  setInputReps((prevR) => prevR || (normalSet.reps > 0 ? normalSet.reps.toString() : ""));
+                  setGhostMap((g) => ({ ...g, [initial.id]: res.sets }));
+                }
+              });
+              return initial.id;
             }
           }
-        }
+          return prev;
+        });
       } catch (err) {
         console.error("Failed to load workout:", err);
       } finally {
@@ -3272,52 +3292,54 @@ export default function WorkoutDetailPage({
         </div>
       )}
 
-      {/* 🚀 浮動吸底休息倒數膠囊 (無論滑到哪裡，隨時直覺掌握剩餘休息秒數，結束時綠色反饋) */}
+      {/* 🚀 浮動吸底休息倒數膠囊 (超大清晰數字顯示，手機放遠也能一目了然，結束時綠色反饋) */}
       {(((timerActive && timerSeconds !== null && timerSeconds > 0) || timerFinished)) && session?.target_muscle !== "游泳" && (
-        <div className="fixed bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 z-50 pointer-events-auto max-w-[94vw] animate-in fade-in duration-200">
-          <div className={`backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-2xl flex items-center gap-2 text-white whitespace-nowrap shrink-0 select-none border-2 transition-all ${
+        <div className="fixed bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 z-50 pointer-events-auto max-w-[96vw] animate-in fade-in duration-200">
+          <div className={`backdrop-blur-md px-4 py-2 sm:px-5 sm:py-2.5 rounded-2xl sm:rounded-full shadow-2xl flex items-center gap-3 text-white whitespace-nowrap shrink-0 select-none border-2 transition-all ${
             timerFinished
               ? "bg-[#0b1f14]/95 border-emerald-400 shadow-emerald-500/30 text-emerald-300 animate-pulse"
               : "bg-[#12141c]/95 border-amber-400 shadow-amber-500/30"
           }`}>
             {timerFinished ? (
-              <div className="flex items-center gap-1.5 text-emerald-400 font-black text-sm shrink-0">
-                <Check className="w-4 h-4 stroke-[3] shrink-0" />
+              <div className="flex items-center gap-2 text-emerald-400 font-black text-base sm:text-lg shrink-0">
+                <Check className="w-5 h-5 sm:w-6 sm:h-6 stroke-[3] shrink-0" />
                 <span>休息結束！準備做下一組 💪</span>
               </div>
             ) : (
               <>
-                <div className="flex items-center gap-1.5 text-amber-400 font-mono font-black text-sm shrink-0">
-                  <Timer className="w-4 h-4 animate-spin shrink-0" style={{ animationDuration: "3s" }} />
-                  <span className="tabular-nums">
+                <div className="flex items-center gap-2 text-amber-400 font-mono font-black shrink-0">
+                  <Timer className="w-5 h-5 sm:w-6 sm:h-6 animate-spin shrink-0 text-amber-400" style={{ animationDuration: "3s" }} />
+                  <span className="tabular-nums text-2xl sm:text-3xl tracking-wider text-amber-300 font-black drop-shadow-sm">
                     {Math.floor((timerSeconds || 0) / 60)}:{((timerSeconds || 0) % 60).toString().padStart(2, "0")}
                   </span>
                 </div>
-                <div className="h-3.5 w-px bg-white/20 shrink-0" />
-                <button
-                  type="button"
-                  onClick={() => adjustRestSeconds(-30)}
-                  className="text-[11px] font-black bg-red-500/20 hover:bg-red-500/30 text-red-300 px-2.5 py-1 rounded-full border border-red-500/40 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center"
-                  title="減少 30 秒"
-                >
-                  -30s
-                </button>
-                <button
-                  type="button"
-                  onClick={() => adjustRestSeconds(30)}
-                  className="text-[11px] font-black bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 px-2.5 py-1 rounded-full border border-amber-400/40 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center"
-                  title="增加 30 秒"
-                >
-                  +30s
-                </button>
-                <button
-                  type="button"
-                  onClick={stopRestTimer}
-                  className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-white/10 active:scale-95 transition-all cursor-pointer shrink-0 ml-0.5"
-                  title="結束計時"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+                <div className="h-5 w-px bg-white/20 shrink-0" />
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => adjustRestSeconds(-30)}
+                    className="text-xs sm:text-sm font-black bg-red-500/20 hover:bg-red-500/30 text-red-300 px-2.5 py-1 sm:px-3 sm:py-1 rounded-full border border-red-500/40 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center"
+                    title="減少 30 秒"
+                  >
+                    -30s
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => adjustRestSeconds(30)}
+                    className="text-xs sm:text-sm font-black bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 px-2.5 py-1 sm:px-3 sm:py-1 rounded-full border border-amber-400/40 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center"
+                    title="增加 30 秒"
+                  >
+                    +30s
+                  </button>
+                  <button
+                    type="button"
+                    onClick={stopRestTimer}
+                    className="text-gray-400 hover:text-white p-1.5 rounded-full hover:bg-white/10 active:scale-95 transition-all cursor-pointer shrink-0 ml-0.5"
+                    title="結束計時"
+                  >
+                    <X className="w-4 h-4 stroke-[2.5]" />
+                  </button>
+                </div>
               </>
             )}
           </div>

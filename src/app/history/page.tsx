@@ -86,7 +86,7 @@ export default function HistoryPage() {
     ).reverse();
     setSessions(allSessions);
 
-    const allSets = await db.sets.filter((s) => !s.deleted_at).toArray();
+    const allSets = (await db.sets.filter((s) => !s.deleted_at).toArray()).sort((a, b) => a.set_order - b.set_order);
     setSets(allSets);
 
     const allEx = await db.exercises.toArray();
