@@ -146,7 +146,7 @@ export function GlobalRestTimer() {
 
         <div className="min-w-0 flex-1 truncate">
           <div className="flex items-baseline gap-2 truncate">
-            <span className="text-xl sm:text-2xl font-black font-mono text-amber-300 tracking-wider shrink-0 tabular-nums drop-shadow-sm">
+            <span className="text-2xl sm:text-3xl font-black font-mono text-amber-300 tracking-wider shrink-0 tabular-nums drop-shadow-sm">
               {isFinished ? "休息結束！" : timeFormatted}
             </span>
             <span className="text-xs text-gray-300 font-medium truncate">

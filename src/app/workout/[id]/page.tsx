@@ -149,6 +149,13 @@ export default function WorkoutDetailPage({
   const [recentPRSetId, setRecentPRSetId] = useState<string | null>(null);
   const recentPRTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // 場次整體備註 (例如當天感受度、狀態、疲勞度等)
+  const [sessionNotes, setSessionNotes] = useState<string>("");
+  const [showSessionNotesCard, setShowSessionNotesCard] = useState<boolean>(false);
+
+  // 計時器展開/縮小顯示 (預設展開超大字體)
+  const [timerExpanded, setTimerExpanded] = useState<boolean>(true);
+
   // 槓片速算小工具狀態
   const [showPlateCalc, setShowPlateCalc] = useState(false);
   const [barWeight, setBarWeight] = useState<number>(20); // 預設 20kg 標準奧槓
@@ -483,6 +490,10 @@ export default function WorkoutDetailPage({
         if (isCancelled) return;
         setSessionNotFound(false);
         setSession(sess);
+        setSessionNotes(sess.notes || "");
+        if (sess.notes?.trim()) {
+          setShowSessionNotesCard(true);
+        }
 
         // 記錄正在進行中的訓練 ID，供首頁置頂即時恢復
         if (sess.status === "in_progress") {
@@ -557,36 +568,34 @@ export default function WorkoutDetailPage({
         setPrMap(prRecord);
 
         // 智慧保留目前選取的動作（避免鎖屏喚醒或背景同步時洗掉使用者正在記錄的動作與數值，杜絕跳頁與假性閃退感）
-        setSelectedExId((prev) => {
-          if (prev && (distinctExIds.includes(prev) || allEx.some((e) => e.id === prev))) {
-            return prev;
-          }
+        let initialSelectedId = selectedExId;
+        if (!initialSelectedId || (!distinctExIds.includes(initialSelectedId) && !allEx.some((e) => e.id === initialSelectedId))) {
           if (distinctExIds.length > 0) {
-            const initialExId = distinctExIds[0];
-            const exSets = currentSets.filter((s) => s.exercise_id === initialExId);
+            initialSelectedId = distinctExIds[0];
+            const exSets = currentSets.filter((s) => s.exercise_id === initialSelectedId);
             if (exSets.length > 0) {
               const last = exSets[exSets.length - 1];
               setInputWeight((prevW) => prevW || (last.weight_kg > 0 ? last.weight_kg.toString() : ""));
               setInputReps((prevR) => prevR || (last.reps > 0 ? last.reps.toString() : ""));
             }
-            return initialExId;
           } else {
             const matchingEx = allEx.filter((e) => e.muscle_group === sess.target_muscle);
             const initial = matchingEx[0] || allEx[0];
             if (initial) {
-              getLastExerciseSets(initial.id, id).then((res) => {
-                if (res && res.sets.length > 0) {
-                  const normalSet = res.sets.find((s) => s.set_type === "normal") || res.sets[0];
-                  setInputWeight((prevW) => prevW || (normalSet.weight_kg > 0 ? normalSet.weight_kg.toString() : ""));
-                  setInputReps((prevR) => prevR || (normalSet.reps > 0 ? normalSet.reps.toString() : ""));
-                  setGhostMap((g) => ({ ...g, [initial.id]: res.sets }));
-                }
-              });
-              return initial.id;
+              initialSelectedId = initial.id;
+              const res = await getLastExerciseSets(initial.id, id);
+              if (res && res.sets.length > 0) {
+                const normalSet = res.sets.find((s) => s.set_type === "normal") || res.sets[0];
+                setInputWeight((prevW) => prevW || (normalSet.weight_kg > 0 ? normalSet.weight_kg.toString() : ""));
+                setInputReps((prevR) => prevR || (normalSet.reps > 0 ? normalSet.reps.toString() : ""));
+                setGhostMap((g) => ({ ...g, [initial.id]: res.sets }));
+              }
             }
           }
-          return prev;
-        });
+        }
+        if (initialSelectedId) {
+          setSelectedExId(initialSelectedId);
+        }
       } catch (err) {
         console.error("Failed to load workout:", err);
       } finally {
@@ -609,6 +618,20 @@ export default function WorkoutDetailPage({
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [id, router]);
+
+  // 儲存整場訓練備註 (寫入 Dexie 本地，避免頻繁打擊 Supabase)
+  async function handleSaveSessionNotes(newNotes: string) {
+    setSessionNotes(newNotes);
+    if (!session) return;
+    const updated: WorkoutSession = {
+      ...session,
+      notes: newNotes,
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    };
+    setSession(updated);
+    await db.sessions.put(updated);
+  }
 
   // 切換動作時智慧預填 (若為全新動作或跨部位動作，自動即時從歷史紀錄抓取上次重量與次數預填)
   async function handleSelectExercise(exId: string) {
@@ -794,7 +817,6 @@ export default function WorkoutDetailPage({
       }
     }
 
-    runFullSync().catch(() => {});
     setShowSwapModal(false);
     setSwapSourceExercise(null);
   }
@@ -821,7 +843,6 @@ export default function WorkoutDetailPage({
     setInputReps("");
     setShowNewExerciseModal(false);
     setNewExName("");
-    runFullSync().catch(() => {});
   }
 
   // 取得某組 PR 突破詳情 (重量新高、次數新高)
@@ -892,9 +913,11 @@ export default function WorkoutDetailPage({
 
     const subParts = subFields.map((sub) => {
       if (sub.mode === "休") {
-        return sub.weight_kg !== undefined && sub.weight_kg > 0
-          ? `+ 休 + ${sub.weight_kg}Kg x${sub.reps}`
-          : `+ 休 ${sub.reps}下`;
+        // ⭐ 若加強休組重量同主組重量或為 0/未填，重量無須重複出現，統一為 "+ 休 + 5"
+        if (sub.weight_kg !== undefined && sub.weight_kg > 0 && sub.weight_kg !== weight) {
+          return `+ 休 + ${sub.weight_kg}Kg x${sub.reps}`;
+        }
+        return `+ 休 + ${sub.reps}`;
       }
       if (sub.mode === "補") {
         return `+ 補${sub.reps}`;
@@ -981,7 +1004,6 @@ export default function WorkoutDetailPage({
           (a, b) => a.set_order - b.set_order
         )
       );
-      runFullSync().catch(() => {});
 
       // 若新增之組數打破個人紀錄 (PR)，觸發高光慶祝與卡片發光
       const prDetails = getSetPRDetails(newSet);
@@ -1049,7 +1071,6 @@ export default function WorkoutDetailPage({
 
       await db.sets.add(newSet);
       setSets((prev) => [...prev, newSet]);
-      runFullSync().catch(() => {});
 
       // 若重複之組數打破個人紀錄 (PR)，觸發高光慶祝與卡片發光
       const prDetails = getSetPRDetails(newSet);
@@ -1105,7 +1126,6 @@ export default function WorkoutDetailPage({
 
       await db.sets.put(updated);
       setSets((prev) => prev.map((s) => (s.id === setId ? updated : s)));
-      runFullSync().catch(() => {});
 
       // 若剛標記為已完成，檢查是否打破個人紀錄 (PR) 並彈出高光慶祝與卡片光暈微動畫
       if (newStatus) {
@@ -1190,7 +1210,6 @@ export default function WorkoutDetailPage({
       });
 
       setSets(reordered);
-      runFullSync().catch(() => {});
     } finally {
       setTimeout(() => {
         isSavingSetRef.current = false;
@@ -1236,7 +1255,6 @@ export default function WorkoutDetailPage({
 
     await db.sets.bulkPut(newSetsList);
     setSets(newSetsList);
-    runFullSync().catch(() => {});
   }
 
   // 微調單一組數順序 (組數上移 / 下移)
@@ -1267,16 +1285,21 @@ export default function WorkoutDetailPage({
         return s;
       }).sort((a, b) => a.set_order - b.set_order)
     );
-    runFullSync().catch(() => {});
   }
 
-  // 乾淨格式化組數文字（過濾掉殘留的舊 set X: 字樣）
+  // 乾淨格式化組數文字（過濾掉殘留的舊 set X: 字樣，並統一休組重複重量格式）
   function cleanSetDisplay(s: SetItem): string {
+    let text = "";
     if (s.raw_text) {
-      const cleaned = s.raw_text.replace(/^set\s*\d+:\s*/i, "").trim();
-      if (cleaned) return cleaned;
+      text = s.raw_text.replace(/^set\s*\d+:\s*/i, "").trim();
+    } else {
+      text = `${s.weight_kg}Kg x ${s.reps}`;
     }
-    return `${s.weight_kg}Kg x ${s.reps}`;
+    // ⭐ 統一格式：若 "+ 休 + 25Kg x5" 與前置主重量 25Kg 相同，重量不用重複出現，簡化為 "+ 休 + 5"
+    text = text.replace(/(\b(\d+(?:\.\d+)?)\s*Kg\s*x\s*\d+)\s*\+\s*休\s*\+\s*\2\s*Kg\s*x\s*(\d+)/gi, "$1 + 休 + $3");
+    // 也相容 "+ 休 5下" 統一為 "+ 休 + 5"
+    text = text.replace(/\+\s*休\s*(\d+)下/g, "+ 休 + $1");
+    return text || `${s.weight_kg}Kg x ${s.reps}`;
   }
 
   // 快捷結算整場為已完成 (無未做組數時)
@@ -1373,10 +1396,14 @@ export default function WorkoutDetailPage({
     router.push("/");
   }
 
-  // 放棄本次訓練：徹底刪除此場訓練紀錄與所有組數（不留假紀錄）
+  // 放棄本次訓練：徹底刪除此場訓練紀錄與所有組數（不留假紀錄，並具備防誤觸二次確認保護）
   async function handleAbandonSessionAndExit() {
     if (!session) {
       router.push("/");
+      return;
+    }
+
+    if (!window.confirm("確定要放棄並徹底刪除本次訓練嗎？所有組數資料將被清除且無法復原。")) {
       return;
     }
 
@@ -1558,7 +1585,6 @@ export default function WorkoutDetailPage({
     toDelete.forEach((s) => {
       deleteRemoteSet(s.id).catch(() => {});
     });
-    runFullSync().catch(() => {});
   }
 
   // 開啟修改單組
@@ -1604,7 +1630,6 @@ export default function WorkoutDetailPage({
     await db.sets.put(updated);
     setSets((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
     setEditingSet(null);
-    runFullSync().catch(() => {});
 
     // 若修改後打破個人紀錄 (PR) 且為已完成狀態，觸發高光慶祝與卡片發光
     const prDetails = getSetPRDetails(updated);
@@ -1647,7 +1672,6 @@ export default function WorkoutDetailPage({
     await db.sessions.put(updated);
     setSession(updated);
     setShowLocationQuickPicker(false);
-    runFullSync().catch(() => {});
   }
 
   // 一鍵複製 Markdown
@@ -1883,6 +1907,89 @@ export default function WorkoutDetailPage({
         </div>
       )}
 
+      {/* 📝 今日整體訓練備註與狀態感受度 (例如：睡眠不足、感受度佳、肩膀微痠等) */}
+      <div className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-3.5 space-y-2 shadow-sm transition-all">
+        <div
+          onClick={() => setShowSessionNotesCard((prev) => !prev)}
+          className="flex items-center justify-between cursor-pointer select-none"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-amber-400 font-bold text-xs flex items-center gap-1.5">
+              <span>📝</span>
+              <span>今日訓練備註 / 整體狀態感受度</span>
+            </span>
+            {sessionNotes?.trim() ? (
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full font-bold">
+                已記錄
+              </span>
+            ) : (
+              <span className="text-[10px] text-gray-400 font-normal">
+                (選填)
+              </span>
+            )}
+          </div>
+          <span className="text-xs text-gray-400 font-bold hover:text-white transition-all">
+            {showSessionNotesCard ? "收起 ▲" : "展開 ▼"}
+          </span>
+        </div>
+
+        {showSessionNotesCard ? (
+          <div className="space-y-2 pt-1 animate-in fade-in duration-150">
+            <textarea
+              rows={2}
+              value={sessionNotes}
+              onChange={(e) => setSessionNotes(e.target.value)}
+              onBlur={() => handleSaveSessionNotes(sessionNotes)}
+              placeholder="記錄今天的精神狀態、睡眠情況、肌肉痠痛或特別感受 (例：睡眠充足精力充沛，今天上斜臥推感受度極佳)..."
+              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 outline-none focus:border-amber-400/80 placeholder-gray-500 resize-none font-medium leading-relaxed"
+            />
+            <div className="flex items-center justify-between gap-1 flex-wrap">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[
+                  { label: "睡眠充足", cls: "hover:border-emerald-500/50 hover:text-emerald-300" },
+                  { label: "睡眠不足", cls: "hover:border-amber-500/50 hover:text-amber-300" },
+                  { label: "精神飽滿", cls: "hover:border-emerald-500/50 hover:text-emerald-300" },
+                  { label: "稍感疲勞", cls: "hover:border-red-500/50 hover:text-red-300" },
+                  { label: "關節良好", cls: "hover:border-emerald-500/50 hover:text-emerald-300" },
+                  { label: "肌肉微痠", cls: "hover:border-amber-500/50 hover:text-amber-300" },
+                  { label: "感受度極佳", cls: "hover:border-emerald-500/50 hover:text-emerald-300 font-black text-amber-300" },
+                ].map(({ label, cls }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => {
+                      const updated = sessionNotes.trim()
+                        ? sessionNotes.includes(label)
+                          ? sessionNotes
+                          : `${sessionNotes.trim()} [${label}]`
+                        : `[${label}]`;
+                      handleSaveSessionNotes(updated);
+                    }}
+                    className={`text-[10px] px-2 py-0.5 rounded-lg bg-[#181b26] border border-[#262b3d] text-gray-300 active:scale-95 cursor-pointer font-bold transition-all ${cls}`}
+                  >
+                    +{label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSaveSessionNotes(sessionNotes)}
+                className="text-[11px] font-bold text-amber-400 hover:text-amber-300 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 cursor-pointer"
+              >
+                儲存備註
+              </button>
+            </div>
+          </div>
+        ) : sessionNotes?.trim() ? (
+          <p
+            onClick={() => setShowSessionNotesCard(true)}
+            className="text-xs text-gray-300 bg-[#181b26] px-3 py-1.5 rounded-xl border border-[#262b3d] cursor-pointer hover:border-gray-600 truncate"
+          >
+            {sessionNotes}
+          </p>
+        ) : null}
+      </div>
+
       {/* 已記錄組數區塊 */}
       <div className="space-y-3">
         {setsByExercise.length === 0 ? (
@@ -2064,9 +2171,16 @@ export default function WorkoutDetailPage({
                           )}
 
                           {/* 重量文字：稍微放大至 text-sm，允許換行不截斷 */}
-                          <span className={`text-[13px] sm:text-sm font-bold flex-1 min-w-0 break-words ${isDone ? "text-gray-400 line-through decoration-emerald-500/50" : isCurrent ? "text-white font-black" : "text-gray-100"}`}>
-                            {cleanSetDisplay(s)}
-                          </span>
+                          <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                            <span className={`text-[13px] sm:text-sm font-bold break-words ${isDone ? "text-gray-400 line-through decoration-emerald-500/50" : isCurrent ? "text-white font-black" : "text-gray-100"}`}>
+                              {cleanSetDisplay(s)}
+                            </span>
+                            {s.notes && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-300 bg-emerald-950/40 border border-emerald-500/30 px-1.5 py-0.5 rounded-md">
+                                💬 {s.notes}
+                              </span>
+                            )}
+                          </div>
 
                           {/* 右側：完成標記（桌機） + 編輯 + 刪除 */}
                           <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
@@ -2402,6 +2516,61 @@ export default function WorkoutDetailPage({
             </div>
           </div>
 
+          {/* 💬 當組備註 / 狀態感受度 (太重、剛好、太輕、力竭、肩膀酸等) */}
+          <div className="space-y-1.5 pt-1">
+            <div className="flex items-center justify-between text-xs">
+              <label className="text-[11px] text-gray-300 font-bold flex items-center gap-1">
+                <span>💬 當組備註 / 感受度</span>
+                <span className="text-gray-500 font-normal">(選填)</span>
+              </label>
+              {inputNotes && (
+                <button
+                  type="button"
+                  onClick={() => setInputNotes("")}
+                  className="text-[10px] text-gray-400 hover:text-white cursor-pointer"
+                >
+                  清除
+                </button>
+              )}
+            </div>
+
+            <input
+              type="text"
+              placeholder="當下狀態/感受 (例: 太重、剛好、太輕、力竭、手腕有點酸)..."
+              value={inputNotes}
+              onChange={(e) => setInputNotes(e.target.value)}
+              className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-emerald-500 placeholder-gray-500 font-medium"
+            />
+
+            {/* 快速常用感受度標籤 Chips */}
+            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+              {[
+                { label: "剛好", cls: "hover:border-emerald-500/50 hover:text-emerald-300" },
+                { label: "太重", cls: "hover:border-red-500/50 hover:text-red-300" },
+                { label: "太輕", cls: "hover:border-blue-500/50 hover:text-blue-300" },
+                { label: "吃力", cls: "hover:border-amber-500/50 hover:text-amber-300" },
+                { label: "力竭", cls: "hover:border-purple-500/50 hover:text-purple-300" },
+                { label: "感受佳", cls: "hover:border-emerald-500/50 hover:text-emerald-300" },
+                { label: "感受差", cls: "hover:border-red-500/50 hover:text-red-300" },
+              ].map(({ label, cls }) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => {
+                    setInputNotes((prev) => {
+                      if (!prev.trim()) return label;
+                      if (prev.includes(label)) return prev;
+                      return `${prev.trim()} ${label}`;
+                    });
+                  }}
+                  className={`text-[10px] px-2 py-0.5 rounded-lg bg-[#181b26] border border-[#262b3d] text-gray-300 transition-all active:scale-95 cursor-pointer font-bold ${cls}`}
+                >
+                  +{label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* 奧運槓槓片速算切換 */}
           <div className="flex justify-end pt-0.5">
             <button
@@ -2728,6 +2897,30 @@ export default function WorkoutDetailPage({
                   onChange={(e) => setEditSetReps(e.target.value)}
                   className="w-full bg-[#181b26] border border-[#262b3d] text-white text-sm font-bold rounded-xl p-2.5 text-center outline-none"
                 />
+              </div>
+            </div>
+
+            {/* 當組備註 / 感受度 */}
+            <div>
+              <label className="text-[10px] text-gray-300 block mb-1 font-bold">當組備註 / 感受度</label>
+              <input
+                type="text"
+                placeholder="例: 太重、剛好、太輕、力竭、感受度差..."
+                value={editSetNotes}
+                onChange={(e) => setEditSetNotes(e.target.value)}
+                className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 outline-none focus:border-amber-400"
+              />
+              <div className="flex items-center gap-1 flex-wrap pt-1.5">
+                {["剛好", "太重", "太輕", "吃力", "力竭", "感受佳", "感受差"].map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => setEditSetNotes((prev) => prev ? `${prev} ${chip}` : chip)}
+                    className="text-[10px] px-2 py-0.5 rounded-md bg-[#090a0f] text-gray-300 border border-[#262b3d] hover:border-amber-400 active:scale-95"
+                  >
+                    +{chip}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -3077,26 +3270,30 @@ export default function WorkoutDetailPage({
                 <>
                   <button
                     type="button"
-                    onClick={handleAbandonSessionAndExit}
-                    className="w-full text-left p-3 rounded-xl bg-red-950/40 hover:bg-red-900/60 border border-red-500/40 transition-all flex items-center justify-between group cursor-pointer"
+                    onClick={handleSaveAsDraftAndExit}
+                    className="w-full text-left p-3.5 rounded-xl bg-amber-950/40 hover:bg-amber-900/50 border border-amber-500/50 transition-all flex items-center justify-between group cursor-pointer shadow-lg"
                   >
                     <div>
-                      <span className="text-xs font-bold text-red-300 block">放棄並刪除本次訓練</span>
-                      <span className="text-[11px] text-gray-400">清除此場次，不留下任何空白假紀錄</span>
+                      <span className="text-xs font-black text-amber-300 block">
+                        保留為進行中草稿 (推薦，稍後繼續)
+                      </span>
+                      <span className="text-[11px] text-gray-300">
+                        保留在日誌首頁標記為「進行中」，隨時點進來繼續訓練
+                      </span>
                     </div>
-                    <span className="text-xs text-red-400 font-bold shrink-0">確認放棄 ➔</span>
+                    <span className="text-xs text-amber-400 font-bold shrink-0 ml-2">暫存草稿 ➔</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={handleSaveAsDraftAndExit}
-                    className="w-full text-left p-3 rounded-xl bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] transition-all flex items-center justify-between group cursor-pointer"
+                    onClick={handleAbandonSessionAndExit}
+                    className="w-full text-left p-2.5 rounded-xl bg-red-950/20 hover:bg-red-950/50 border border-red-500/30 transition-all flex items-center justify-between group cursor-pointer"
                   >
                     <div>
-                      <span className="text-xs font-bold text-amber-300 block">保留為進行中草稿</span>
-                      <span className="text-[11px] text-gray-400">保留在日誌首頁標記為「進行中」，稍後隨時繼續</span>
+                      <span className="text-[11px] font-bold text-red-400 block">放棄並刪除本次訓練</span>
+                      <span className="text-[10px] text-gray-400">清除此場次，不留下任何空白假紀錄（不可復原）</span>
                     </div>
-                    <span className="text-xs text-amber-400 font-bold shrink-0">存為草稿 ➔</span>
+                    <span className="text-[11px] text-red-400 shrink-0 ml-2">確認放棄 ➔</span>
                   </button>
                 </>
               ) : (
@@ -3104,17 +3301,17 @@ export default function WorkoutDetailPage({
                   <button
                     type="button"
                     onClick={handlePruneAndFinish}
-                    className="w-full text-left p-3 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-500/40 transition-all flex items-center justify-between group cursor-pointer"
+                    className="w-full text-left p-3.5 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-500/40 transition-all flex items-center justify-between group cursor-pointer shadow-sm"
                   >
                     <div>
                       <span className="text-xs font-black text-emerald-300 block">
                         結束訓練，只儲存已做的 {completedSetsCount} 組
                       </span>
-                      <span className="text-[11px] text-gray-400">
+                      <span className="text-[11px] text-gray-300">
                         自動清除未做的 {totalSetsCount - completedSetsCount} 組預排組數，忠實記錄訓練
                       </span>
                     </div>
-                    <span className="text-xs text-emerald-400 font-bold shrink-0">結算保存 ➔</span>
+                    <span className="text-xs text-emerald-400 font-bold shrink-0 ml-2">結算保存 ➔</span>
                   </button>
 
                   <button
@@ -3130,7 +3327,7 @@ export default function WorkoutDetailPage({
                         保留未做組數，首頁標記為「進行中」，方便稍後接續完成
                       </span>
                     </div>
-                    <span className="text-xs text-amber-400 font-bold shrink-0">暫存草稿 ➔</span>
+                    <span className="text-xs text-amber-400 font-bold shrink-0 ml-2">暫存草稿 ➔</span>
                   </button>
                 </>
               )}
@@ -3292,54 +3489,117 @@ export default function WorkoutDetailPage({
         </div>
       )}
 
-      {/* 🚀 浮動吸底休息倒數膠囊 (超大清晰數字顯示，手機放遠也能一目了然，結束時綠色反饋) */}
+      {/* 🚀 浮動吸底休息倒數 (超大清晰數字顯示，手機放遠也能一目了然，結束時綠色反饋) */}
       {(((timerActive && timerSeconds !== null && timerSeconds > 0) || timerFinished)) && session?.target_muscle !== "游泳" && (
-        <div className="fixed bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 z-50 pointer-events-auto max-w-[96vw] animate-in fade-in duration-200">
-          <div className={`backdrop-blur-md px-4 py-2 sm:px-5 sm:py-2.5 rounded-2xl sm:rounded-full shadow-2xl flex items-center gap-3 text-white whitespace-nowrap shrink-0 select-none border-2 transition-all ${
+        <div className="fixed bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 z-50 pointer-events-auto w-[94vw] max-w-sm sm:max-w-md animate-in slide-in-from-bottom-4 duration-200">
+          <div className={`backdrop-blur-xl px-4 py-3 sm:px-5 sm:py-4 rounded-3xl shadow-[0_12px_48px_rgba(0,0,0,0.8),0_0_30px_rgba(245,158,11,0.2)] flex flex-col items-center text-white select-none border-2 transition-all ${
             timerFinished
-              ? "bg-[#0b1f14]/95 border-emerald-400 shadow-emerald-500/30 text-emerald-300 animate-pulse"
-              : "bg-[#12141c]/95 border-amber-400 shadow-amber-500/30"
+              ? "bg-[#0b1f14]/98 border-emerald-400 shadow-emerald-500/30 text-emerald-300 animate-pulse"
+              : "bg-[#0f1118]/98 border-amber-400/90 shadow-amber-500/20"
           }`}>
             {timerFinished ? (
-              <div className="flex items-center gap-2 text-emerald-400 font-black text-base sm:text-lg shrink-0">
-                <Check className="w-5 h-5 sm:w-6 sm:h-6 stroke-[3] shrink-0" />
-                <span>休息結束！準備做下一組 💪</span>
+              <div className="py-2 flex flex-col items-center gap-2 text-center w-full">
+                <div className="flex items-center gap-2 text-emerald-400 font-black text-xl sm:text-2xl">
+                  <Check className="w-7 h-7 sm:w-8 sm:h-8 stroke-[3] shrink-0" />
+                  <span>休息結束！</span>
+                </div>
+                <div className="text-sm font-bold text-emerald-300">
+                  準備做下一組，保持節奏 💪
+                </div>
+                <button
+                  type="button"
+                  onClick={stopRestTimer}
+                  className="mt-1 bg-emerald-500 hover:bg-emerald-400 text-black px-6 py-2 rounded-full font-black text-xs cursor-pointer active:scale-95 shadow-lg"
+                >
+                  開始下一組
+                </button>
               </div>
             ) : (
               <>
-                <div className="flex items-center gap-2 text-amber-400 font-mono font-black shrink-0">
-                  <Timer className="w-5 h-5 sm:w-6 sm:h-6 animate-spin shrink-0 text-amber-400" style={{ animationDuration: "3s" }} />
-                  <span className="tabular-nums text-2xl sm:text-3xl tracking-wider text-amber-300 font-black drop-shadow-sm">
-                    {Math.floor((timerSeconds || 0) / 60)}:{((timerSeconds || 0) % 60).toString().padStart(2, "0")}
-                  </span>
+                {/* 頂部標籤與最小化/結束按鈕 */}
+                <div className="w-full flex items-center justify-between text-xs text-gray-400 pb-1.5 border-b border-white/10">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-400">
+                    <Timer className="w-4 h-4 animate-spin text-amber-400 shrink-0" style={{ animationDuration: "3s" }} />
+                    <span className="text-xs font-black tracking-wide">組間休息倒數</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setTimerExpanded((v) => !v)}
+                      className="text-[11px] text-gray-300 hover:text-amber-300 px-2.5 py-0.5 rounded-lg bg-white/5 hover:bg-white/10 transition-all font-bold cursor-pointer"
+                    >
+                      {timerExpanded ? "收合" : "放大"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={stopRestTimer}
+                      className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-white/10 active:scale-95 transition-all cursor-pointer"
+                      title="結束計時"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-                <div className="h-5 w-px bg-white/20 shrink-0" />
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => adjustRestSeconds(-30)}
-                    className="text-xs sm:text-sm font-black bg-red-500/20 hover:bg-red-500/30 text-red-300 px-2.5 py-1 sm:px-3 sm:py-1 rounded-full border border-red-500/40 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center"
-                    title="減少 30 秒"
+
+                {timerExpanded ? (
+                  <>
+                    {/* ⭐ 超巨大倒數數字顯示：gym-distance readable，離 2-3 米也清晰無比 */}
+                    <div className="py-2.5 flex items-center justify-center">
+                      <span className="tabular-nums text-6xl sm:text-7xl font-black font-mono tracking-widest text-amber-300 drop-shadow-[0_4px_24px_rgba(251,191,36,0.5)]">
+                        {Math.floor((timerSeconds || 0) / 60)}:{((timerSeconds || 0) % 60).toString().padStart(2, "0")}
+                      </span>
+                    </div>
+
+                    {/* 快捷調整按鈕群 (大按鈕，手汗/力竭時極好點按) */}
+                    <div className="w-full flex items-center justify-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => adjustRestSeconds(-30)}
+                        className="flex-1 py-2 rounded-xl text-xs sm:text-sm font-black bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 active:scale-95 transition-all cursor-pointer text-center"
+                        title="減少 30 秒"
+                      >
+                        -30s
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => adjustRestSeconds(30)}
+                        className="flex-1 py-2 rounded-xl text-xs sm:text-sm font-black bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 border border-amber-400/40 active:scale-95 transition-all cursor-pointer text-center"
+                        title="增加 30 秒"
+                      >
+                        +30s
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => adjustRestSeconds(60)}
+                        className="flex-1 py-2 rounded-xl text-xs sm:text-sm font-black bg-cyan-400/20 hover:bg-cyan-400/30 text-cyan-300 border border-cyan-400/40 active:scale-95 transition-all cursor-pointer text-center"
+                        title="增加 60 秒"
+                      >
+                        +60s
+                      </button>
+                      <button
+                        type="button"
+                        onClick={stopRestTimer}
+                        className="py-2 px-3.5 rounded-xl text-xs sm:text-sm font-black bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-600 active:scale-95 transition-all cursor-pointer"
+                        title="立即結束休息"
+                      >
+                        結束
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  /* 緊湊收合狀態 */
+                  <div
+                    onClick={() => setTimerExpanded(true)}
+                    className="flex items-center gap-3 pt-1.5 cursor-pointer"
                   >
-                    -30s
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => adjustRestSeconds(30)}
-                    className="text-xs sm:text-sm font-black bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 px-2.5 py-1 sm:px-3 sm:py-1 rounded-full border border-amber-400/40 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0 inline-flex items-center"
-                    title="增加 30 秒"
-                  >
-                    +30s
-                  </button>
-                  <button
-                    type="button"
-                    onClick={stopRestTimer}
-                    className="text-gray-400 hover:text-white p-1.5 rounded-full hover:bg-white/10 active:scale-95 transition-all cursor-pointer shrink-0 ml-0.5"
-                    title="結束計時"
-                  >
-                    <X className="w-4 h-4 stroke-[2.5]" />
-                  </button>
-                </div>
+                    <span className="tabular-nums text-3xl font-black font-mono text-amber-300 tracking-wider">
+                      {Math.floor((timerSeconds || 0) / 60)}:{((timerSeconds || 0) % 60).toString().padStart(2, "0")}
+                    </span>
+                    <span className="text-xs text-amber-400 font-bold bg-amber-400/10 px-2.5 py-1 rounded-full border border-amber-400/20">
+                      點擊放大 ↗
+                    </span>
+                  </div>
+                )}
               </>
             )}
           </div>
