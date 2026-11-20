@@ -1,3 +1,5 @@
+import type { WorkoutSession } from "./types";
+
 export function getPrimaryMuscle(muscle: string): "胸" | "背" | "腿" | "肩" | "游泳" {
   if (!muscle) return "胸";
   if (muscle.includes("胸")) return "胸";
@@ -26,11 +28,59 @@ export function getMuscleBadgeColor(muscle: string): string {
   }
 }
 
-export function cleanSessionTitle(title: string, targetMuscle?: string): string {
+/**
+ * 依日期與建立順序動態精準計算當月所有重訓場次的「第 X 次」序號
+ * 解決使用者非依序記錄、補登歷史紀錄、刪除場次後序號重複或錯亂的問題
+ */
+export function computeMonthlyIndices(sessions: WorkoutSession[]): Map<string, number> {
+  const map = new Map<string, number>();
+
+  // 依 month_key 分群
+  const byMonth = new Map<string, WorkoutSession[]>();
+  for (const s of sessions) {
+    if (s.deleted_at) continue;
+    const key = s.month_key || s.date.slice(0, 7);
+    if (!byMonth.has(key)) byMonth.set(key, []);
+    byMonth.get(key)!.push(s);
+  }
+
+  for (const [, list] of byMonth) {
+    // 排除游泳，純重訓場次
+    const weightSessions = list.filter(
+      (s) => s.target_muscle !== "游泳" && !s.target_muscle.includes("泳") && !s.display_title.includes("泳")
+    );
+
+    // 嚴格依日期正序、建立時間正序排序
+    weightSessions.sort((a, b) => {
+      const cmpDate = a.date.localeCompare(b.date);
+      if (cmpDate !== 0) return cmpDate;
+      return (a.created_at || "").localeCompare(b.created_at || "");
+    });
+
+    weightSessions.forEach((s, idx) => {
+      map.set(s.id, idx + 1);
+    });
+  }
+
+  return map;
+}
+
+export function cleanSessionTitle(title: string, targetMuscle?: string, monthlyIndex?: number): string {
   if (!title) return "";
-  return title.replace(/\(([^)]+)\)/, (_, rawInside) => {
+  let res = title.replace(/\(([^)]+)\)/, (_, rawInside) => {
     const muscle = targetMuscle || rawInside;
     const pm = getPrimaryMuscle(muscle);
     return `(${pm})`;
   });
+
+  // 若提供動態精準的 monthlyIndex，自動確保「第 X 次」與計算結果 100% 吻合
+  if (monthlyIndex !== undefined && monthlyIndex > 0) {
+    if (/第\s*\d+\s*次/.test(res)) {
+      res = res.replace(/第\s*\d+\s*次/, `第 ${monthlyIndex} 次`);
+    } else if (!res.includes("泳") && targetMuscle !== "游泳") {
+      res = `${res} - 第 ${monthlyIndex} 次`;
+    }
+  }
+
+  return res;
 }

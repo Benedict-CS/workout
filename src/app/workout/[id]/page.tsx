@@ -68,6 +68,7 @@ export default function WorkoutDetailPage({
   const [editDate, setEditDate] = useState("");
   const [editTargetMuscle, setEditTargetMuscle] = useState("");
   const [editLocation, setEditLocation] = useState("");
+  const [editMonthlyIndex, setEditMonthlyIndex] = useState<number>(1);
   const [showLocationQuickPicker, setShowLocationQuickPicker] = useState(false);
 
   // Markdown Modal
@@ -631,6 +632,54 @@ export default function WorkoutDetailPage({
     };
     setSession(updated);
     await db.sessions.put(updated);
+  }
+
+  // 開啟修改場次標題與資訊 Modal
+  function handleOpenEditSessionModal() {
+    if (!session) return;
+    setEditTitle(session.display_title);
+    setEditDate(session.date);
+    setEditTargetMuscle(session.target_muscle);
+    setEditLocation(session.location || "三健客");
+    setEditMonthlyIndex(session.monthly_index || 1);
+    setShowEditSessionModal(true);
+  }
+
+  // 儲存修改場次標題與資訊
+  async function handleSaveSessionDetails() {
+    if (!session) return;
+    const finalDate = editDate.trim() || session.date;
+    const finalMuscle = editTargetMuscle.trim() || session.target_muscle;
+    const finalLoc = editLocation.trim() || session.location || "三健客";
+    const finalIdx = editMonthlyIndex > 0 ? editMonthlyIndex : (session.monthly_index || 1);
+
+    let finalTitle = editTitle.trim();
+    if (!finalTitle || finalTitle === session.display_title) {
+      const parts = finalDate.split("-");
+      const m = parseInt(parts[1], 10);
+      const d = parseInt(parts[2], 10);
+      if (finalMuscle === "游泳") {
+        finalTitle = `${m}/${d} (游泳) - ${finalLoc}`;
+      } else {
+        finalTitle = `${m}/${d} (${finalMuscle}) - ${finalLoc} - 第 ${finalIdx} 次`;
+      }
+    }
+
+    const updated: WorkoutSession = {
+      ...session,
+      date: finalDate,
+      month_key: finalDate.slice(0, 7),
+      target_muscle: finalMuscle,
+      location: finalLoc,
+      monthly_index: finalIdx,
+      display_title: finalTitle,
+      updated_at: new Date().toISOString(),
+      sync_status: "pending",
+    };
+
+    setSession(updated);
+    await db.sessions.put(updated);
+    setShowEditSessionModal(false);
   }
 
   // 切換動作時智慧預填 (若為全新動作或跨部位動作，自動即時從歷史紀錄抓取上次重量與次數預填)
@@ -1287,19 +1336,27 @@ export default function WorkoutDetailPage({
     );
   }
 
-  // 乾淨格式化組數文字（過濾掉殘留的舊 set X: 字樣，並統一休組重複重量格式）
-  function cleanSetDisplay(s: SetItem): string {
+  // 乾淨格式化組數文字（過濾掉殘留的舊 set X: 字樣，並統一休組重複重量格式與自重動作顯示）
+  function cleanSetDisplay(s: SetItem, ex?: Exercise): string {
+    const exObj = ex || exercises.find((e) => e.id === s.exercise_id);
+    const isBodyweight = exObj?.weight_type === "bodyweight" || exObj?.name.includes("自重");
+
     let text = "";
     if (s.raw_text) {
       text = s.raw_text.replace(/^set\s*\d+:\s*/i, "").trim();
     } else {
-      text = `${s.weight_kg}Kg x ${s.reps}`;
+      const wPart = isBodyweight && s.weight_kg === 0 ? "自身體重" : `${s.weight_kg}Kg`;
+      text = `${wPart} x ${s.reps}`;
+    }
+    // ⭐ 自重動作：將 0Kg 替換為「自身體重」
+    if (isBodyweight) {
+      text = text.replace(/\b0Kg\b/gi, "自身體重");
     }
     // ⭐ 統一格式：若 "+ 休 + 25Kg x5" 與前置主重量 25Kg 相同，重量不用重複出現，簡化為 "+ 休 + 5"
     text = text.replace(/(\b(\d+(?:\.\d+)?)\s*Kg\s*x\s*\d+)\s*\+\s*休\s*\+\s*\2\s*Kg\s*x\s*(\d+)/gi, "$1 + 休 + $3");
     // 也相容 "+ 休 5下" 統一為 "+ 休 + 5"
     text = text.replace(/\+\s*休\s*(\d+)下/g, "+ 休 + $1");
-    return text || `${s.weight_kg}Kg x ${s.reps}`;
+    return text || (isBodyweight && s.weight_kg === 0 ? `自身體重 x ${s.reps}` : `${s.weight_kg}Kg x ${s.reps}`);
   }
 
   // 快捷結算整場為已完成 (無未做組數時)
@@ -1798,7 +1855,20 @@ export default function WorkoutDetailPage({
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="min-w-0 flex-1">
-            <h1 className="text-lg font-black text-white leading-tight break-words">{cleanSessionTitle(session.display_title, session.target_muscle)}</h1>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h1 className="text-lg font-black text-white leading-tight break-words">
+                {cleanSessionTitle(session.display_title, session.target_muscle)}
+              </h1>
+              <button
+                type="button"
+                onClick={handleOpenEditSessionModal}
+                className="p-1 text-gray-400 hover:text-amber-400 hover:bg-[#181b26] rounded-lg transition-all cursor-pointer inline-flex items-center gap-1"
+                title="修改訓練標題與場次資訊"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                <span className="text-[10px] text-gray-400 hover:text-amber-300 font-bold hidden sm:inline">修改</span>
+              </button>
+            </div>
             <div className="flex items-center gap-2 text-xs text-gray-300 mt-1 relative flex-wrap font-medium">
               <span>{session.date}</span>
               <span>•</span>
@@ -2173,7 +2243,7 @@ export default function WorkoutDetailPage({
                           {/* 重量文字：稍微放大至 text-sm，允許換行不截斷 */}
                           <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
                             <span className={`text-[13px] sm:text-sm font-bold break-words ${isDone ? "text-gray-400 line-through decoration-emerald-500/50" : isCurrent ? "text-white font-black" : "text-gray-100"}`}>
-                              {cleanSetDisplay(s)}
+                              {cleanSetDisplay(s, exercise)}
                             </span>
                             {s.notes && (
                               <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-300 bg-emerald-950/40 border border-emerald-500/30 px-1.5 py-0.5 rounded-md">
@@ -2239,7 +2309,7 @@ export default function WorkoutDetailPage({
                                 }`}
                                 title={`上次此組實測：${cleanSetDisplay(matchingGhost)}`}
                               >
-                                上次: {cleanSetDisplay(matchingGhost)}
+                                上次: {cleanSetDisplay(matchingGhost, exercise)}
                               </span>
                             )}
                             {(() => {
@@ -3551,11 +3621,11 @@ export default function WorkoutDetailPage({
                     </div>
 
                     {/* 快捷調整按鈕群 (大按鈕，手汗/力竭時極好點按) */}
-                    <div className="w-full flex items-center justify-center gap-2 pt-1">
+                    <div className="w-full flex items-center justify-center gap-2.5 pt-1">
                       <button
                         type="button"
                         onClick={() => adjustRestSeconds(-30)}
-                        className="flex-1 py-2 rounded-xl text-xs sm:text-sm font-black bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 active:scale-95 transition-all cursor-pointer text-center"
+                        className="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 active:scale-95 transition-all cursor-pointer text-center"
                         title="減少 30 秒"
                       >
                         -30s
@@ -3563,23 +3633,15 @@ export default function WorkoutDetailPage({
                       <button
                         type="button"
                         onClick={() => adjustRestSeconds(30)}
-                        className="flex-1 py-2 rounded-xl text-xs sm:text-sm font-black bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 border border-amber-400/40 active:scale-95 transition-all cursor-pointer text-center"
+                        className="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 border border-amber-400/40 active:scale-95 transition-all cursor-pointer text-center"
                         title="增加 30 秒"
                       >
                         +30s
                       </button>
                       <button
                         type="button"
-                        onClick={() => adjustRestSeconds(60)}
-                        className="flex-1 py-2 rounded-xl text-xs sm:text-sm font-black bg-cyan-400/20 hover:bg-cyan-400/30 text-cyan-300 border border-cyan-400/40 active:scale-95 transition-all cursor-pointer text-center"
-                        title="增加 60 秒"
-                      >
-                        +60s
-                      </button>
-                      <button
-                        type="button"
                         onClick={stopRestTimer}
-                        className="py-2 px-3.5 rounded-xl text-xs sm:text-sm font-black bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-600 active:scale-95 transition-all cursor-pointer"
+                        className="py-2.5 px-6 rounded-xl text-xs sm:text-sm font-black bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-600 active:scale-95 transition-all cursor-pointer"
                         title="立即結束休息"
                       >
                         結束
@@ -3602,6 +3664,126 @@ export default function WorkoutDetailPage({
                 )}
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ✏️ 修改訓練標題與場次資訊 Modal */}
+      {showEditSessionModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#12141c] border border-amber-500/40 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#262b3d] pb-2.5">
+              <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                <Pencil className="w-4 h-4 text-amber-400" />
+                <span>修改訓練場次資訊</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowEditSessionModal(false)}
+                className="text-gray-400 hover:text-white p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-gray-300 font-bold block mb-1">自訂訓練標題</label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  placeholder="例: 11/19 (背) - 三健客 - 第 14 次"
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2.5 outline-none focus:border-amber-400 font-bold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-gray-300 font-bold block mb-1">訓練日期</label>
+                  <input
+                    type="date"
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2 outline-none focus:border-amber-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-gray-300 font-bold block mb-1">當月場次 (第幾次)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={editMonthlyIndex}
+                    onChange={(e) => setEditMonthlyIndex(parseInt(e.target.value, 10) || 1)}
+                    className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2 outline-none focus:border-amber-400 font-bold text-center"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-gray-300 font-bold block mb-1">訓練部位</label>
+                <div className="grid grid-cols-5 gap-1">
+                  {["胸", "背", "腿", "肩", "游泳"].map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setEditTargetMuscle(m)}
+                      className={`py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                        editTargetMuscle === m
+                          ? "bg-amber-500 text-black border-amber-400 font-black shadow-sm"
+                          : "bg-[#181b26] text-gray-400 border-[#262b3d]"
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-gray-300 font-bold block mb-1">訓練場地</label>
+                <div className="grid grid-cols-2 gap-1.5 mb-1.5">
+                  {LOCATION_OPTIONS.map((loc) => (
+                    <button
+                      key={loc}
+                      type="button"
+                      onClick={() => setEditLocation(loc)}
+                      className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all truncate text-center cursor-pointer ${
+                        editLocation === loc
+                          ? "bg-emerald-500 text-black border-emerald-400 font-black"
+                          : "bg-[#181b26] text-gray-400 border-[#262b3d]"
+                      }`}
+                    >
+                      {loc}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={editLocation}
+                  onChange={(e) => setEditLocation(e.target.value)}
+                  placeholder="自訂場地名稱..."
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-xs rounded-xl p-2 outline-none focus:border-amber-400"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowEditSessionModal(false)}
+                className="flex-1 bg-[#181b26] text-gray-400 py-2.5 rounded-xl text-xs font-bold hover:bg-[#202533] cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveSessionDetails}
+                className="flex-1 bg-amber-500 hover:bg-amber-400 text-black py-2.5 rounded-xl text-xs font-black shadow-lg cursor-pointer active:scale-95 transition-all"
+              >
+                儲存修改
+              </button>
+            </div>
           </div>
         </div>
       )}

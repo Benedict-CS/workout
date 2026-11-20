@@ -19,7 +19,7 @@ import { ensureDatabaseSeeded } from "@/lib/db/seed";
 import { formatSessionToMarkdown } from "@/lib/markdown-generator";
 import { deleteRemoteSession, runFullSync } from "@/lib/db/sync";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
-import { getPrimaryMuscle, getMuscleBadgeColor, cleanSessionTitle } from "@/lib/workout-utils";
+import { getPrimaryMuscle, getMuscleBadgeColor, cleanSessionTitle, computeMonthlyIndices } from "@/lib/workout-utils";
 import type { WorkoutSession, SetItem, Exercise } from "@/lib/types";
 
 interface MonthGroupData {
@@ -64,6 +64,9 @@ export default function HomePage() {
   const currentGroup = (selectedMonthIndex >= 0 && selectedMonthIndex < monthGroups.length)
     ? monthGroups[selectedMonthIndex]
     : monthGroups[monthGroups.length - 1];
+
+  // 動態依日期精確計算當前月份所有重訓場次的「第 X 次」序號，防止補登、跳天記錄導致重複或錯誤
+  const monthlyIndicesMap = computeMonthlyIndices(currentGroup?.sessions || []);
 
   // 鍵盤 ← / → 鍵左右切換月份 (防在輸入框中誤觸)
   useEffect(() => {
@@ -299,9 +302,15 @@ export default function HomePage() {
     e.preventDefault();
     e.stopPropagation();
     const sets = sessionSetsMap[session.id] || [];
-    const md = formatSessionToMarkdown(session, sets, exercises);
+    const computedIdx = monthlyIndicesMap.get(session.id) || session.monthly_index;
+    const sessionWithComputedTitle: WorkoutSession = {
+      ...session,
+      display_title: cleanSessionTitle(session.display_title, session.target_muscle, computedIdx),
+      monthly_index: computedIdx,
+    };
+    const md = formatSessionToMarkdown(sessionWithComputedTitle, sets, exercises);
     navigator.clipboard.writeText(md);
-    setCopyToast(`已複製【${session.display_title}】Markdown！`);
+    setCopyToast(`已複製【${cleanSessionTitle(session.display_title, session.target_muscle, computedIdx)}】完整 Markdown！`);
     setTimeout(() => setCopyToast(null), 2000);
   }
 
@@ -631,7 +640,8 @@ export default function HomePage() {
                   exMap.get(st.exercise_id)!.push(st);
                 }
 
-                const cleanedTitle = cleanSessionTitle(sess.display_title, sess.target_muscle);
+                const computedIdx = monthlyIndicesMap.get(sess.id) || sess.monthly_index;
+                const cleanedTitle = cleanSessionTitle(sess.display_title, sess.target_muscle, computedIdx);
                 const primaryMuscle = getPrimaryMuscle(sess.target_muscle);
 
                 return (
@@ -704,17 +714,12 @@ export default function HomePage() {
                         </div>
 
                         <div className="flex items-center gap-1 shrink-0 mt-0.5">
-                          {/* 一鍵複製標題文字按鈕 */}
+                          {/* 一鍵複製整場訓練 Markdown 按鈕 (包含所有動作與組數) */}
                           <button
                             type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigator.clipboard.writeText(cleanedTitle);
-                              setCopyToast(`已複製標題：${cleanedTitle}`);
-                              setTimeout(() => setCopyToast(null), 2000);
-                            }}
+                            onClick={(e) => handleCopyMarkdown(e, sess)}
                             className="p-1.5 text-gray-400 hover:text-emerald-400 hover:bg-[#262b3d] rounded transition-all cursor-pointer"
-                            title="一鍵複製此場訓練標題文字"
+                            title="一鍵複製此場完整訓練紀錄 (含所有動作與組數)"
                           >
                             <Copy className="w-3.5 h-3.5" />
                           </button>

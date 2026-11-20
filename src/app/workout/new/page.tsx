@@ -256,11 +256,17 @@ function NewWorkoutForm() {
               !s.display_title.includes("泳")
           )
           .toArray();
-        const maxMonthlyIndex = weightSessionsInMonth.reduce(
-          (max, s) => Math.max(max, s.monthly_index || 0),
-          0
+
+        // 依日期正序計算本場次在當月重訓中的精準時間序號
+        const sorted = [...weightSessionsInMonth, { date, created_at: new Date().toISOString() } as WorkoutSession].sort(
+          (a, b) => {
+            const cmp = a.date.localeCompare(b.date);
+            if (cmp !== 0) return cmp;
+            return (a.created_at || "").localeCompare(b.created_at || "");
+          }
         );
-        monthlyIndex = maxMonthlyIndex + 1;
+        const myIndex = sorted.findIndex((s) => s.date === date);
+        monthlyIndex = myIndex >= 0 ? myIndex + 1 : weightSessionsInMonth.length + 1;
       }
 
       // 格式化標準命名：
@@ -291,6 +297,50 @@ function NewWorkoutForm() {
       };
 
       await db.sessions.add(newSession);
+
+      // 若為重訓，自動對當月所有重訓場次按日期正序校正場次序號（防止補登導致後續場次序號重複）
+      if (finalMuscle !== "游泳") {
+        const allWeightInMonth = await db.sessions
+          .where("month_key")
+          .equals(monthKey)
+          .filter(
+            (s) =>
+              !s.deleted_at &&
+              s.target_muscle !== "游泳" &&
+              !s.target_muscle.includes("泳") &&
+              !s.display_title.includes("泳")
+          )
+          .toArray();
+
+        allWeightInMonth.sort((a, b) => {
+          const cmp = a.date.localeCompare(b.date);
+          if (cmp !== 0) return cmp;
+          return (a.created_at || "").localeCompare(b.created_at || "");
+        });
+
+        const updates: WorkoutSession[] = [];
+        allWeightInMonth.forEach((s, idx) => {
+          const correctIdx = idx + 1;
+          const oldTitle = s.display_title;
+          const newTitle = oldTitle.includes("第")
+            ? oldTitle.replace(/第\s*\d+\s*次/, `第 ${correctIdx} 次`)
+            : `${oldTitle} - 第 ${correctIdx} 次`;
+
+          if (s.monthly_index !== correctIdx || oldTitle !== newTitle) {
+            updates.push({
+              ...s,
+              monthly_index: correctIdx,
+              display_title: newTitle,
+              updated_at: new Date().toISOString(),
+              sync_status: "pending",
+            });
+          }
+        });
+
+        if (updates.length > 0) {
+          await db.sessions.bulkPut(updates);
+        }
+      }
 
       // 若為游泳，自動建立動作與對應 set，並直接返回首頁完成記錄
       if (finalMuscle === "游泳") {

@@ -179,14 +179,21 @@ export function formatSessionToMarkdown(
       }
 
       // 乾淨移除 raw_text 殘留的舊 set \d+: 字樣，依當前動作內順序加上正確 setLabel (熱身不帶 set，正式組自 set 1 起算)
-      if (s.raw_text && s.raw_text.includes("Kg") && !s.sub_fields?.length) {
+      const isBodyweight = group.exercise?.weight_type === "bodyweight" || exName.includes("自重");
+
+      if (s.raw_text && !s.sub_fields?.length) {
         let cleanBody = s.raw_text.replace(/^set\s*\d+:\s*/i, "").trim();
+        // ⭐ 自重動作：將 0Kg 替換為「自身體重」
+        if (isBodyweight) {
+          cleanBody = cleanBody.replace(/\b0Kg\b/gi, "自身體重");
+        }
         // ⭐ 統一格式：若 "+ 休 + 25Kg x5" 與前置主重量 25Kg 相同，重量不用重複出現，簡化為 "+ 休 + 5"
         cleanBody = cleanBody.replace(/(\b(\d+(?:\.\d+)?)\s*Kg\s*x\s*\d+)\s*\+\s*休\s*\+\s*\2\s*Kg\s*x\s*(\d+)/gi, "$1 + 休 + $3");
         cleanBody = cleanBody.replace(/\+\s*休\s*(\d+)下/g, "+ 休 + $1");
         lines.push(`  - ${setLabel}${cleanBody}`);
       } else {
-        lines.push(`  - ${setLabel}${s.weight_kg}Kg x${s.reps}${subText}${note}`);
+        const weightPart = isBodyweight && s.weight_kg === 0 ? "自身體重" : `${s.weight_kg}Kg`;
+        lines.push(`  - ${setLabel}${weightPart} x${s.reps}${subText}${note}`);
       }
     }
   }

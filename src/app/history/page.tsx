@@ -30,7 +30,7 @@ import {
 } from "@/lib/markdown-generator";
 import { parseWorkoutMarkdown } from "@/lib/parser/markdown-parser";
 import { runFullSync, deleteRemoteSession } from "@/lib/db/sync";
-import { getPrimaryMuscle, getMuscleBadgeColor, cleanSessionTitle } from "@/lib/workout-utils";
+import { getPrimaryMuscle, getMuscleBadgeColor, cleanSessionTitle, computeMonthlyIndices } from "@/lib/workout-utils";
 import type { WorkoutSession, SetItem, Exercise, BigThreeRecord } from "@/lib/types";
 
 const WEEK_DAYS = ["一", "二", "三", "四", "五", "六", "日"];
@@ -67,6 +67,9 @@ export default function HistoryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [copyToast, setCopyToast] = useState<string | null>(null);
+
+  // 動態依日期精確計算所有重訓場次的「第 X 次」序號
+  const monthlyIndicesMap = computeMonthlyIndices(sessions);
 
   // Markdown 匯入 Modal
   const [showImportModal, setShowImportModal] = useState(false);
@@ -150,9 +153,15 @@ export default function HistoryPage() {
     e.preventDefault();
     e.stopPropagation();
     const sessionSets = sets.filter((s) => s.session_id === session.id);
-    const md = formatSessionToMarkdown(session, sessionSets, exercises);
+    const computedIdx = monthlyIndicesMap.get(session.id) || session.monthly_index;
+    const sessionWithCleanTitle: WorkoutSession = {
+      ...session,
+      display_title: cleanSessionTitle(session.display_title, session.target_muscle, computedIdx),
+      monthly_index: computedIdx,
+    };
+    const md = formatSessionToMarkdown(sessionWithCleanTitle, sessionSets, exercises);
     navigator.clipboard.writeText(md);
-    setCopyToast(`已複製【${session.display_title}】Markdown！`);
+    setCopyToast(`已複製【${sessionWithCleanTitle.display_title}】Markdown！`);
     setTimeout(() => setCopyToast(null), 2500);
   }
 
@@ -734,7 +743,7 @@ export default function HistoryPage() {
                       <div className="flex items-start justify-between gap-2">
                         <Link href={`/workout/${s.id}`} className="flex-1">
                           <h4 className="font-bold text-white text-sm group-hover:text-emerald-400 transition-colors">
-                            {cleanSessionTitle(s.display_title, s.target_muscle)}
+                            {cleanSessionTitle(s.display_title, s.target_muscle, monthlyIndicesMap.get(s.id) || s.monthly_index)}
                           </h4>
                           <div className="flex items-center gap-2 text-xs text-gray-400 mt-1 flex-wrap">
                             <span className={`font-black px-2 py-0.5 rounded border text-[11px] ${getMuscleBadgeColor(s.target_muscle)}`}>
@@ -926,7 +935,7 @@ export default function HistoryPage() {
                   >
                     <Link href={`/workout/${s.id}`} className="space-y-1 flex-1 pr-2">
                       <h4 className="font-bold text-gray-100 text-sm group-hover:text-emerald-400 transition-colors">
-                        {cleanSessionTitle(s.display_title, s.target_muscle)}
+                        {cleanSessionTitle(s.display_title, s.target_muscle, monthlyIndicesMap.get(s.id) || s.monthly_index)}
                       </h4>
                       <div className="flex items-center gap-2 text-[11px] text-gray-400 flex-wrap">
                         <span>{s.date}</span>
