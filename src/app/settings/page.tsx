@@ -9,6 +9,10 @@ import {
   FileText,
   Dumbbell,
   ChevronRight,
+  Clock,
+  RefreshCw,
+  Check,
+  Sparkles,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { exportAllSessionsToMarkdown } from "@/lib/markdown-generator";
@@ -19,6 +23,40 @@ export default function SettingsPage() {
   // 備份還原檔案輸入
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [restoreStatusMsg, setRestoreStatusMsg] = useState<string | null>(null);
+
+  // 預設組間休息時長設定 (秒)
+  const [defaultRest, setDefaultRest] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("workout_default_rest");
+      if (saved) {
+        const v = parseInt(saved, 10);
+        if (!isNaN(v) && v > 0) return v;
+      }
+    }
+    return 90;
+  });
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  function handleSaveDefaultRest(sec: number) {
+    setDefaultRest(sec);
+    localStorage.setItem("workout_default_rest", sec.toString());
+    setToastMsg(`預設休息時長已儲存為 ${sec} 秒！`);
+    setTimeout(() => setToastMsg(null), 2000);
+  }
+
+  async function handleManualSync() {
+    setIsSyncing(true);
+    try {
+      await runFullSync();
+      setToastMsg("✅ 雲端資料同步完成！");
+    } catch (err: any) {
+      setToastMsg(`❌ 同步發生錯誤: ${err?.message || err}`);
+    } finally {
+      setIsSyncing(false);
+      setTimeout(() => setToastMsg(null), 2500);
+    }
+  }
 
   // 匯出 Markdown 檔案 (.md)
   async function handleExportMarkdown() {
@@ -139,6 +177,14 @@ export default function SettingsPage() {
         <p className="text-xs text-gray-400">管理常用動作庫、資料備份與檔案還原</p>
       </div>
 
+      {/* Toast 提示訊息 */}
+      {toastMsg && (
+        <div className="bg-emerald-500 text-black px-4 py-2.5 rounded-xl text-xs font-black shadow-2xl flex items-center gap-2 animate-in fade-in duration-150">
+          <Check className="w-4 h-4 stroke-[3]" />
+          <span>{toastMsg}</span>
+        </div>
+      )}
+
       {/* 動作庫管理 (置頂，方便現場與平時管理器材動作) */}
       <section className="bg-[#12141c] border border-cyan-500/40 rounded-2xl p-4 space-y-3 shadow-lg">
         <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
@@ -158,6 +204,95 @@ export default function SettingsPage() {
           <span>進入動作庫管理清單</span>
           <ChevronRight className="w-4 h-4" />
         </Link>
+      </section>
+
+      {/* 訓練組間休息時長偏好設定 */}
+      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3 shadow-md">
+        <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-400" />
+            <h2 className="text-sm font-bold text-gray-100">預設組間休息時長</h2>
+          </div>
+          <span className="text-xs font-mono font-black text-amber-300">
+            目前預設: {defaultRest} 秒
+          </span>
+        </div>
+        <p className="text-xs text-gray-400">
+          完成一組並勾選完成時，自動啟動組間休息倒數計時。
+        </p>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[
+            { s: 60, label: "60 秒", desc: "小肌群 / 泵感" },
+            { s: 90, label: "90 秒", desc: "標準肌肥大" },
+            { s: 120, label: "120 秒", desc: "複合動作 / 力量" },
+            { s: 180, label: "180 秒", desc: "大重量 PR 突破" },
+          ].map((item) => (
+            <button
+              key={item.s}
+              type="button"
+              onClick={() => handleSaveDefaultRest(item.s)}
+              className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                defaultRest === item.s
+                  ? "bg-amber-500/20 border-amber-500 text-amber-300 shadow-sm"
+                  : "bg-[#181b26] border-[#262b3d] text-gray-300 hover:text-white hover:bg-[#202533]"
+              }`}
+            >
+              <span className="block text-sm font-black font-mono">{item.label}</span>
+              <span className="block text-[10px] opacity-75 mt-0.5">{item.desc}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* 自訂秒數微調步進器 */}
+        <div className="flex items-center justify-between bg-[#181b26] border border-[#262b3d] rounded-xl p-2.5">
+          <span className="text-xs font-bold text-gray-300">微調時長</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleSaveDefaultRest(Math.max(15, defaultRest - 15))}
+              className="px-2.5 py-1 bg-[#12141c] hover:bg-[#202533] border border-[#262b3d] text-gray-200 text-xs font-bold rounded-lg cursor-pointer active:scale-95 transition-all"
+            >
+              -15秒
+            </button>
+            <span className="font-mono font-black text-amber-400 text-sm w-16 text-center">
+              {defaultRest}s
+            </span>
+            <button
+              type="button"
+              onClick={() => handleSaveDefaultRest(defaultRest + 15)}
+              className="px-2.5 py-1 bg-[#12141c] hover:bg-[#202533] border border-[#262b3d] text-gray-200 text-xs font-bold rounded-lg cursor-pointer active:scale-95 transition-all"
+            >
+              +15秒
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* 雲端同步與即時健康狀態 */}
+      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3">
+        <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
+          <div className="flex items-center gap-2">
+            <RefreshCw className={`w-4 h-4 text-emerald-400 ${isSyncing ? "animate-spin" : ""}`} />
+            <h2 className="text-sm font-bold text-gray-100">雲端資料庫同步</h2>
+          </div>
+          <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+            雙向離線優先 (Offline-First)
+          </span>
+        </div>
+        <p className="text-xs text-gray-400 leading-relaxed">
+          系統採用 Dexie (IndexedDB) 本地秒存，背景自動與雲端 Supabase 雙向同步。若換手機或清除瀏覽器快取，可隨時手動點擊同步。
+        </p>
+
+        <button
+          type="button"
+          onClick={handleManualSync}
+          disabled={isSyncing}
+          className="w-full bg-[#181b26] hover:bg-[#202533] border border-emerald-500/40 text-emerald-400 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
+          <span>{isSyncing ? "正在與雲端同步資料..." : "立即手動執行雲端完整同步"}</span>
+        </button>
       </section>
 
       {/* Markdown 與備份匯入還原 */}
