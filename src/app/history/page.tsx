@@ -30,7 +30,6 @@ import {
   formatSessionToPlainText,
   exportAllSessionsToMarkdown,
 } from "@/lib/markdown-generator";
-import { calculateSetVolume } from "@/lib/calc";
 import { parseWorkoutMarkdown } from "@/lib/parser/markdown-parser";
 import { runFullSync, deleteRemoteSession } from "@/lib/db/sync";
 import { getPrimaryMuscle, getMuscleBadgeColor, cleanSessionTitle, computeMonthlyIndices } from "@/lib/workout-utils";
@@ -355,16 +354,6 @@ export default function HistoryPage() {
 
   // 本月份訓練概況統計
   const curMonthSessions = sessions.filter((s) => s.month_key === calendarMonth);
-  const curMonthSessionIds = new Set(curMonthSessions.map((s) => s.id));
-  const curMonthSets = sets.filter((st) => curMonthSessionIds.has(st.session_id) && !st.deleted_at);
-  const curMonthFormalSets = curMonthSets.filter((st) => {
-    if (st.set_type === "warmup") return false;
-    const r = st.raw_text || "";
-    const n = st.notes || "";
-    return !(r.includes("熱身") || r.includes("激發") || r.includes("試重") || n.includes("熱身"));
-  });
-  const curMonthTotalVolumeKg = curMonthSets.reduce((sum, st) => sum + calculateSetVolume(st), 0);
-  const curMonthTonnageTons = (curMonthTotalVolumeKg / 1000).toFixed(1);
   const curMonthMuscleCounts: Record<string, number> = { 胸: 0, 背: 0, 腿: 0, 肩: 0, 游泳: 0 };
   for (const s of curMonthSessions) {
     if (s.target_muscle.includes("胸")) curMonthMuscleCounts["胸"]++;
@@ -613,25 +602,13 @@ export default function HistoryPage() {
             </div>
 
             {/* 本月統計條 */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 bg-[#181b26] px-3 py-2 rounded-xl text-xs border border-[#262b3d]/60 text-gray-400">
-              <span className="font-bold text-white flex items-center gap-1.5 flex-wrap">
-                <span>
-                  本月累計{" "}
-                  <strong className="text-emerald-400 font-black">
-                    {curMonthSessions.length}
-                  </strong>{" "}
-                  場訓練
-                </span>
-                {curMonthFormalSets.length > 0 && (
-                  <span className="text-gray-400 font-normal">
-                    • <strong className="text-gray-200 font-bold">{curMonthFormalSets.length}</strong> 正式組
-                  </span>
-                )}
-                {curMonthTotalVolumeKg > 0 && (
-                  <span className="text-amber-400 font-normal">
-                    • 總容量 <strong className="text-amber-300 font-bold">{curMonthTonnageTons}</strong> 噸
-                  </span>
-                )}
+            <div className="flex items-center justify-between bg-[#181b26] px-3 py-2 rounded-xl text-xs border border-[#262b3d]/60 text-gray-400">
+              <span className="font-bold text-white">
+                本月累計{" "}
+                <strong className="text-emerald-400 font-black">
+                  {curMonthSessions.length}
+                </strong>{" "}
+                場訓練
               </span>
               <div className="flex items-center gap-2 text-xs">
                 <span className="text-red-400">胸 <strong className="text-white font-black">{curMonthMuscleCounts["胸"]}</strong></span>
