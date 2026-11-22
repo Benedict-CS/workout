@@ -101,6 +101,7 @@ export interface InBodyRecord {
   timing: "morning_fasting" | "before_lunch" | "after_lunch" | "morning" | "noon"; // 早晨空腹 (未吃早餐) / 午餐前 (僅吃早餐) / 午餐後 (已吃午餐)
   condition_label: string;    // "早晨空腹 (未吃早餐)" | "午餐前 (僅吃早餐)" | "午餐後 (已吃午餐)"
   estimated_net_weight_kg?: number;
+  body_water_l?: number;      // 身體總水重 (L)
   notes?: string;
   created_at?: string;
   updated_at?: string;

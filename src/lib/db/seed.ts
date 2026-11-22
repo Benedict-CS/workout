@@ -114,7 +114,8 @@ export async function ensureDatabaseSeeded(): Promise<void> {
     const [hour] = (ib.time || "12:00").split(":").map(Number);
     return (hour || 0) < 10 && ib.condition_label !== "早晨空腹 (未吃早餐)";
   }).count() > 0;
-  if (inbodyCount < inbodyData.length || hasBogusInbody || hasOutdatedCondition) {
+  const hasMissingWater = await db.inbody_records.filter((ib) => !ib.body_water_l).count() > 0;
+  if (inbodyCount < inbodyData.length || hasBogusInbody || hasOutdatedCondition || hasMissingWater) {
     await db.inbody_records.clear();
     await db.inbody_records.bulkPut(inbodyData.map((ib: any) => ({
       ...ib, created_at: ib.created_at || `${ib.date}T${ib.time || "12:00"}:00.000Z`,

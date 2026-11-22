@@ -10,7 +10,8 @@
     "inbody_score": 77,
     "timing": "after_lunch",
     "condition_label": "午餐後 (已吃午餐)",
-    "estimated_net_weight_kg": 59.6
+    "estimated_net_weight_kg": 59.6,
+    "body_water_l": 38.5
   },
   {
     "id": "inbody-2026-08-28-1211",
@@ -23,7 +24,8 @@
     "inbody_score": 76,
     "timing": "before_lunch",
     "condition_label": "午餐前 (僅吃早餐)",
-    "estimated_net_weight_kg": 58.9
+    "estimated_net_weight_kg": 58.9,
+    "body_water_l": 37.2
   },
   {
     "id": "inbody-2026-09-02-1237",
@@ -36,7 +38,8 @@
     "inbody_score": 76,
     "timing": "before_lunch",
     "condition_label": "午餐前 (僅吃早餐)",
-    "estimated_net_weight_kg": 58.6
+    "estimated_net_weight_kg": 58.6,
+    "body_water_l": 37.0
   },
   {
     "id": "inbody-2026-09-09-1213",
@@ -49,7 +52,8 @@
     "inbody_score": 75,
     "timing": "before_lunch",
     "condition_label": "午餐前 (僅吃早餐)",
-    "estimated_net_weight_kg": 58.3
+    "estimated_net_weight_kg": 58.3,
+    "body_water_l": 36.6
   },
   {
     "id": "inbody-2026-09-11-0852",
@@ -62,7 +66,8 @@
     "inbody_score": 76,
     "timing": "morning_fasting",
     "condition_label": "早晨空腹 (未吃早餐)",
-    "estimated_net_weight_kg": 59.1
+    "estimated_net_weight_kg": 59.1,
+    "body_water_l": 37.7
   },
   {
     "id": "inbody-2026-09-23-1212",
@@ -75,7 +80,8 @@
     "inbody_score": 77,
     "timing": "before_lunch",
     "condition_label": "午餐前 (僅吃早餐)",
-    "estimated_net_weight_kg": 59.4
+    "estimated_net_weight_kg": 59.4,
+    "body_water_l": 37.4
   },
   {
     "id": "inbody-2026-10-02-1211",
@@ -88,7 +94,8 @@
     "inbody_score": 78,
     "timing": "before_lunch",
     "condition_label": "午餐前 (僅吃早餐)",
-    "estimated_net_weight_kg": 61.1
+    "estimated_net_weight_kg": 61.1,
+    "body_water_l": 38.1
   },
   {
     "id": "inbody-2026-10-13-1239",
@@ -101,7 +108,8 @@
     "inbody_score": 77,
     "timing": "before_lunch",
     "condition_label": "午餐前 (僅吃早餐)",
-    "estimated_net_weight_kg": 61.5
+    "estimated_net_weight_kg": 61.5,
+    "body_water_l": 38.0
   },
   {
     "id": "inbody-2026-10-16-1213",
@@ -114,7 +122,8 @@
     "inbody_score": 79,
     "timing": "before_lunch",
     "condition_label": "午餐前 (僅吃早餐)",
-    "estimated_net_weight_kg": 62.3
+    "estimated_net_weight_kg": 62.3,
+    "body_water_l": 39.0
   },
   {
     "id": "inbody-2026-10-21-1207",
@@ -127,7 +136,8 @@
     "inbody_score": 78,
     "timing": "before_lunch",
     "condition_label": "午餐前 (僅吃早餐)",
-    "estimated_net_weight_kg": 63.0
+    "estimated_net_weight_kg": 63.0,
+    "body_water_l": 39.2
   },
   {
     "id": "inbody-2026-10-28-1221",
@@ -140,7 +150,8 @@
     "inbody_score": 77,
     "timing": "before_lunch",
     "condition_label": "午餐前 (僅吃早餐)",
-    "estimated_net_weight_kg": 63.7
+    "estimated_net_weight_kg": 63.7,
+    "body_water_l": 38.8
   },
   {
     "id": "inbody-2026-10-29-1210",
@@ -153,7 +164,8 @@
     "inbody_score": 78,
     "timing": "before_lunch",
     "condition_label": "午餐前 (僅吃早餐)",
-    "estimated_net_weight_kg": 63.6
+    "estimated_net_weight_kg": 63.6,
+    "body_water_l": 39.0
   },
   {
     "id": "inbody-2026-11-02-1213",
@@ -166,7 +178,8 @@
     "inbody_score": 76,
     "timing": "before_lunch",
     "condition_label": "午餐前 (僅吃早餐)",
-    "estimated_net_weight_kg": 63.8
+    "estimated_net_weight_kg": 63.8,
+    "body_water_l": 38.6
   },
   {
     "id": "inbody-2026-11-04-1215",
@@ -179,7 +192,8 @@
     "inbody_score": 77,
     "timing": "before_lunch",
     "condition_label": "午餐前 (僅吃早餐)",
-    "estimated_net_weight_kg": 64.1
+    "estimated_net_weight_kg": 64.1,
+    "body_water_l": 39.0
   },
   {
     "id": "inbody-2026-11-09-1208",
@@ -192,7 +206,8 @@
     "inbody_score": 77,
     "timing": "before_lunch",
     "condition_label": "午餐前 (僅吃早餐)",
-    "estimated_net_weight_kg": 64.3
+    "estimated_net_weight_kg": 64.3,
+    "body_water_l": 39.1
   },
   {
     "id": "inbody-2026-11-12-0909",
@@ -205,7 +220,8 @@
     "inbody_score": 77,
     "timing": "morning_fasting",
     "condition_label": "早晨空腹 (未吃早餐)",
-    "estimated_net_weight_kg": 63.5
+    "estimated_net_weight_kg": 63.5,
+    "body_water_l": 38.8
   },
   {
     "id": "inbody-2026-11-13-0912",
@@ -218,6 +234,133 @@
     "inbody_score": 78,
     "timing": "morning_fasting",
     "condition_label": "早晨空腹 (未吃早餐)",
-    "estimated_net_weight_kg": 63.3
+    "estimated_net_weight_kg": 63.3,
+    "body_water_l": 39.0
+  },
+  {
+    "id": "inbody-2026-11-13-1211",
+    "date": "2026-11-13",
+    "time": "12:11",
+    "weight_kg": 64.3,
+    "skeletal_muscle_kg": 29.6,
+    "body_fat_mass_kg": 11.7,
+    "body_fat_pct": 18.2,
+    "inbody_score": 76,
+    "timing": "before_lunch",
+    "condition_label": "午餐前 (僅吃早餐)",
+    "estimated_net_weight_kg": 63.6,
+    "body_water_l": 38.6
+  },
+  {
+    "id": "inbody-2026-11-16-0913",
+    "date": "2026-11-16",
+    "time": "09:13",
+    "weight_kg": 63.8,
+    "skeletal_muscle_kg": 29.4,
+    "body_fat_mass_kg": 11.6,
+    "body_fat_pct": 18.2,
+    "inbody_score": 76,
+    "timing": "morning_fasting",
+    "condition_label": "早晨空腹 (未吃早餐)",
+    "estimated_net_weight_kg": 63.1,
+    "body_water_l": 38.3
+  },
+  {
+    "id": "inbody-2026-11-16-0915",
+    "date": "2026-11-16",
+    "time": "09:15",
+    "weight_kg": 63.8,
+    "skeletal_muscle_kg": 29.2,
+    "body_fat_mass_kg": 11.9,
+    "body_fat_pct": 18.7,
+    "inbody_score": 75,
+    "timing": "morning_fasting",
+    "condition_label": "早晨空腹 (未吃早餐)",
+    "estimated_net_weight_kg": 63.1,
+    "body_water_l": 38.1
+  },
+  {
+    "id": "inbody-2026-11-16-1212",
+    "date": "2026-11-16",
+    "time": "12:12",
+    "weight_kg": 64.1,
+    "skeletal_muscle_kg": 28.9,
+    "body_fat_mass_kg": 12.5,
+    "body_fat_pct": 19.5,
+    "inbody_score": 75,
+    "timing": "before_lunch",
+    "condition_label": "午餐前 (僅吃早餐)",
+    "estimated_net_weight_kg": 63.4,
+    "body_water_l": 37.9
+  },
+  {
+    "id": "inbody-2026-11-16-1214",
+    "date": "2026-11-16",
+    "time": "12:14",
+    "weight_kg": 64.1,
+    "skeletal_muscle_kg": 28.9,
+    "body_fat_mass_kg": 12.5,
+    "body_fat_pct": 19.6,
+    "inbody_score": 75,
+    "timing": "before_lunch",
+    "condition_label": "午餐前 (僅吃早餐)",
+    "estimated_net_weight_kg": 63.4,
+    "body_water_l": 37.8
+  },
+  {
+    "id": "inbody-2026-11-17-0904",
+    "date": "2026-11-17",
+    "time": "09:04",
+    "weight_kg": 64.1,
+    "skeletal_muscle_kg": 29.9,
+    "body_fat_mass_kg": 11.1,
+    "body_fat_pct": 17.3,
+    "inbody_score": 77,
+    "timing": "morning_fasting",
+    "condition_label": "早晨空腹 (未吃早餐)",
+    "estimated_net_weight_kg": 63.4,
+    "body_water_l": 38.9
+  },
+  {
+    "id": "inbody-2026-11-19-0903",
+    "date": "2026-11-19",
+    "time": "09:03",
+    "weight_kg": 64.2,
+    "skeletal_muscle_kg": 29.1,
+    "body_fat_mass_kg": 12.5,
+    "body_fat_pct": 19.5,
+    "inbody_score": 75,
+    "timing": "morning_fasting",
+    "condition_label": "早晨空腹 (未吃早餐)",
+    "estimated_net_weight_kg": 63.5,
+    "body_water_l": 37.9
+  },
+  {
+    "id": "inbody-2026-11-20-0908",
+    "date": "2026-11-20",
+    "time": "09:08",
+    "weight_kg": 64.2,
+    "skeletal_muscle_kg": 29.5,
+    "body_fat_mass_kg": 11.8,
+    "body_fat_pct": 18.4,
+    "inbody_score": 76,
+    "timing": "morning_fasting",
+    "condition_label": "早晨空腹 (未吃早餐)",
+    "estimated_net_weight_kg": 63.5,
+    "body_water_l": 38.4
+  },
+  {
+    "id": "inbody-2026-11-20-1207",
+    "date": "2026-11-20",
+    "time": "12:07",
+    "weight_kg": 64.4,
+    "skeletal_muscle_kg": 29.5,
+    "body_fat_mass_kg": 11.9,
+    "body_fat_pct": 18.5,
+    "inbody_score": 76,
+    "timing": "before_lunch",
+    "condition_label": "午餐前 (僅吃早餐)",
+    "estimated_net_weight_kg": 63.7,
+    "body_water_l": 38.5
   }
 ]

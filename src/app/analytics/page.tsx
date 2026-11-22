@@ -113,7 +113,7 @@ export default function AnalyticsPage() {
 
   // InBody 身體組成檢測狀態 (八點多頻電極實測)
   const [inbodyList, setInbodyList] = useState<InBodyRecord[]>([]);
-  const [inbodyMetricTab, setInbodyMetricTab] = useState<"smm" | "pbf" | "weight">("smm");
+  const [inbodyMetricTab, setInbodyMetricTab] = useState<"smm" | "pbf" | "weight" | "water">("smm");
   const [showInbodyForm, setShowInbodyForm] = useState(false);
   const [showAllInbody, setShowAllInbody] = useState(false);
   const [inbodySaving, setInbodySaving] = useState(false);
@@ -124,6 +124,7 @@ export default function AnalyticsPage() {
   const [newIbWeight, setNewIbWeight] = useState("");
   const [newIbSmm, setNewIbSmm] = useState("");
   const [newIbFatPct, setNewIbFatPct] = useState("");
+  const [newIbWater, setNewIbWater] = useState("");
   const [newIbScore, setNewIbScore] = useState("");
   const [newIbTiming, setNewIbTiming] = useState<"morning_fasting" | "before_lunch" | "after_lunch">("morning_fasting");
   const [prReps, setPrReps] = useState({ bench: 5, squat: 8, deadlift: 2 });
@@ -409,6 +410,7 @@ export default function AnalyticsPage() {
       skeletal_muscle_kg: smm,
       body_fat_mass_kg: fatMass,
       body_fat_pct: fatPct,
+      body_water_l: newIbWater ? parseFloat(newIbWater) : undefined,
       inbody_score: score,
       timing: timingInfo.timing,
       condition_label: timingInfo.fullLabel,
@@ -424,6 +426,7 @@ export default function AnalyticsPage() {
     setNewIbWeight("");
     setNewIbSmm("");
     setNewIbFatPct("");
+    setNewIbWater("");
     setNewIbScore("");
     setShowInbodyForm(false);
     setInbodySaving(false);
@@ -510,6 +513,16 @@ export default function AnalyticsPage() {
       ? Math.round((latestInbody.body_fat_pct - firstInbody.body_fat_pct) * 10) / 10
       : 0;
 
+  const waterDiff =
+    latestInbody &&
+    firstInbody &&
+    typeof latestInbody.body_water_l === "number" &&
+    typeof firstInbody.body_water_l === "number" &&
+    isFinite(latestInbody.body_water_l) &&
+    isFinite(firstInbody.body_water_l)
+      ? Math.round((latestInbody.body_water_l - firstInbody.body_water_l) * 10) / 10
+      : 0;
+
   const inbodyChartData = validInbody.map((ib) => {
     const tInfo = getInBodyTimingInfo(ib.timing, ib.time);
     return {
@@ -518,6 +531,7 @@ export default function AnalyticsPage() {
       smm: ib.skeletal_muscle_kg,
       bodyFatPct: ib.body_fat_pct,
       fatMass: ib.body_fat_mass_kg,
+      water: ib.body_water_l,
       weight: ib.weight_kg,
       score: ib.inbody_score,
       timing: tInfo.timing,
@@ -962,8 +976,8 @@ export default function AnalyticsPage() {
               </span>
             </div>
 
-            {/* 4 Core Hero Stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+            {/* 5 Core Hero Stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
               <div className="bg-[#0f1118] p-2.5 rounded-lg border border-[#262b3d]">
                 <span className="text-[10px] text-gray-400 block mb-0.5">實測體重</span>
                 <span className="text-base font-black text-white">{latestInbody.weight_kg}</span>
@@ -988,6 +1002,14 @@ export default function AnalyticsPage() {
                 </span>
               </div>
 
+              <div className="bg-[#0f1118] p-2.5 rounded-lg border border-sky-500/30">
+                <span className="text-[10px] text-sky-400 block mb-0.5 font-bold">總水重 (TBW)</span>
+                <span className="text-base font-black text-sky-300">{latestInbody.body_water_l ? `${latestInbody.body_water_l}` : "--"}</span>
+                <span className="text-[10px] text-sky-400/90 font-bold block mt-0.5">
+                  L ({waterDiff > 0 ? `+${waterDiff} L` : `${waterDiff} L`})
+                </span>
+              </div>
+
               <div className="bg-[#0f1118] p-2.5 rounded-lg border border-cyan-500/30">
                 <span className="text-[10px] text-cyan-400 block mb-0.5 font-bold">體重成長幅度</span>
                 <span className="text-base font-black text-cyan-300">
@@ -1003,7 +1025,7 @@ export default function AnalyticsPage() {
 
         {/* Tab Switcher */}
         <div className="flex items-center justify-between pt-1">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <button
               type="button"
               onClick={() => setInbodyMetricTab("smm")}
@@ -1025,6 +1047,17 @@ export default function AnalyticsPage() {
               }`}
             >
               體脂率 PBF (%)
+            </button>
+            <button
+              type="button"
+              onClick={() => setInbodyMetricTab("water")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                inbodyMetricTab === "water"
+                  ? "bg-sky-500/20 text-sky-300 border border-sky-500/40"
+                  : "bg-[#181b26] text-gray-400 hover:text-gray-200 border border-[#262b3d]"
+              }`}
+            >
+              總水重 (L)
             </button>
             <button
               type="button"
@@ -1054,6 +1087,8 @@ export default function AnalyticsPage() {
                   ? ib.smm
                   : inbodyMetricTab === "pbf"
                   ? ib.bodyFatPct
+                  : inbodyMetricTab === "water"
+                  ? (ib.water || 0)
                   : ib.weight,
               extra: ib.condition,
             }))}
@@ -1062,14 +1097,18 @@ export default function AnalyticsPage() {
                 ? "#10b981"
                 : inbodyMetricTab === "pbf"
                 ? "#f59e0b"
+                : inbodyMetricTab === "water"
+                ? "#38bdf8"
                 : "#06b6d4"
             }
-            unit={inbodyMetricTab === "pbf" ? "%" : "kg"}
+            unit={inbodyMetricTab === "pbf" ? "%" : inbodyMetricTab === "water" ? "L" : "kg"}
             metricName={
               inbodyMetricTab === "smm"
                 ? "骨骼肌 (SMM)"
                 : inbodyMetricTab === "pbf"
                 ? "體脂率 (PBF)"
+                : inbodyMetricTab === "water"
+                ? "身體總水重 (TBW)"
                 : "實測體重"
             }
           />
@@ -1156,6 +1195,18 @@ export default function AnalyticsPage() {
                   value={newIbFatPct}
                   onChange={(e) => setNewIbFatPct(e.target.value)}
                   className="w-full bg-[#12141c] border border-[#262b3d] text-white text-xs rounded-xl px-2.5 py-1.5 outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-sky-400 block mb-1">總水重 TBW (L)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  placeholder="如 38.5"
+                  value={newIbWater}
+                  onChange={(e) => setNewIbWater(e.target.value)}
+                  className="w-full bg-[#12141c] border border-[#262b3d] text-white text-xs rounded-xl px-2.5 py-1.5 outline-none focus:border-sky-500"
                 />
               </div>
 
@@ -1266,6 +1317,11 @@ export default function AnalyticsPage() {
                     <span className="text-amber-400 font-medium">
                       體脂 {ib.body_fat_pct}%
                     </span>
+                    {ib.body_water_l ? (
+                      <span className="text-sky-400 font-medium">
+                        水重 {ib.body_water_l}L
+                      </span>
+                    ) : null}
                     <span className="text-gray-400 bg-[#12141c] px-1.5 py-0.5 rounded text-[10px]">
                       {ib.inbody_score || 78} 分
                     </span>
