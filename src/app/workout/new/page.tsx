@@ -516,10 +516,38 @@ function NewWorkoutForm() {
       <div className="bg-[#121520] border border-[#262b3d] rounded-2xl p-5 space-y-4 shadow-xl">
         {/* 日期選擇 */}
         <div>
-          <label className="text-xs font-bold text-gray-400 block mb-1.5 flex items-center gap-1.5">
-            <Calendar className="w-3.5 h-3.5 text-emerald-400" />
-            <span>訓練日期</span>
-          </label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-bold text-gray-400 flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+              <span>訓練日期</span>
+            </label>
+            <div className="flex items-center gap-1">
+              {[
+                { label: "今天", offset: 0 },
+                { label: "昨天", offset: 1 },
+                { label: "前天", offset: 2 },
+              ].map((pill) => {
+                const targetD = new Date();
+                targetD.setDate(targetD.getDate() - pill.offset);
+                const str = `${targetD.getFullYear()}-${(targetD.getMonth() + 1).toString().padStart(2, "0")}-${targetD.getDate().toString().padStart(2, "0")}`;
+                const isActive = date === str;
+                return (
+                  <button
+                    key={pill.label}
+                    type="button"
+                    onClick={() => setDate(str)}
+                    className={`text-[10px] px-2 py-0.5 rounded-lg border font-bold transition-all cursor-pointer ${
+                      isActive
+                        ? "bg-emerald-500 text-black border-emerald-400 font-black shadow-sm"
+                        : "bg-[#181b26] text-gray-400 hover:text-white border-[#262b3d]"
+                    }`}
+                  >
+                    {pill.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <input
             type="date"
             value={date}
