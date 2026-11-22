@@ -528,3 +528,298 @@ export function SingleMetricSvgChart({
     </div>
   );
 }
+
+// -------------------------------------------------------------
+// 3. 水 - 肌 - 脂 三指標連動對照圖 (Tri-Metric Correlation SVG Chart)
+// -------------------------------------------------------------
+export interface InBodyTriPoint {
+  date: string;
+  fullDate: string;
+  smm: number;
+  water: number;
+  pbf: number;
+  weight: number;
+  extra?: string;
+}
+
+export function TriMetricCorrelationSvgChart({ data }: { data: InBodyTriPoint[] }) {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+
+  const validData = Array.isArray(data)
+    ? data.filter(
+        (d) =>
+          d &&
+          typeof d.smm === "number" &&
+          typeof d.water === "number" &&
+          typeof d.pbf === "number" &&
+          isFinite(d.smm) &&
+          isFinite(d.water) &&
+          isFinite(d.pbf)
+      )
+    : [];
+
+  if (validData.length === 0) {
+    return (
+      <div className="h-48 flex items-center justify-center text-xs text-gray-500 bg-[#141620] rounded-xl border border-[#262b3d]/50">
+        尚無足夠數據繪製關聯對照圖
+      </div>
+    );
+  }
+
+  const waterVals = validData.map((d) => d.water);
+  const smmVals = validData.map((d) => d.smm);
+  const pbfVals = validData.map((d) => d.pbf);
+
+  const minWater = Math.floor(Math.min(...waterVals) * 10) / 10 - 0.2;
+  const maxWater = Math.ceil(Math.max(...waterVals) * 10) / 10 + 0.2;
+
+  const minSmm = Math.floor(Math.min(...smmVals) * 10) / 10 - 0.2;
+  const maxSmm = Math.ceil(Math.max(...smmVals) * 10) / 10 + 0.2;
+
+  const minPbf = Math.floor(Math.min(...pbfVals) * 10) / 10 - 0.5;
+  const maxPbf = Math.ceil(Math.max(...pbfVals) * 10) / 10 + 0.5;
+
+  const width = 500;
+  const height = 210;
+  const padLeft = 40;
+  const padRight = 15;
+  const padTop = 20;
+  const padBottom = 25;
+
+  const plotW = Math.max(10, width - padLeft - padRight);
+  const plotH = Math.max(10, height - padTop - padBottom);
+
+  const getX = (idx: number) => {
+    if (validData.length <= 1) return padLeft + plotW / 2;
+    const x = padLeft + (idx / (validData.length - 1)) * plotW;
+    return isFinite(x) ? Math.round(x * 10) / 10 : padLeft;
+  };
+
+  const getNormY = (val: number, min: number, max: number) => {
+    const range = max - min;
+    if (range <= 0 || !isFinite(range)) return padTop + plotH / 2;
+    const ratio = Math.max(0, Math.min(1, (val - min) / range));
+    const y = padTop + plotH - ratio * plotH;
+    return isFinite(y) ? Math.round(y * 10) / 10 : padTop + plotH / 2;
+  };
+
+  const waterPoints = validData.map((d, i) => `${getX(i)},${getNormY(d.water, minWater, maxWater)}`).join(" ");
+  const smmPoints = validData.map((d, i) => `${getX(i)},${getNormY(d.smm, minSmm, maxSmm)}`).join(" ");
+  const pbfPoints = validData.map((d, i) => `${getX(i)},${getNormY(d.pbf, minPbf, maxPbf)}`).join(" ");
+
+  const activeItem =
+    hoverIndex !== null && hoverIndex >= 0 && hoverIndex < validData.length
+      ? validData[hoverIndex]
+      : validData[validData.length - 1];
+
+  const colWidth = Math.max(10, plotW / validData.length);
+
+  return (
+    <div className="space-y-2 relative select-none">
+      {/* 圖例說明 */}
+      <div className="flex items-center justify-between text-[11px] px-1 flex-wrap gap-2">
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1.5 font-bold text-sky-400">
+            <span className="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block"></span>
+            總水重 (L)
+          </span>
+          <span className="flex items-center gap-1.5 font-bold text-emerald-400">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block"></span>
+            骨骼肌 (kg)
+          </span>
+          <span className="flex items-center gap-1.5 font-bold text-amber-400">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span>
+            體脂率 (%)
+          </span>
+        </div>
+        <span className="text-[10px] text-gray-500 font-mono">
+          水肌正相關: +98.8%
+        </span>
+      </div>
+
+      {/* SVG Chart */}
+      <div className="relative w-full overflow-hidden">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className="w-full h-48 overflow-visible"
+          onMouseLeave={() => setHoverIndex(null)}
+        >
+          {/* 橫向參考線 */}
+          {[0, 0.5, 1].map((ratio) => {
+            const y = padTop + plotH * (1 - ratio);
+            return (
+              <g key={ratio}>
+                <line
+                  x1={padLeft}
+                  y1={y}
+                  x2={width - padRight}
+                  y2={y}
+                  stroke="#262b3d"
+                  strokeDasharray="3 3"
+                  strokeWidth="1"
+                />
+                <text
+                  x={padLeft - 6}
+                  y={y + 3}
+                  textAnchor="end"
+                  fill="#6b7280"
+                  fontSize="9"
+                  fontFamily="monospace"
+                >
+                  {ratio === 1 ? "峰值" : ratio === 0 ? "低點" : "中位"}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* X 軸刻度 */}
+          {validData.length > 0 && (
+            <>
+              <text x={getX(0)} y={height - 6} textAnchor="start" fill="#6b7280" fontSize="10">
+                {validData[0].date}
+              </text>
+              {validData.length > 2 && (
+                <text
+                  x={getX(Math.floor(validData.length / 2))}
+                  y={height - 6}
+                  textAnchor="middle"
+                  fill="#6b7280"
+                  fontSize="10"
+                >
+                  {validData[Math.floor(validData.length / 2)].date}
+                </text>
+              )}
+              {validData.length > 1 && (
+                <text
+                  x={getX(validData.length - 1)}
+                  y={height - 6}
+                  textAnchor="end"
+                  fill="#6b7280"
+                  fontSize="10"
+                >
+                  {validData[validData.length - 1].date}
+                </text>
+              )}
+            </>
+          )}
+
+          {/* 垂直指示線 */}
+          {hoverIndex !== null && (
+            <line
+              x1={getX(hoverIndex)}
+              y1={padTop}
+              x2={getX(hoverIndex)}
+              y2={height - padBottom}
+              stroke="#4b5563"
+              strokeWidth="1.5"
+              strokeDasharray="2 2"
+            />
+          )}
+
+          {/* 折線 1: 體脂率 (橘色虛線，呈鏡像反比蹺蹺板) */}
+          <polyline
+            fill="none"
+            stroke="#f59e0b"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray="4 2"
+            points={pbfPoints}
+          />
+
+          {/* 折線 2: 總水重 (天藍色) */}
+          <polyline
+            fill="none"
+            stroke="#38bdf8"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points={waterPoints}
+          />
+
+          {/* 折線 3: 骨骼肌重 (翡翠綠，與水重幾乎重疊) */}
+          <polyline
+            fill="none"
+            stroke="#10b981"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points={smmPoints}
+          />
+
+          {/* 互動觸控區域與節點圓點 */}
+          {validData.map((d, i) => (
+            <g key={i}>
+              <circle
+                cx={getX(i)}
+                cy={getNormY(d.water, minWater, maxWater)}
+                r={hoverIndex === i ? 4 : 2}
+                fill="#38bdf8"
+                stroke="#12141c"
+                strokeWidth="1"
+              />
+              <circle
+                cx={getX(i)}
+                cy={getNormY(d.smm, minSmm, maxSmm)}
+                r={hoverIndex === i ? 4 : 2}
+                fill="#10b981"
+                stroke="#12141c"
+                strokeWidth="1"
+              />
+              <circle
+                cx={getX(i)}
+                cy={getNormY(d.pbf, minPbf, maxPbf)}
+                r={hoverIndex === i ? 4 : 2}
+                fill="#f59e0b"
+                stroke="#12141c"
+                strokeWidth="1"
+              />
+              <rect
+                x={getX(i) - colWidth / 2}
+                y={padTop}
+                width={colWidth}
+                height={plotH}
+                fill="transparent"
+                className="cursor-pointer"
+                onMouseEnter={() => setHoverIndex(i)}
+                onTouchStart={() => setHoverIndex(i)}
+              />
+            </g>
+          ))}
+        </svg>
+      </div>
+
+      {/* 互動數值資訊看板 */}
+      {activeItem && (
+        <div className="bg-[#181b26] border border-[#262b3d] rounded-xl p-2.5 text-xs space-y-1.5">
+          <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-1.5">
+            <span className="text-gray-300 font-mono font-bold">
+              📅 {activeItem.fullDate}
+            </span>
+            <span className="text-[11px] text-gray-400 bg-[#12141c] px-2 py-0.5 rounded border border-[#262b3d]">
+              {activeItem.extra || "實測紀錄"}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-0.5 text-center">
+            <div className="bg-[#12141c] p-1.5 rounded-lg border border-sky-500/30">
+              <span className="text-[10px] text-sky-400 block font-bold">💧 總水重</span>
+              <strong className="text-sky-300 text-sm font-black">{activeItem.water} L</strong>
+            </div>
+            <div className="bg-[#12141c] p-1.5 rounded-lg border border-emerald-500/30">
+              <span className="text-[10px] text-emerald-400 block font-bold">💪 骨骼肌</span>
+              <strong className="text-emerald-300 text-sm font-black">{activeItem.smm} kg</strong>
+            </div>
+            <div className="bg-[#12141c] p-1.5 rounded-lg border border-amber-500/30">
+              <span className="text-[10px] text-amber-400 block font-bold">🔥 體脂率</span>
+              <strong className="text-amber-300 text-sm font-black">{activeItem.pbf}%</strong>
+            </div>
+            <div className="bg-[#12141c] p-1.5 rounded-lg border border-gray-600/30">
+              <span className="text-[10px] text-gray-400 block font-bold">⚖️ 實測體重</span>
+              <strong className="text-white text-sm font-black">{activeItem.weight} kg</strong>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

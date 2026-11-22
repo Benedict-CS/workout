@@ -18,6 +18,7 @@ import {
 import {
   MonthlyTrendSvgChart,
   SingleMetricSvgChart,
+  TriMetricCorrelationSvgChart,
 } from "@/components/charts/NativeCharts";
 import { db } from "@/lib/db/schema";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
@@ -113,7 +114,7 @@ export default function AnalyticsPage() {
 
   // InBody 身體組成檢測狀態 (八點多頻電極實測)
   const [inbodyList, setInbodyList] = useState<InBodyRecord[]>([]);
-  const [inbodyMetricTab, setInbodyMetricTab] = useState<"smm" | "pbf" | "weight" | "water">("smm");
+  const [inbodyMetricTab, setInbodyMetricTab] = useState<"smm" | "pbf" | "water" | "weight" | "relation">("smm");
   const [showInbodyForm, setShowInbodyForm] = useState(false);
   const [showAllInbody, setShowAllInbody] = useState(false);
   const [inbodySaving, setInbodySaving] = useState(false);
@@ -1070,6 +1071,18 @@ export default function AnalyticsPage() {
             >
               實測體重 (kg)
             </button>
+            <button
+              type="button"
+              onClick={() => setInbodyMetricTab("relation")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                inbodyMetricTab === "relation"
+                  ? "bg-purple-500/20 text-purple-300 border border-purple-500/50 shadow-sm shadow-purple-500/10"
+                  : "bg-[#181b26] text-gray-400 hover:text-gray-200 border border-[#262b3d]"
+              }`}
+            >
+              <Activity className="w-3 h-3 text-purple-400" />
+              <span>連動對照 (水×肌×脂)</span>
+            </button>
           </div>
           <span className="text-[10px] text-gray-500 hidden sm:inline">
             共 {inbodyList.length} 次檢測紀錄
@@ -1078,40 +1091,98 @@ export default function AnalyticsPage() {
 
         {/* InBody Line Chart (Native SVG 零崩潰圖表) */}
         <div className="pt-1">
-          <SingleMetricSvgChart
-            data={inbodyChartData.map((ib) => ({
-              date: ib.date,
-              fullDate: ib.fullDate,
-              value:
+          {inbodyMetricTab === "relation" ? (
+            <TriMetricCorrelationSvgChart
+              data={inbodyChartData.map((ib) => ({
+                date: ib.date,
+                fullDate: ib.fullDate,
+                smm: ib.smm,
+                water: ib.water || 0,
+                pbf: ib.bodyFatPct,
+                weight: ib.weight,
+                extra: ib.condition,
+              }))}
+            />
+          ) : (
+            <SingleMetricSvgChart
+              data={inbodyChartData.map((ib) => ({
+                date: ib.date,
+                fullDate: ib.fullDate,
+                value:
+                  inbodyMetricTab === "smm"
+                    ? ib.smm
+                    : inbodyMetricTab === "pbf"
+                    ? ib.bodyFatPct
+                    : inbodyMetricTab === "water"
+                    ? (ib.water || 0)
+                    : ib.weight,
+                extra: ib.condition,
+              }))}
+              color={
                 inbodyMetricTab === "smm"
-                  ? ib.smm
+                  ? "#10b981"
                   : inbodyMetricTab === "pbf"
-                  ? ib.bodyFatPct
+                  ? "#f59e0b"
                   : inbodyMetricTab === "water"
-                  ? (ib.water || 0)
-                  : ib.weight,
-              extra: ib.condition,
-            }))}
-            color={
-              inbodyMetricTab === "smm"
-                ? "#10b981"
-                : inbodyMetricTab === "pbf"
-                ? "#f59e0b"
-                : inbodyMetricTab === "water"
-                ? "#38bdf8"
-                : "#06b6d4"
-            }
-            unit={inbodyMetricTab === "pbf" ? "%" : inbodyMetricTab === "water" ? "L" : "kg"}
-            metricName={
-              inbodyMetricTab === "smm"
-                ? "骨骼肌 (SMM)"
-                : inbodyMetricTab === "pbf"
-                ? "體脂率 (PBF)"
-                : inbodyMetricTab === "water"
-                ? "身體總水重 (TBW)"
-                : "實測體重"
-            }
-          />
+                  ? "#38bdf8"
+                  : "#06b6d4"
+              }
+              unit={inbodyMetricTab === "pbf" ? "%" : inbodyMetricTab === "water" ? "L" : "kg"}
+              metricName={
+                inbodyMetricTab === "smm"
+                  ? "骨骼肌 (SMM)"
+                  : inbodyMetricTab === "pbf"
+                  ? "體脂率 (PBF)"
+                  : inbodyMetricTab === "water"
+                  ? "身體總水重 (TBW)"
+                  : "實測體重"
+              }
+            />
+          )}
+        </div>
+
+        {/* 水-肌-脂 連動機制診斷面板 */}
+        <div className="bg-[#141620] border border-[#262b3d] rounded-xl p-3.5 space-y-3">
+          <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <Activity className="w-4 h-4 text-purple-400" />
+              <h3 className="text-xs font-bold text-gray-200">
+                水 💧 × 骨骼肌 💪 × 體脂肪 🔥 連動機制解密
+              </h3>
+            </div>
+            <span className="text-[10px] text-purple-300 bg-purple-500/10 border border-purple-500/30 px-2 py-0.5 rounded-full font-bold">
+              水肌皮爾森相關性 +98.8% (極度高度連動)
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+            <div className="bg-[#181b26] p-2.5 rounded-xl border border-sky-500/20 space-y-1">
+              <span className="text-[11px] font-bold text-sky-400 flex items-center gap-1">
+                💧 1. 水漲肌高（假性增肌）
+              </span>
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                肌肉中約 73% 是水分。InBody 藉由細胞水分導電推估骨骼肌；當補碳肝醣超補或水腫（如 11/17 水重 +1.1L），骨骼肌會瞬間暴增 +1.0kg，此時為儲水而非真長肉。
+              </p>
+            </div>
+
+            <div className="bg-[#181b26] p-2.5 rounded-xl border border-amber-500/20 space-y-1">
+              <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
+                📉 2. 蹺蹺板鏡像（假性發胖）
+              </span>
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                InBody 無法直接量測脂肪，公式為「體脂 = 體重 - 除脂體重」。剛吃進的食物與水停在胃腸未導電時（如 11/16 中午水重 -0.4L），骨骼肌被低估，體脂率便被等量推高 +1.2%！
+              </p>
+            </div>
+
+            <div className="bg-[#181b26] p-2.5 rounded-xl border border-emerald-500/20 space-y-1">
+              <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                🎯 3. 如何看穿真實進步？
+              </span>
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                忽略單日 1~2% 體脂浮動。觀察 2~4 週的除脂體重（FFM）中位數，並搭配訓練日誌主要力量三項（臥推/深蹲/硬舉）是否突破，力量上升即為實質增肌！
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* 新增 InBody 檢測表單 (可收合) */}
