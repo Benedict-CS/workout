@@ -21,13 +21,16 @@ import {
   Plus,
   Dumbbell,
   Clock,
+  MessageSquare,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
 import {
   formatSessionToMarkdown,
+  formatSessionToPlainText,
   exportAllSessionsToMarkdown,
 } from "@/lib/markdown-generator";
+import { calculateSetVolume } from "@/lib/calc";
 import { parseWorkoutMarkdown } from "@/lib/parser/markdown-parser";
 import { runFullSync, deleteRemoteSession } from "@/lib/db/sync";
 import { getPrimaryMuscle, getMuscleBadgeColor, cleanSessionTitle, computeMonthlyIndices } from "@/lib/workout-utils";
@@ -165,23 +168,45 @@ export default function HistoryPage() {
     setTimeout(() => setCopyToast(null), 2500);
   }
 
+  function handleCopySessionPlainText(e: React.MouseEvent, session: WorkoutSession) {
+    e.preventDefault();
+    e.stopPropagation();
+    const sessionSets = sets.filter((s) => s.session_id === session.id);
+    const computedIdx = monthlyIndicesMap.get(session.id) || session.monthly_index;
+    const sessionWithCleanTitle: WorkoutSession = {
+      ...session,
+      display_title: cleanSessionTitle(session.display_title, session.target_muscle, computedIdx),
+      monthly_index: computedIdx,
+    };
+    const text = formatSessionToPlainText(sessionWithCleanTitle, sessionSets, exercises);
+    navigator.clipboard.writeText(text);
+    setCopyToast(`已複製【${sessionWithCleanTitle.display_title}】簡潔純文字！`);
+    setTimeout(() => setCopyToast(null), 2500);
+  }
+
   async function handleShareSession(e: React.MouseEvent, session: WorkoutSession) {
     e.preventDefault();
     e.stopPropagation();
     const sessionSets = sets.filter((s) => s.session_id === session.id);
-    const md = formatSessionToMarkdown(session, sessionSets, exercises);
+    const computedIdx = monthlyIndicesMap.get(session.id) || session.monthly_index;
+    const sessionWithCleanTitle: WorkoutSession = {
+      ...session,
+      display_title: cleanSessionTitle(session.display_title, session.target_muscle, computedIdx),
+      monthly_index: computedIdx,
+    };
+    const text = formatSessionToPlainText(sessionWithCleanTitle, sessionSets, exercises);
 
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
         await navigator.share({
-          title: session.display_title,
-          text: md,
+          title: sessionWithCleanTitle.display_title,
+          text: text,
         });
         return;
       } catch {}
     }
 
-    navigator.clipboard.writeText(md);
+    navigator.clipboard.writeText(text);
     setCopyToast("已複製訓練文字至剪貼簿！");
     setTimeout(() => setCopyToast(null), 2500);
   }
@@ -338,6 +363,8 @@ export default function HistoryPage() {
     const n = st.notes || "";
     return !(r.includes("熱身") || r.includes("激發") || r.includes("試重") || n.includes("熱身"));
   });
+  const curMonthTotalVolumeKg = curMonthSets.reduce((sum, st) => sum + calculateSetVolume(st), 0);
+  const curMonthTonnageTons = (curMonthTotalVolumeKg / 1000).toFixed(1);
   const curMonthMuscleCounts: Record<string, number> = { 胸: 0, 背: 0, 腿: 0, 肩: 0, 游泳: 0 };
   for (const s of curMonthSessions) {
     if (s.target_muscle.includes("胸")) curMonthMuscleCounts["胸"]++;
@@ -586,16 +613,23 @@ export default function HistoryPage() {
             </div>
 
             {/* 本月統計條 */}
-            <div className="flex items-center justify-between bg-[#181b26] px-3 py-2 rounded-xl text-xs border border-[#262b3d]/60 text-gray-400">
-              <span className="font-bold text-white">
-                本月累計{" "}
-                <span className="text-emerald-400 font-black">
-                  {curMonthSessions.length}
-                </span>{" "}
-                場訓練
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 bg-[#181b26] px-3 py-2 rounded-xl text-xs border border-[#262b3d]/60 text-gray-400">
+              <span className="font-bold text-white flex items-center gap-1.5 flex-wrap">
+                <span>
+                  本月累計{" "}
+                  <strong className="text-emerald-400 font-black">
+                    {curMonthSessions.length}
+                  </strong>{" "}
+                  場訓練
+                </span>
                 {curMonthFormalSets.length > 0 && (
-                  <span className="text-gray-400 font-normal ml-1">
+                  <span className="text-gray-400 font-normal">
                     • <strong className="text-gray-200 font-bold">{curMonthFormalSets.length}</strong> 正式組
+                  </span>
+                )}
+                {curMonthTotalVolumeKg > 0 && (
+                  <span className="text-amber-400 font-normal">
+                    • 總容量 <strong className="text-amber-300 font-bold">{curMonthTonnageTons}</strong> 噸
                   </span>
                 )}
               </span>
@@ -782,9 +816,17 @@ export default function HistoryPage() {
                             type="button"
                             onClick={(e) => handleShareSession(e, s)}
                             className="p-1.5 text-gray-400 hover:text-blue-400 hover:bg-[#12141c] rounded-lg transition-colors cursor-pointer"
-                            title="分享"
+                            title="分享簡潔文字"
                           >
                             <Share2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleCopySessionPlainText(e, s)}
+                            className="p-1.5 text-gray-400 hover:text-cyan-400 hover:bg-[#12141c] rounded-lg transition-colors cursor-pointer"
+                            title="複製簡潔文字 (適合 LINE/微信)"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
                           </button>
                           <button
                             type="button"
@@ -987,6 +1029,15 @@ export default function HistoryPage() {
                         title="分享此場紀錄"
                       >
                         <Share2 className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => handleCopySessionPlainText(e, s)}
+                        className="p-2 text-gray-400 hover:text-cyan-400 hover:bg-cyan-950/30 rounded-lg transition-all cursor-pointer"
+                        title="複製簡潔文字 (LINE/微信)"
+                      >
+                        <MessageSquare className="w-4 h-4" />
                       </button>
 
                       <button

@@ -204,6 +204,68 @@ export function formatSessionToMarkdown(
 }
 
 /**
+ * 將單次訓練 Session 格式化為適合通訊軟體 (LINE/微信/IG/簡訊) 傳送的簡潔純文字
+ */
+export function formatSessionToPlainText(
+  session: WorkoutSession,
+  sets: SetItem[],
+  exercises: Exercise[]
+): string {
+  const exMap = new Map<string, Exercise>();
+  for (const ex of exercises) {
+    exMap.set(ex.id, ex);
+  }
+
+  const title = cleanSessionTitle(session.display_title, session.target_muscle);
+  const lines: string[] = [];
+  lines.push(`💪 ${title}`);
+  if (session.location) lines.push(`📍 地點：${session.location}`);
+  if (session.notes?.trim()) lines.push(`📝 備註：${session.notes.trim()}`);
+  lines.push("");
+
+  if (session.target_muscle.includes("游泳")) {
+    if (sets.length === 0) {
+      lines.push("• 游泳訓練");
+    } else {
+      for (const s of sets) {
+        const text = s.notes || s.raw_text?.replace(/^-+\s*/, "") || "游泳";
+        lines.push(`• ${text}`);
+      }
+    }
+    return lines.join("\n");
+  }
+
+  const sortedSets = [...sets].sort((a, b) => a.set_order - b.set_order);
+  const exerciseIdOrder: string[] = [];
+  for (const s of sortedSets) {
+    if (!exerciseIdOrder.includes(s.exercise_id)) {
+      exerciseIdOrder.push(s.exercise_id);
+    }
+  }
+
+  for (const exId of exerciseIdOrder) {
+    const ex = exMap.get(exId);
+    const exSets = sortedSets.filter((s) => s.exercise_id === exId);
+    const exName = ex?.name || "動作";
+
+    const setSummaries: string[] = [];
+    for (const s of exSets) {
+      const cleanBody = s.raw_text
+        ? s.raw_text.replace(/^set\s*\d+:\s*/i, "").trim()
+        : s.weight_kg > 0
+        ? `${s.weight_kg}kg x ${s.reps}`
+        : `${s.reps}下`;
+      setSummaries.push(cleanBody);
+    }
+
+    lines.push(`• ${exName}:`);
+    lines.push(`  ${setSummaries.join(" | ")}`);
+  }
+
+  return lines.join("\n");
+}
+
+/**
  * 匯出全庫所有訓練紀錄為一份完整的 Markdown 日誌 (與 Text document.md 100% 格式相符)
  */
 export function exportAllSessionsToMarkdown(

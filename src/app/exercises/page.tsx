@@ -19,9 +19,11 @@ import {
   Check,
   Info,
   Sparkles,
+  Calculator,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { runFullSync, deleteRemoteExercise } from "@/lib/db/sync";
+import { calculate1RM, calculateBarbellPlates, generateWarmupPlan } from "@/lib/calc";
 import type { Exercise, MuscleGroup, WeightType, WorkoutSession } from "@/lib/types";
 
 // 舊版重複動作 ID 映射至 Canonical 標準 ID
@@ -255,6 +257,11 @@ export default function ExercisesPage() {
 
   // 二次確認刪除 Modal
   const [deletingEx, setDeletingEx] = useState<Exercise | null>(null);
+
+  // 槓鈴片配重 & 熱身組試算器 Modal
+  const [showCalculator, setShowCalculator] = useState(false);
+  const [calcTargetWeight, setCalcTargetWeight] = useState<number>(60);
+  const [calcBarWeight, setCalcBarWeight] = useState<number>(20);
 
   async function loadData() {
     setLoading(true);
@@ -563,16 +570,29 @@ export default function ExercisesPage() {
           <p className="text-xs text-gray-400 mt-0.5">專注核心動作、實測最高重量紀錄</p>
         </div>
 
-        <button
-          onClick={() => {
-            setNewName(search.trim());
-            setShowAddModal(true);
-          }}
-          className="bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black px-3.5 py-2 rounded-xl shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer shrink-0"
-        >
-          <Plus className="w-4 h-4 stroke-[3]" />
-          <span>自訂動作</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowCalculator(true)}
+            className="bg-[#121520] hover:bg-[#181b26] border border-[#262b3d] text-emerald-400 hover:text-emerald-300 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer shrink-0"
+            title="開啟槓鈴片配重與熱身組試算器"
+          >
+            <Calculator className="w-4 h-4 text-emerald-400" />
+            <span className="hidden sm:inline">槓片/熱身試算</span>
+            <span className="sm:hidden">試算器</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setNewName(search.trim());
+              setShowAddModal(true);
+            }}
+            className="bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black px-3.5 py-2 rounded-xl shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer shrink-0"
+          >
+            <Plus className="w-4 h-4 stroke-[3]" />
+            <span>自訂動作</span>
+          </button>
+        </div>
       </div>
 
       {/* 搜尋框與最愛開關列 */}
@@ -870,21 +890,41 @@ export default function ExercisesPage() {
                       </span>
                     </div>
                   ) : item.maxWeight > 0 ? (
-                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300">
-                      <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span>
-                        歷史最佳 PR:{" "}
-                        <strong className="text-white font-bold">{item.maxWeight} kg</strong>
-                        {item.maxWeightReps > 0 && (
-                          <span className="text-amber-200/90 ml-1">× {item.maxWeightReps} 下</span>
-                        )}
-                        {item.bestSetDetail && (
-                          <span className="text-gray-400 font-normal ml-1.5 text-[11px]">
-                            ({item.bestSetDetail})
+                    (() => {
+                      const est1RM = item.maxWeight > 0 && item.maxWeightReps > 0 ? calculate1RM(item.maxWeight, item.maxWeightReps) : 0;
+                      return (
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 flex-wrap">
+                          <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span>
+                            歷史最佳 PR:{" "}
+                            <strong className="text-white font-bold">{item.maxWeight} kg</strong>
+                            {item.maxWeightReps > 0 && (
+                              <span className="text-amber-200/90 ml-1">× {item.maxWeightReps} 下</span>
+                            )}
+                            {item.bestSetDetail && (
+                              <span className="text-gray-400 font-normal ml-1.5 text-[11px]">
+                                ({item.bestSetDetail})
+                              </span>
+                            )}
                           </span>
-                        )}
-                      </span>
-                    </div>
+
+                          {est1RM > 0 && item.maxWeightReps > 1 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCalcTargetWeight(item.maxWeight);
+                                setShowCalculator(true);
+                              }}
+                              className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-400/20 hover:bg-amber-400/30 text-amber-200 border border-amber-400/40 transition-colors cursor-pointer"
+                              title="點擊依此重量開啟槓片配重試算"
+                            >
+                              估算 1RM ~{est1RM}kg ⚡
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()
                   ) : item.totalSets > 0 ? (
                     <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300">
                       <Trophy className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
@@ -1241,6 +1281,285 @@ export default function ExercisesPage() {
           </div>
         </div>
       )}
+
+      {/* 槓鈴片配重 & 科學熱身組試算器 Modal */}
+      {showCalculator && (() => {
+        const platesResult = calculateBarbellPlates(calcTargetWeight, calcBarWeight);
+        const warmupPlan = generateWarmupPlan(calcTargetWeight, calcBarWeight);
+
+        return (
+          <div
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+            onClick={() => setShowCalculator(false)}
+          >
+            <div
+              className="bg-[#121520] border border-emerald-500/40 rounded-2xl max-w-lg w-full p-4 sm:p-5 space-y-4 shadow-2xl my-auto animate-in fade-in zoom-in-95 duration-150"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal 頂部標題 */}
+              <div className="flex items-center justify-between border-b border-[#262b3d] pb-3">
+                <div className="flex items-center gap-2 text-white font-bold text-sm sm:text-base">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                    <Calculator className="w-4 h-4 stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-black text-sm sm:text-base">槓鈴片配重 & 熱身試算器</h3>
+                    <p className="text-[11px] text-gray-400 font-normal">快速換算單邊掛片與階梯熱身組</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowCalculator(false)}
+                  className="text-gray-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* 空槓重量選擇器 */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-300 flex items-center justify-between">
+                  <span>1. 選擇空槓重量</span>
+                  <span className="text-emerald-400 font-mono font-black">{calcBarWeight} kg 空槓</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  {[
+                    { w: 20, label: "標準槓 20kg", desc: "奧林匹克大槓" },
+                    { w: 15, label: "女子槓 15kg", desc: "輕量/女用槓" },
+                    { w: 10, label: "短槓 10kg", desc: "EZ曲槓/短槓" },
+                    { w: 8, label: "史密斯 8kg", desc: "常見空軌重" },
+                  ].map((bar) => (
+                    <button
+                      key={bar.w}
+                      type="button"
+                      onClick={() => setCalcBarWeight(bar.w)}
+                      className={`p-2 rounded-xl border text-center transition-all cursor-pointer ${
+                        calcBarWeight === bar.w
+                          ? "bg-emerald-500/20 border-emerald-500 text-emerald-300 shadow-sm"
+                          : "bg-[#181b26] border-[#262b3d] text-gray-400 hover:text-white hover:bg-[#202533]"
+                      }`}
+                    >
+                      <span className="block text-xs font-black">{bar.label}</span>
+                      <span className="block text-[10px] opacity-75">{bar.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 目標總重量調整 (支援微調按鈕與快捷預設) */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-300 flex items-center justify-between">
+                  <span>2. 目標訓練總重 (雙手含槓)</span>
+                  <span className="text-amber-400 font-mono font-bold">
+                    單邊需掛: <strong className="text-white text-sm font-black">{platesResult.sideWeight}</strong> kg
+                  </span>
+                </label>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setCalcTargetWeight((w) => Math.max(calcBarWeight, Math.round((w - 5) * 10) / 10))}
+                    className="flex-1 py-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-200 text-xs font-black rounded-xl active:scale-95 transition-all cursor-pointer"
+                  >
+                    -5
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCalcTargetWeight((w) => Math.max(calcBarWeight, Math.round((w - 2.5) * 10) / 10))}
+                    className="flex-1 py-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-200 text-xs font-black rounded-xl active:scale-95 transition-all cursor-pointer"
+                  >
+                    -2.5
+                  </button>
+
+                  <div className="flex-[2] flex items-center justify-center bg-[#0e1017] border border-[#262b3d] py-1.5 px-3 rounded-xl">
+                    <input
+                      type="number"
+                      step="2.5"
+                      min={calcBarWeight}
+                      value={calcTargetWeight}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value);
+                        if (!isNaN(v)) setCalcTargetWeight(v);
+                      }}
+                      className="w-20 bg-transparent text-center text-xl font-black font-mono text-emerald-400 outline-none"
+                    />
+                    <span className="text-xs text-gray-400 font-bold ml-1">kg</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setCalcTargetWeight((w) => Math.round((w + 2.5) * 10) / 10)}
+                    className="flex-1 py-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-200 text-xs font-black rounded-xl active:scale-95 transition-all cursor-pointer"
+                  >
+                    +2.5
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCalcTargetWeight((w) => Math.round((w + 5) * 10) / 10)}
+                    className="flex-1 py-2 bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-200 text-xs font-black rounded-xl active:scale-95 transition-all cursor-pointer"
+                  >
+                    +5
+                  </button>
+                </div>
+
+                {/* 常用預設重量膠囊 */}
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                  {[30, 40, 50, 60, 70, 80, 90, 100, 120, 140].map((pw) => (
+                    <button
+                      key={pw}
+                      type="button"
+                      onClick={() => setCalcTargetWeight(pw)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold whitespace-nowrap transition-all cursor-pointer ${
+                        calcTargetWeight === pw
+                          ? "bg-amber-400 text-black font-black shadow-sm"
+                          : "bg-[#181b26] text-gray-400 hover:text-white border border-[#262b3d]"
+                      }`}
+                    >
+                      {pw}kg
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 單邊槓片配重圖解 */}
+              <div className="bg-[#181b26] border border-[#262b3d] rounded-xl p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <span>💡 單邊所需掛片</span>
+                    <span className="text-[11px] text-gray-400 font-normal">（左右兩側對稱掛相同配片）</span>
+                  </span>
+                  <span className="text-xs font-mono font-bold text-emerald-400">
+                    單邊: {platesResult.sideWeight} kg
+                  </span>
+                </div>
+
+                {platesResult.plates.length === 0 ? (
+                  <div className="text-center py-3 text-xs text-gray-400 bg-[#0e1017] rounded-xl border border-[#262b3d]/60">
+                    僅需空槓 ({calcBarWeight} kg)，兩側無須懸掛槓片
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {/* 槓片清單膠囊 */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {platesResult.plates.map((p, idx) => (
+                        <div
+                          key={idx}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-mono font-black border flex items-center gap-1.5 ${p.color} ${p.textColor} border-black/20 shadow-sm`}
+                        >
+                          <span>{p.weight} kg</span>
+                          <span className="opacity-90">× {p.count} 片</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* 視覺化槓鈴袖套圖解 */}
+                    <div className="relative bg-[#0e1017] rounded-xl p-3 border border-[#262b3d]/70 flex items-center justify-center min-h-[64px]">
+                      {/* 槓鈴軸心線 */}
+                      <div className="absolute left-4 right-4 h-2 bg-gray-600 rounded-full" />
+                      {/* 卡扣法蘭環 */}
+                      <div className="relative z-10 w-4 h-12 bg-gray-400 border border-gray-300 rounded-sm mr-2 shadow" />
+
+                      {/* 槓鈴袖套上的槓片堆疊 */}
+                      <div className="relative z-10 flex items-center gap-1">
+                        {platesResult.plates.map((p, pIdx) =>
+                          Array.from({ length: p.count }).map((_, cIdx) => {
+                            const h = p.weight >= 20 ? "h-14 w-6" : p.weight >= 15 ? "h-12 w-5" : p.weight >= 10 ? "h-11 w-4" : p.weight >= 5 ? "h-9 w-3.5" : "h-7 w-3";
+                            return (
+                              <div
+                                key={`${pIdx}-${cIdx}`}
+                                className={`${h} ${p.color} ${p.textColor} rounded-sm flex items-center justify-center font-mono font-black text-[9px] shadow-md border border-black/30`}
+                                title={`${p.weight} kg`}
+                              >
+                                {p.weight >= 5 && <span className="rotate-90">{p.weight}</span>}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      {/* 軸套末端 */}
+                      <div className="relative z-10 w-8 h-3 bg-gray-500 rounded-r-sm ml-1" />
+                    </div>
+
+                    {platesResult.remaining > 0 && (
+                      <div className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 p-2 rounded-lg">
+                        ⚠️ 剩餘 {platesResult.remaining} kg 無法以現有槓片 (1.25kg 以上) 完全整除，請微調目標重量。
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* 科學熱身金字塔表 (Warm-up Sets Progression) */}
+              {warmupPlan.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-300 flex items-center gap-1">
+                      <span>🔥 科學熱身階梯規劃</span>
+                    </span>
+                    <span className="text-[11px] text-gray-400">保護關節 • 激活神經不力竭</span>
+                  </div>
+
+                  <div className="bg-[#181b26] border border-[#262b3d] rounded-xl overflow-hidden divide-y divide-[#262b3d]/60 text-xs">
+                    {warmupPlan.map((wp, idx) => (
+                      <div key={idx} className="p-2.5 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-mono font-black flex items-center justify-center text-[10px]">
+                            {idx + 1}
+                          </span>
+                          <div>
+                            <span className="font-bold text-white block">{wp.label}</span>
+                            <span className="text-[10px] text-gray-400">{wp.percentage}% 目標強度</span>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <span className="font-mono font-black text-emerald-300 text-sm">
+                            {wp.weightKg} kg
+                          </span>
+                          <span className="text-gray-400 font-bold ml-1.5">
+                            × {wp.reps} 下
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* 正式目標組 */}
+                    <div className="p-2.5 bg-emerald-950/20 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-emerald-500 text-black font-mono font-black flex items-center justify-center text-[10px]">
+                          ★
+                        </span>
+                        <div>
+                          <span className="font-black text-emerald-300 block">正式工作組</span>
+                          <span className="text-[10px] text-gray-400">100% 目標強度</span>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="font-mono font-black text-amber-300 text-sm">
+                          {calcTargetWeight} kg
+                        </span>
+                        <span className="text-gray-400 font-bold ml-1.5">
+                          正式做組
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setShowCalculator(false)}
+                className="w-full bg-[#181b26] hover:bg-[#202533] text-gray-300 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                關閉試算器
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

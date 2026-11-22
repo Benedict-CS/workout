@@ -13,10 +13,11 @@ import {
   Trash2,
   Play,
   Plus,
+  MessageSquare,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
-import { formatSessionToMarkdown } from "@/lib/markdown-generator";
+import { formatSessionToMarkdown, formatSessionToPlainText } from "@/lib/markdown-generator";
 import { deleteRemoteSession, runFullSync } from "@/lib/db/sync";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 import { getPrimaryMuscle, getMuscleBadgeColor, cleanSessionTitle, computeMonthlyIndices } from "@/lib/workout-utils";
@@ -311,6 +312,22 @@ export default function HomePage() {
     const md = formatSessionToMarkdown(sessionWithComputedTitle, sets, exercises);
     navigator.clipboard.writeText(md);
     setCopyToast(`已複製【${cleanSessionTitle(session.display_title, session.target_muscle, computedIdx)}】完整 Markdown！`);
+    setTimeout(() => setCopyToast(null), 2000);
+  }
+
+  function handleCopyPlainText(e: React.MouseEvent, session: WorkoutSession) {
+    e.preventDefault();
+    e.stopPropagation();
+    const sets = sessionSetsMap[session.id] || [];
+    const computedIdx = monthlyIndicesMap.get(session.id) || session.monthly_index;
+    const sessionWithComputedTitle: WorkoutSession = {
+      ...session,
+      display_title: cleanSessionTitle(session.display_title, session.target_muscle, computedIdx),
+      monthly_index: computedIdx,
+    };
+    const text = formatSessionToPlainText(sessionWithComputedTitle, sets, exercises);
+    navigator.clipboard.writeText(text);
+    setCopyToast(`已複製【${cleanSessionTitle(session.display_title, session.target_muscle, computedIdx)}】簡潔純文字！`);
     setTimeout(() => setCopyToast(null), 2000);
   }
 
@@ -714,6 +731,16 @@ export default function HomePage() {
                         </div>
 
                         <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                          {/* 一鍵複製整場訓練純文字 (適合 LINE / 微信) */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleCopyPlainText(e, sess)}
+                            className="p-1.5 text-gray-400 hover:text-cyan-400 hover:bg-[#262b3d] rounded transition-all cursor-pointer"
+                            title="一鍵複製此場簡潔純文字 (適合 LINE / 微信)"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                          </button>
+
                           {/* 一鍵複製整場訓練 Markdown 按鈕 (包含所有動作與組數) */}
                           <button
                             type="button"
@@ -827,11 +854,22 @@ export default function HomePage() {
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
+                              onClick={(e) => handleCopyPlainText(e, sess)}
+                              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-gray-400 hover:text-cyan-400 py-1.5 px-2.5 rounded-lg bg-[#181b26] border border-[#262b3d] hover:border-cyan-500/40 transition-colors cursor-pointer active:scale-95"
+                              title="複製簡潔純文字"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5" />
+                              <span>純文字</span>
+                            </button>
+
+                            <button
+                              type="button"
                               onClick={(e) => handleCopyMarkdown(e, sess)}
-                              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-gray-400 hover:text-emerald-400 py-1.5 px-2.5 rounded-lg bg-[#181b26] border border-[#262b3d] transition-colors cursor-pointer active:scale-95"
+                              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-gray-400 hover:text-emerald-400 py-1.5 px-2.5 rounded-lg bg-[#181b26] border border-[#262b3d] hover:border-emerald-500/40 transition-colors cursor-pointer active:scale-95"
+                              title="複製完整 Markdown"
                             >
                               <Copy className="w-3.5 h-3.5" />
-                              <span>複製 MD</span>
+                              <span>Markdown</span>
                             </button>
 
                             <button
@@ -840,7 +878,7 @@ export default function HomePage() {
                               className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-gray-400 hover:text-red-400 py-1.5 px-2.5 rounded-lg bg-[#181b26] border border-[#262b3d] hover:border-red-500/40 transition-colors cursor-pointer active:scale-95"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
-                              <span>刪除此場</span>
+                              <span>刪除</span>
                             </button>
                           </div>
 
