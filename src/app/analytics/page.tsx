@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import {
   Trophy,
   TrendingUp,
@@ -14,7 +13,6 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
-  Sparkles,
 } from "lucide-react";
 import {
   MonthlyTrendSvgChart,
@@ -132,17 +130,6 @@ export default function AnalyticsPage() {
   const [newIbScore, setNewIbScore] = useState("");
   const [newIbTiming, setNewIbTiming] = useState<"morning_fasting" | "before_lunch" | "after_lunch">("morning_fasting");
   const [prReps, setPrReps] = useState({ bench: 5, squat: 8, deadlift: 2 });
-  const [userHeight, setUserHeight] = useState<number>(172);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("workout_user_height");
-      if (saved) {
-        const v = parseFloat(saved);
-        if (!isNaN(v) && v >= 100 && v <= 250) setUserHeight(v);
-      }
-    }
-  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -576,22 +563,7 @@ export default function AnalyticsPage() {
       ? Math.round((latestInbody.body_water_l - prevInbody.body_water_l) * 10) / 10
       : null;
 
-  // FFMI (Fat-Free Mass Index 去脂體重指數) 計算
-  const heightM = userHeight > 0 ? userHeight / 100 : 1.72;
-  const latestFatPct = latestInbody && typeof latestInbody.body_fat_pct === "number" ? latestInbody.body_fat_pct : 15;
-  const latestWeight = latestInbody?.weight_kg || 0;
-  const ffm = latestWeight > 0 ? latestWeight * (1 - latestFatPct / 100) : 0;
-  const ffmi = heightM > 0 && ffm > 0 ? Math.round((ffm / (heightM * heightM)) * 10) / 10 : 0;
-  const normalizedFfmi = ffmi > 0 ? Math.round((ffmi + 6.1 * (1.8 - heightM)) * 10) / 10 : 0;
 
-  function getFfmiTier(val: number) {
-    if (val < 18) return { label: "基礎體質", color: "text-gray-300", bg: "bg-gray-500/15", border: "border-gray-500/30", pct: 15 };
-    if (val < 20) return { label: "健康標準", color: "text-sky-300", bg: "bg-sky-500/15", border: "border-sky-500/30", pct: 40 };
-    if (val < 22) return { label: "訓練有成", color: "text-emerald-300", bg: "bg-emerald-500/15", border: "border-emerald-500/40", pct: 70 };
-    if (val < 24) return { label: "高階自然健美", color: "text-amber-300", bg: "bg-amber-500/15", border: "border-amber-500/40", pct: 90 };
-    return { label: "自然極限頂峰", color: "text-purple-300", bg: "bg-purple-500/15", border: "border-purple-500/40", pct: 100 };
-  }
-  const ffmiTier = getFfmiTier(normalizedFfmi || ffmi);
 
   const inbodyChartData = validInbody.map((ib) => {
     const tInfo = getInBodyTimingInfo(ib.timing, ib.time);
@@ -1197,45 +1169,7 @@ export default function AnalyticsPage() {
               </div>
             )}
 
-            {/* 🧬 FFMI 去脂體重指數與自然健美等級指標 */}
-            {ffmi > 0 && (
-              <div className="bg-gradient-to-r from-[#111422] to-[#161a29] rounded-xl p-3 border border-purple-500/30 flex items-center justify-between flex-wrap gap-3">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="p-2 rounded-xl bg-purple-500/15 text-purple-300 shrink-0 border border-purple-500/20">
-                    <Sparkles className="w-4 h-4 stroke-[2.5]" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-black text-gray-100">去脂體重指數 (FFMI)</span>
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${ffmiTier.bg} ${ffmiTier.color} ${ffmiTier.border}`}>
-                        {ffmiTier.label}
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-gray-400 block mt-0.5">
-                      去脂體重 {Math.round(ffm * 10) / 10} kg ｜ 身高基準 {userHeight} cm
-                      <Link href="/settings" className="text-purple-400/80 hover:text-purple-300 ml-1 underline underline-offset-2">
-                        修改身高
-                      </Link>
-                    </span>
-                  </div>
-                </div>
 
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <span className="text-[10px] text-gray-400 block">標準化 FFMI (180cm 歸一)</span>
-                    <span className="text-lg font-black font-mono text-purple-300 tracking-tight">
-                      {normalizedFfmi || ffmi}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-gray-500 border-l border-[#262b3d] pl-2.5 space-y-0.5 hidden sm:block font-mono">
-                    <div className="text-gray-400">&lt;18 基礎體格</div>
-                    <div className="text-sky-400/80">18~20 一般健康</div>
-                    <div className="text-emerald-400/80">20~22 訓練有成</div>
-                    <div className="text-amber-400/80">22~25 自然高階</div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
 

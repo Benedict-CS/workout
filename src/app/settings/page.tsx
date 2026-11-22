@@ -12,10 +12,6 @@ import {
   Clock,
   RefreshCw,
   Check,
-  Sparkles,
-  Ruler,
-  VolumeX,
-  Volume2,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { exportAllSessionsToMarkdown } from "@/lib/markdown-generator";
@@ -39,25 +35,7 @@ export default function SettingsPage() {
     return 90;
   });
 
-  // 個人身高設定 (cm，用於 FFMI 指數與自然健美標準運算)
-  const [userHeight, setUserHeight] = useState<number>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("workout_user_height");
-      if (saved) {
-        const v = parseFloat(saved);
-        if (!isNaN(v) && v >= 100 && v <= 250) return v;
-      }
-    }
-    return 172;
-  });
 
-  // 計時器靜音偏好 (預設為安靜模式，純螢幕視覺呈現，無聲無震動)
-  const [timerQuiet, setTimerQuiet] = useState<boolean>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("workout_timer_sound") !== "true";
-    }
-    return true;
-  });
 
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -92,20 +70,7 @@ export default function SettingsPage() {
     setTimeout(() => setToastMsg(null), 2000);
   }
 
-  function handleSaveUserHeight(h: number) {
-    const val = Math.max(100, Math.min(240, Math.round(h * 10) / 10));
-    setUserHeight(val);
-    localStorage.setItem("workout_user_height", val.toString());
-    setToastMsg(`身高設定已更新為 ${val} cm (已連動 FFMI 分析)`);
-    setTimeout(() => setToastMsg(null), 2000);
-  }
 
-  function handleToggleTimerQuiet(quiet: boolean) {
-    setTimerQuiet(quiet);
-    localStorage.setItem("workout_timer_sound", quiet ? "false" : "true");
-    setToastMsg(quiet ? "已啟用靜音模式 (純螢幕視覺呈現，無聲無震動)" : "已啟用鈴聲與震動提醒");
-    setTimeout(() => setToastMsg(null), 2000);
-  }
 
   async function handleManualSync() {
     setIsSyncing(true);
@@ -331,124 +296,7 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      {/* 📏 個人身體身高設定 (FFMI 去脂體重指數運算) */}
-      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3 shadow-md">
-        <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
-          <div className="flex items-center gap-2">
-            <Ruler className="w-4 h-4 text-emerald-400" />
-            <h2 className="text-sm font-bold text-gray-100">個人身體參數 (身高 / FFMI 運算)</h2>
-          </div>
-          <span className="text-xs font-mono font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
-            {userHeight} cm
-          </span>
-        </div>
-        <p className="text-xs text-gray-400">
-          設定身高數值，系統將自動於「數據分析」頁面依據 InBody 實測即時計算去脂體重指數 (FFMI) 與自然健美等級指標。
-        </p>
 
-        {/* 快速選填按鈕 */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[11px] text-gray-400 font-medium">常見身高：</span>
-          {[165, 168, 170, 172, 175, 178, 180].map((h) => (
-            <button
-              key={h}
-              type="button"
-              onClick={() => handleSaveUserHeight(h)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
-                userHeight === h
-                  ? "bg-emerald-500 text-black font-black border border-emerald-400 shadow-sm"
-                  : "bg-[#181b26] border border-[#262b3d] text-gray-300 hover:text-white"
-              }`}
-            >
-              {h} cm
-            </button>
-          ))}
-        </div>
-
-        {/* 身高微調步進器 */}
-        <div className="flex items-center justify-between bg-[#181b26] border border-[#262b3d] rounded-xl p-2.5">
-          <span className="text-xs font-bold text-gray-300">精確微調</span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => handleSaveUserHeight(userHeight - 0.5)}
-              className="px-2.5 py-1 bg-[#12141c] hover:bg-[#202533] border border-[#262b3d] text-gray-200 text-xs font-bold rounded-lg cursor-pointer active:scale-95 transition-all"
-            >
-              -0.5cm
-            </button>
-            <span className="font-mono font-black text-emerald-400 text-sm w-16 text-center">
-              {userHeight} cm
-            </span>
-            <button
-              type="button"
-              onClick={() => handleSaveUserHeight(userHeight + 0.5)}
-              className="px-2.5 py-1 bg-[#12141c] hover:bg-[#202533] border border-[#262b3d] text-gray-200 text-xs font-bold rounded-lg cursor-pointer active:scale-95 transition-all"
-            >
-              +0.5cm
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* 🔕 計時器安靜模式偏好設定 */}
-      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3 shadow-md">
-        <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
-          <div className="flex items-center gap-2">
-            {timerQuiet ? (
-              <VolumeX className="w-4 h-4 text-emerald-400" />
-            ) : (
-              <Volume2 className="w-4 h-4 text-amber-400" />
-            )}
-            <h2 className="text-sm font-bold text-gray-100">組間休息提醒模式</h2>
-          </div>
-          <span
-            className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
-              timerQuiet
-                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                : "bg-amber-500/10 text-amber-300 border-amber-500/30"
-            }`}
-          >
-            {timerQuiet ? "純螢幕視覺呈現 (安靜模式)" : "鈴聲與震動提醒"}
-          </span>
-        </div>
-        <p className="text-xs text-gray-400">
-          預設為安靜模式，倒數結束時以醒目綠色螢幕視覺變色提醒，不發出聲音或震動，維持健身房安靜專注訓練環境。
-        </p>
-
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => handleToggleTimerQuiet(true)}
-            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-              timerQuiet
-                ? "bg-emerald-500/15 border-emerald-500 text-emerald-300 shadow-sm"
-                : "bg-[#181b26] border-[#262b3d] text-gray-400 hover:text-white"
-            }`}
-          >
-            <div className="flex items-center gap-1.5 mb-1 font-bold text-xs">
-              <VolumeX className="w-3.5 h-3.5" />
-              <span>🔕 純螢幕視覺 (推薦)</span>
-            </div>
-            <span className="text-[10px] opacity-80 block">安靜無打擾，超大清晰螢幕變色提醒</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleToggleTimerQuiet(false)}
-            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-              !timerQuiet
-                ? "bg-amber-500/15 border-amber-500 text-amber-300 shadow-sm"
-                : "bg-[#181b26] border-[#262b3d] text-gray-400 hover:text-white"
-            }`}
-          >
-            <div className="flex items-center gap-1.5 mb-1 font-bold text-xs">
-              <Volume2 className="w-3.5 h-3.5" />
-              <span>🔔 鈴聲與震動</span>
-            </div>
-            <span className="text-[10px] opacity-80 block">叮咚柔和提示音與設備短震</span>
-          </button>
-        </div>
-      </section>
 
       {/* 📊 本機資料健康度 (IndexedDB) */}
       <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3">
