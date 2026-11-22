@@ -5,6 +5,7 @@ import { Dumbbell } from "lucide-react";
 import { GlobalRestTimer } from "@/components/GlobalRestTimer";
 import { AutoSyncManager } from "@/components/AutoSyncManager";
 import { BottomNav } from "@/components/BottomNav";
+import { HeaderNavStatus } from "@/components/HeaderNavStatus";
 
 export const metadata: Metadata = {
   title: "Workout - 力量訓練日誌",
@@ -52,6 +53,7 @@ export default function RootLayout({
             <Dumbbell className="w-6 h-6" />
             <span>WORKOUT</span>
           </Link>
+          <HeaderNavStatus />
         </header>
 
         {/* 主要內容區 (含底部導航與 Safe Area 防遮擋) */}

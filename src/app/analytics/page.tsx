@@ -116,6 +116,7 @@ export default function AnalyticsPage() {
   // InBody 身體組成檢測狀態 (八點多頻電極實測)
   const [inbodyList, setInbodyList] = useState<InBodyRecord[]>([]);
   const [inbodyMetricTab, setInbodyMetricTab] = useState<"smm" | "pbf" | "water" | "weight" | "relation">("smm");
+  const [inbodyTimingFilter, setInbodyTimingFilter] = useState<"all" | "morning_fasting" | "after_lunch">("all");
   const [showInbodyForm, setShowInbodyForm] = useState(false);
   const [showAllInbody, setShowAllInbody] = useState(false);
   const [inbodySaving, setInbodySaving] = useState(false);
@@ -539,6 +540,12 @@ export default function AnalyticsPage() {
       timing: tInfo.timing,
       condition: tInfo.fullLabel,
     };
+  });
+
+  // 依時段基準線過濾（純淨空腹 vs 午餐後狀態）
+  const filteredInbodyData = inbodyChartData.filter((ib) => {
+    if (inbodyTimingFilter === "all") return true;
+    return ib.timing === inbodyTimingFilter;
   });
 
   return (
@@ -1123,11 +1130,63 @@ export default function AnalyticsPage() {
           </span>
         </div>
 
+        {/* 檢測時段基準線篩選 (解決空腹 vs 午餐後水分與體重干擾) */}
+        <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-[#262b3d]/40">
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-[11px] text-gray-400 font-medium">時段基準：</span>
+            <button
+              type="button"
+              onClick={() => setInbodyTimingFilter("all")}
+              className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors cursor-pointer ${
+                inbodyTimingFilter === "all"
+                  ? "bg-gray-200 text-black font-black"
+                  : "bg-[#181b26] text-gray-400 hover:text-gray-200 border border-[#262b3d]"
+              }`}
+            >
+              全部 ({inbodyChartData.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setInbodyTimingFilter("morning_fasting")}
+              className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-1 ${
+                inbodyTimingFilter === "morning_fasting"
+                  ? "bg-purple-500 text-white font-black shadow-sm"
+                  : "bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 border border-purple-500/30"
+              }`}
+            >
+              <span>🌅 早晨空腹基準</span>
+              <span>({inbodyChartData.filter(d => d.timing === "morning_fasting").length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setInbodyTimingFilter("after_lunch")}
+              className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-1 ${
+                inbodyTimingFilter === "after_lunch"
+                  ? "bg-blue-500 text-white font-black shadow-sm"
+                  : "bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 border border-blue-500/30"
+              }`}
+            >
+              <span>🍱 午餐後狀態</span>
+              <span>({inbodyChartData.filter(d => d.timing === "after_lunch").length})</span>
+            </button>
+          </div>
+          {inbodyTimingFilter === "morning_fasting" && (
+            <span className="text-[10px] text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20 font-medium">
+              ✨ 最純淨空腹基準線，剔除飲食與暫時儲水干擾
+            </span>
+          )}
+          {inbodyTimingFilter === "after_lunch" && (
+            <span className="text-[10px] text-blue-300 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 font-medium">
+              💡 午餐後水分較多 (+0.5~1.2L)，骨骼肌推估值偏高
+            </span>
+          )}
+        </div>
+
         {/* InBody Line Chart (Native SVG 零崩潰圖表) */}
         <div className="pt-1">
           {inbodyMetricTab === "relation" ? (
             <TriMetricCorrelationSvgChart
-              data={inbodyChartData.map((ib) => ({
+              data={filteredInbodyData.map((ib) => ({
                 date: ib.date,
                 fullDate: ib.fullDate,
                 smm: ib.smm,
@@ -1139,7 +1198,7 @@ export default function AnalyticsPage() {
             />
           ) : (
             <SingleMetricSvgChart
-              data={inbodyChartData.map((ib) => ({
+              data={filteredInbodyData.map((ib) => ({
                 date: ib.date,
                 fullDate: ib.fullDate,
                 value:
@@ -1380,7 +1439,7 @@ export default function AnalyticsPage() {
           </div>
         )}
 
-        {/* 查看全部 17 次歷史明細開關 */}
+        {/* InBody 歷次檢測明細開關 */}
         <div className="pt-0.5 text-right">
           <button
             type="button"
@@ -1391,10 +1450,18 @@ export default function AnalyticsPage() {
           </button>
         </div>
 
-        {/* 17 次 InBody 歷史明細清單 */}
+        {/* InBody 歷史明細清單 */}
         {showAllInbody && (
           <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1 border-t border-[#262b3d]/40 pt-2">
-            {inbodyList.slice().reverse().map((ib) => {
+            {inbodyList
+              .filter((ib) => {
+                if (inbodyTimingFilter === "all") return true;
+                const tInfo = getInBodyTimingInfo(ib.timing, ib.time);
+                return tInfo.timing === inbodyTimingFilter;
+              })
+              .slice()
+              .reverse()
+              .map((ib) => {
               const tInfo = getInBodyTimingInfo(ib.timing, ib.time);
               return (
                 <div

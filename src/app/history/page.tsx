@@ -354,12 +354,14 @@ export default function HistoryPage() {
 
   // 本月份訓練概況統計
   const curMonthSessions = sessions.filter((s) => s.month_key === calendarMonth);
-  const curMonthMuscleCounts: Record<string, number> = { 胸: 0, 背: 0, 腿: 0, 肩: 0, 游泳: 0 };
+  const curMonthMuscleCounts: Record<string, number> = { 胸: 0, 背: 0, 腿: 0, 肩: 0, 手臂: 0, 核心: 0, 游泳: 0 };
   for (const s of curMonthSessions) {
     if (s.target_muscle.includes("胸")) curMonthMuscleCounts["胸"]++;
     else if (s.target_muscle.includes("背")) curMonthMuscleCounts["背"]++;
     else if (s.target_muscle.includes("腿")) curMonthMuscleCounts["腿"]++;
     else if (s.target_muscle.includes("肩")) curMonthMuscleCounts["肩"]++;
+    else if (s.target_muscle.includes("臂") || s.target_muscle.includes("二頭") || s.target_muscle.includes("三頭")) curMonthMuscleCounts["手臂"]++;
+    else if (s.target_muscle.includes("核") || s.target_muscle.includes("腹")) curMonthMuscleCounts["核心"]++;
     else if (s.target_muscle.includes("泳")) curMonthMuscleCounts["游泳"]++;
   }
 
@@ -602,20 +604,26 @@ export default function HistoryPage() {
             </div>
 
             {/* 本月統計條 */}
-            <div className="flex items-center justify-between bg-[#181b26] px-3 py-2 rounded-xl text-xs border border-[#262b3d]/60 text-gray-400">
-              <span className="font-bold text-white">
+            <div className="flex items-center justify-between bg-[#181b26] px-3 py-2 rounded-xl text-xs border border-[#262b3d]/60 text-gray-400 gap-2">
+              <span className="font-bold text-white shrink-0">
                 本月累計{" "}
                 <strong className="text-emerald-400 font-black">
                   {curMonthSessions.length}
                 </strong>{" "}
                 場訓練
               </span>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-red-400">胸 <strong className="text-white font-black">{curMonthMuscleCounts["胸"]}</strong></span>
-                <span className="text-blue-400">背 <strong className="text-white font-black">{curMonthMuscleCounts["背"]}</strong></span>
-                <span className="text-emerald-400">腿 <strong className="text-white font-black">{curMonthMuscleCounts["腿"]}</strong></span>
-                <span className="text-purple-400">肩 <strong className="text-white font-black">{curMonthMuscleCounts["肩"] || 0}</strong></span>
-                <span className="text-cyan-400">游 <strong className="text-white font-black">{curMonthMuscleCounts["游泳"]}</strong></span>
+              <div className="flex items-center gap-2 text-xs overflow-x-auto no-scrollbar">
+                <span className="text-red-400 shrink-0">胸 <strong className="text-white font-black">{curMonthMuscleCounts["胸"]}</strong></span>
+                <span className="text-blue-400 shrink-0">背 <strong className="text-white font-black">{curMonthMuscleCounts["背"]}</strong></span>
+                <span className="text-emerald-400 shrink-0">腿 <strong className="text-white font-black">{curMonthMuscleCounts["腿"]}</strong></span>
+                <span className="text-purple-400 shrink-0">肩 <strong className="text-white font-black">{curMonthMuscleCounts["肩"] || 0}</strong></span>
+                {curMonthMuscleCounts["手臂"] > 0 && (
+                  <span className="text-pink-400 shrink-0">臂 <strong className="text-white font-black">{curMonthMuscleCounts["手臂"]}</strong></span>
+                )}
+                {curMonthMuscleCounts["核心"] > 0 && (
+                  <span className="text-amber-400 shrink-0">核 <strong className="text-white font-black">{curMonthMuscleCounts["核心"]}</strong></span>
+                )}
+                <span className="text-cyan-400 shrink-0">游 <strong className="text-white font-black">{curMonthMuscleCounts["游泳"]}</strong></span>
               </div>
             </div>
 

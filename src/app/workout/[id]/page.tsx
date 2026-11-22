@@ -3874,6 +3874,9 @@ export default function WorkoutDetailPage({
                   <option value="背">背部</option>
                   <option value="腿">腿部</option>
                   <option value="肩">肩部</option>
+                  <option value="手臂">手臂 (二頭 / 三頭)</option>
+                  <option value="核心">核心 (腹肌 / 下背)</option>
+                  <option value="其他">其他 / 全身綜合</option>
                 </select>
               </div>
 

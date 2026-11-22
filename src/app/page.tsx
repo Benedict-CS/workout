@@ -32,6 +32,8 @@ interface MonthGroupData {
     背: number;
     腿: number;
     肩?: number;
+    手臂?: number;
+    核心?: number;
     游泳: number;
     total: number;
   };
@@ -190,7 +192,7 @@ export default function HomePage() {
         const rawSessList = monthMap.get(mk) || [];
         // 該月內訓練按日期由先至後順序排列
         const sessList = [...rawSessList].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-        const mStats = { 胸: 0, 背: 0, 腿: 0, 肩: 0, 游泳: 0, total: sessList.length };
+        const mStats = { 胸: 0, 背: 0, 腿: 0, 肩: 0, 手臂: 0, 核心: 0, 游泳: 0, total: sessList.length };
 
         // 計算該月部位頻率
         for (const s of sessList) {
@@ -199,6 +201,8 @@ export default function HomePage() {
           else if (muscle.includes("背")) mStats["背"]++;
           else if (muscle.includes("腿")) mStats["腿"]++;
           else if (muscle.includes("肩")) mStats["肩"]++;
+          else if (muscle.includes("臂") || muscle.includes("二頭") || muscle.includes("三頭")) mStats["手臂"]++;
+          else if (muscle.includes("核") || muscle.includes("腹")) mStats["核心"]++;
           else if (muscle.includes("泳")) mStats["游泳"]++;
         }
 
@@ -571,10 +575,10 @@ export default function HomePage() {
                 </button>
               </div>
 
-              {/* 部位快速篩選 Pills (全部 / 胸 / 背 / 腿 / 肩 / 游泳) */}
+              {/* 部位快速篩選 Pills (全部 / 胸 / 背 / 腿 / 肩 / 手臂 / 核心 / 游泳) */}
               {currentGroup.sessions.length > 0 && (
                 <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-                  {(["all", "胸", "背", "腿", "肩", "游泳"] as const).map((m) => {
+                  {(["all", "胸", "背", "腿", "肩", "手臂", "核心", "游泳"] as const).map((m) => {
                     const label = m === "all" ? "全部" : m;
                     const count = m === "all"
                       ? currentGroup.sessions.length
