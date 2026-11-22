@@ -32,9 +32,7 @@ interface MonthGroupData {
     胸: number;
     背: number;
     腿: number;
-    肩?: number;
-    手臂?: number;
-    核心?: number;
+    肩: number;
     游泳: number;
     total: number;
   };
@@ -52,6 +50,41 @@ export default function HomePage() {
   const [sessionSetsMap, setSessionSetsMap] = useState<Record<string, SetItem[]>>({});
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const exercisesMap = useMemo(() => new Map(exercises.map((e) => [e.id, e])), [exercises]);
+
+  // 本週訓練規律度計算 (週一至週日) - 頂層 Hook 確保每次 Render 順序絕對一致
+  const currentWeekDays = useMemo(() => {
+    const now = new Date();
+    const dayOfWeek = (now.getDay() + 6) % 7; // 0 = Mon, 6 = Sun
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - dayOfWeek);
+
+    const weekDates: { dateStr: string; dayLabel: string; hasWorkout: boolean; isToday: boolean }[] = [];
+    const labels = ["一", "二", "三", "四", "五", "六", "日"];
+    const allSessionDates = new Set(
+      monthGroups.flatMap((g) => g.sessions.map((s) => s.date))
+    );
+
+    const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, "0")}-${now.getDate().toString().padStart(2, "0")}`;
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const y = d.getFullYear();
+      const m = (d.getMonth() + 1).toString().padStart(2, "0");
+      const day = d.getDate().toString().padStart(2, "0");
+      const dateStr = `${y}-${m}-${day}`;
+      weekDates.push({
+        dateStr,
+        dayLabel: labels[i],
+        hasWorkout: allSessionDates.has(dateStr),
+        isToday: dateStr === todayStr,
+      });
+    }
+    return weekDates;
+  }, [monthGroups]);
+
+  const thisWeekWorkoutCount = currentWeekDays.filter((d) => d.hasWorkout).length;
+
   const [copyToast, setCopyToast] = useState<string | null>(null);
 
   // 當前正在進行中的訓練 (若有，置頂醒目顯示防止鎖屏跳出後找不到)
@@ -194,17 +227,15 @@ export default function HomePage() {
         const rawSessList = monthMap.get(mk) || [];
         // 該月內訓練按日期由先至後順序排列
         const sessList = [...rawSessList].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-        const mStats = { 胸: 0, 背: 0, 腿: 0, 肩: 0, 手臂: 0, 核心: 0, 游泳: 0, total: sessList.length };
+        const mStats = { 胸: 0, 背: 0, 腿: 0, 肩: 0, 游泳: 0, total: sessList.length };
 
-        // 計算該月部位頻率
+        // 計算該月部位頻率 (胸, 背, 腿, 肩, 游泳)
         for (const s of sessList) {
           const muscle = s?.target_muscle || "";
           if (muscle.includes("胸")) mStats["胸"]++;
           else if (muscle.includes("背")) mStats["背"]++;
           else if (muscle.includes("腿")) mStats["腿"]++;
           else if (muscle.includes("肩")) mStats["肩"]++;
-          else if (muscle.includes("臂") || muscle.includes("二頭") || muscle.includes("三頭")) mStats["手臂"]++;
-          else if (muscle.includes("核") || muscle.includes("腹")) mStats["核心"]++;
           else if (muscle.includes("泳")) mStats["游泳"]++;
         }
 
@@ -349,40 +380,6 @@ export default function HomePage() {
   const allCurrentExpanded = currentGroup
     ? currentGroup.sessions.every((s) => expandedSessionIds.has(s.id))
     : false;
-
-  // 本週訓練規律度計算 (週一至週日)
-  const currentWeekDays = useMemo(() => {
-    const now = new Date();
-    const dayOfWeek = (now.getDay() + 6) % 7; // 0 = Mon, 6 = Sun
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - dayOfWeek);
-
-    const weekDates: { dateStr: string; dayLabel: string; hasWorkout: boolean; isToday: boolean }[] = [];
-    const labels = ["一", "二", "三", "四", "五", "六", "日"];
-    const allSessionDates = new Set(
-      monthGroups.flatMap((g) => g.sessions.map((s) => s.date))
-    );
-
-    const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, "0")}-${now.getDate().toString().padStart(2, "0")}`;
-
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      const y = d.getFullYear();
-      const m = (d.getMonth() + 1).toString().padStart(2, "0");
-      const day = d.getDate().toString().padStart(2, "0");
-      const dateStr = `${y}-${m}-${day}`;
-      weekDates.push({
-        dateStr,
-        dayLabel: labels[i],
-        hasWorkout: allSessionDates.has(dateStr),
-        isToday: dateStr === todayStr,
-      });
-    }
-    return weekDates;
-  }, [monthGroups]);
-
-  const thisWeekWorkoutCount = currentWeekDays.filter((d) => d.hasWorkout).length;
 
   return (
     <div className="space-y-4 pb-24">
@@ -598,18 +595,6 @@ export default function HomePage() {
                     <span className="text-[11px] text-purple-400 block">肩</span>
                     <span className="text-sm font-black text-white">{currentGroup.stats["肩"] || 0}</span>
                   </div>
-                  {(currentGroup.stats["手臂"] || 0) > 0 && (
-                    <div>
-                      <span className="text-[11px] text-pink-400 block">臂</span>
-                      <span className="text-sm font-black text-white">{currentGroup.stats["手臂"]}</span>
-                    </div>
-                  )}
-                  {(currentGroup.stats["核心"] || 0) > 0 && (
-                    <div>
-                      <span className="text-[11px] text-orange-400 block">核</span>
-                      <span className="text-sm font-black text-white">{currentGroup.stats["核心"]}</span>
-                    </div>
-                  )}
                   <div>
                     <span className="text-[11px] text-cyan-400 block">游</span>
                     <span className="text-sm font-black text-white">{currentGroup.stats["游泳"] || 0}</span>
@@ -660,10 +645,10 @@ export default function HomePage() {
                 </button>
               </div>
 
-              {/* 部位快速篩選 Pills (全部 / 胸 / 背 / 腿 / 肩 / 手臂 / 核心 / 游泳) */}
+              {/* 部位快速篩選 Pills (全部 / 胸 / 背 / 腿 / 肩 / 游泳) */}
               {currentGroup.sessions.length > 0 && (
                 <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-                  {(["all", "胸", "背", "腿", "肩", "手臂", "核心", "游泳"] as const).map((m) => {
+                  {(["all", "胸", "背", "腿", "肩", "游泳"] as const).map((m) => {
                     const label = m === "all" ? "全部" : m;
                     const count = m === "all"
                       ? currentGroup.sessions.length

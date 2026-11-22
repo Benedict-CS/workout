@@ -4043,8 +4043,8 @@ export default function WorkoutDetailPage({
 
               <div>
                 <label className="text-gray-300 font-bold block mb-1">訓練部位</label>
-                <div className="grid grid-cols-4 sm:grid-cols-7 gap-1">
-                  {["胸", "背", "腿", "肩", "手臂", "核心", "游泳"].map((m) => (
+                <div className="grid grid-cols-5 gap-1">
+                  {["胸", "背", "腿", "肩", "游泳"].map((m) => (
                     <button
                       key={m}
                       type="button"

@@ -617,12 +617,6 @@ export default function HistoryPage() {
                 <span className="text-blue-400 shrink-0">背 <strong className="text-white font-black">{curMonthMuscleCounts["背"]}</strong></span>
                 <span className="text-emerald-400 shrink-0">腿 <strong className="text-white font-black">{curMonthMuscleCounts["腿"]}</strong></span>
                 <span className="text-purple-400 shrink-0">肩 <strong className="text-white font-black">{curMonthMuscleCounts["肩"] || 0}</strong></span>
-                {curMonthMuscleCounts["手臂"] > 0 && (
-                  <span className="text-pink-400 shrink-0">臂 <strong className="text-white font-black">{curMonthMuscleCounts["手臂"]}</strong></span>
-                )}
-                {curMonthMuscleCounts["核心"] > 0 && (
-                  <span className="text-amber-400 shrink-0">核 <strong className="text-white font-black">{curMonthMuscleCounts["核心"]}</strong></span>
-                )}
                 <span className="text-cyan-400 shrink-0">游 <strong className="text-white font-black">{curMonthMuscleCounts["游泳"]}</strong></span>
               </div>
             </div>

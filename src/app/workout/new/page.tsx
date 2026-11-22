@@ -28,7 +28,7 @@ const LOCATION_PRESETS = [
   { id: "交大游泳池", label: "交大游泳池", icon: "🏊" },
 ] as const;
 
-// 部位膠囊預設及專屬主題發光色 (胸藍、背綠、腿紫、肩橘、臂粉、核黃、泳青)
+// 部位膠囊預設及專屬主題發光色 (胸藍、背綠、腿紫、肩橘、泳青)
 const MUSCLE_PRESETS = [
   {
     id: "胸",
@@ -57,20 +57,6 @@ const MUSCLE_PRESETS = [
     icon: "🎯",
     activeClass:
       "bg-orange-500/15 border-orange-500/80 text-orange-300 shadow-[0_0_16px_rgba(249,115,22,0.4)] ring-1 ring-orange-500/50",
-  },
-  {
-    id: "手臂",
-    label: "手臂",
-    icon: "💪",
-    activeClass:
-      "bg-pink-500/15 border-pink-500/80 text-pink-300 shadow-[0_0_16px_rgba(236,72,153,0.4)] ring-1 ring-pink-500/50",
-  },
-  {
-    id: "核心",
-    label: "核心",
-    icon: "🧘",
-    activeClass:
-      "bg-amber-500/15 border-amber-500/80 text-amber-300 shadow-[0_0_16px_rgba(245,158,11,0.4)] ring-1 ring-amber-500/50",
   },
   {
     id: "游泳",
@@ -132,8 +118,6 @@ function NewWorkoutForm() {
       else if (urlMuscle.includes("背")) setTargetMuscle("背");
       else if (urlMuscle.includes("腿")) setTargetMuscle("腿");
       else if (urlMuscle.includes("肩")) setTargetMuscle("肩");
-      else if (urlMuscle.includes("臂") || urlMuscle.includes("二頭") || urlMuscle.includes("三頭")) setTargetMuscle("手臂");
-      else if (urlMuscle.includes("核") || urlMuscle.includes("腹")) setTargetMuscle("核心");
       else if (urlMuscle.includes("泳")) {
         setTargetMuscle("游泳");
         setLocation("交大游泳池");
@@ -566,7 +550,7 @@ function NewWorkoutForm() {
             <span className="text-[10px] text-gray-500">點選切換專屬主題色</span>
           </div>
 
-          <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5 sm:gap-2">
+          <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
             {MUSCLE_PRESETS.map((m) => {
               const isSelected = targetMuscle === m.id;
               return (

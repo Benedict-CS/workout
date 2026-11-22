@@ -1,13 +1,11 @@
 import type { WorkoutSession } from "./types";
 
-export function getPrimaryMuscle(muscle: string): "胸" | "背" | "腿" | "肩" | "手臂" | "核心" | "游泳" {
+export function getPrimaryMuscle(muscle: string): "胸" | "背" | "腿" | "肩" | "游泳" {
   if (!muscle) return "胸";
   if (muscle.includes("胸")) return "胸";
   if (muscle.includes("背")) return "背";
   if (muscle.includes("腿")) return "腿";
   if (muscle.includes("肩")) return "肩";
-  if (muscle.includes("臂") || muscle.includes("二頭") || muscle.includes("三頭")) return "手臂";
-  if (muscle.includes("核") || muscle.includes("腹")) return "核心";
   if (muscle.includes("泳")) return "游泳";
   return "胸";
 }
@@ -23,10 +21,6 @@ export function getMuscleBadgeColor(muscle: string): string {
       return "bg-emerald-500/20 text-emerald-300 border-emerald-500/40";
     case "肩":
       return "bg-purple-500/20 text-purple-300 border-purple-500/40";
-    case "手臂":
-      return "bg-pink-500/20 text-pink-300 border-pink-500/40";
-    case "核心":
-      return "bg-orange-500/20 text-orange-300 border-orange-500/40";
     case "游泳":
       return "bg-cyan-500/20 text-cyan-300 border-cyan-500/40";
     default:
