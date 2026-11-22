@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import {
   Download,
@@ -37,6 +37,29 @@ export default function SettingsPage() {
   });
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [dbStats, setDbStats] = useState<{
+    sessionsCount: number;
+    setsCount: number;
+    exercisesCount: number;
+    inbodyCount: number;
+  }>({ sessionsCount: 0, setsCount: 0, exercisesCount: 0, inbodyCount: 0 });
+
+  useEffect(() => {
+    async function fetchCounts() {
+      try {
+        const [sCount, setCount, exCount, ibCount] = await Promise.all([
+          db.sessions.filter((s) => !s.deleted_at).count(),
+          db.sets.filter((s) => !s.deleted_at).count(),
+          db.exercises.filter((e) => !e.deleted_at).count(),
+          db.inbody_records.count(),
+        ]);
+        setDbStats({ sessionsCount: sCount, setsCount: setCount, exercisesCount: exCount, inbodyCount: ibCount });
+      } catch (e) {
+        console.warn("無法取得本機資料庫計數:", e);
+      }
+    }
+    fetchCounts();
+  }, []);
 
   function handleSaveDefaultRest(sec: number) {
     setDefaultRest(sec);
@@ -265,6 +288,42 @@ export default function SettingsPage() {
             >
               +15秒
             </button>
+          </div>
+        </div>
+      </section>
+
+      {/* 📊 本機資料健康度 (IndexedDB) */}
+      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3">
+        <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
+          <div className="flex items-center gap-2">
+            <Database className="w-4 h-4 text-emerald-400" />
+            <h2 className="text-sm font-bold text-gray-100">本機離線數據狀態</h2>
+          </div>
+          <span className="text-[10px] text-emerald-400 font-mono font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+            Dexie 本地秒存正常
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]">
+            <span className="text-[10px] text-gray-400 block mb-0.5">累計訓練</span>
+            <span className="text-base font-black text-white font-mono">{dbStats.sessionsCount}</span>
+            <span className="text-[10px] text-gray-500 block mt-0.5">場次</span>
+          </div>
+          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]">
+            <span className="text-[10px] text-gray-400 block mb-0.5">累計做組</span>
+            <span className="text-base font-black text-white font-mono">{dbStats.setsCount}</span>
+            <span className="text-[10px] text-gray-500 block mt-0.5">組數</span>
+          </div>
+          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]">
+            <span className="text-[10px] text-gray-400 block mb-0.5">動作庫</span>
+            <span className="text-base font-black text-white font-mono">{dbStats.exercisesCount}</span>
+            <span className="text-[10px] text-gray-500 block mt-0.5">個動作</span>
+          </div>
+          <div className="bg-[#181b26] p-2.5 rounded-xl border border-[#262b3d]">
+            <span className="text-[10px] text-gray-400 block mb-0.5">InBody 檢測</span>
+            <span className="text-base font-black text-white font-mono">{dbStats.inbodyCount}</span>
+            <span className="text-[10px] text-gray-500 block mt-0.5">筆實測</span>
           </div>
         </div>
       </section>
