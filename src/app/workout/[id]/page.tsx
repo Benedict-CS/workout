@@ -2560,13 +2560,33 @@ export default function WorkoutDetailPage({
             </button>
           </div>
 
-          {/* 主輸入框：重量 (Kg) 與 次數 (次) - 直接輸入，無步進廢鍵 */}
+          {/* 主輸入框：重量 (Kg) 與 次數 (次) - 附帶極速微調步進鈕 */}
           <div className="grid grid-cols-2 gap-2.5">
             <div>
-              <label className="text-xs text-gray-300 block mb-1 font-bold">重量 (Kg)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-gray-300 font-bold">重量 (Kg)</label>
+                <div className="flex items-center gap-1">
+                  {[-5, -2.5, 2.5, 5].map((delta) => (
+                    <button
+                      key={delta}
+                      type="button"
+                      onClick={() => {
+                        const cur = parseFloat(inputWeight) || 0;
+                        const next = Math.max(0, Math.round((cur + delta) * 10) / 10);
+                        setInputWeight(next > 0 ? next.toString() : "");
+                      }}
+                      className="text-[9px] px-1.5 py-0.5 rounded bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 font-mono font-bold active:scale-95 cursor-pointer"
+                    >
+                      {delta > 0 ? `+${delta}` : delta}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <input
                 type="number"
                 step="any"
+                inputMode="decimal"
+                autoComplete="off"
                 placeholder="60"
                 value={inputWeight}
                 onChange={(e) => setInputWeight(e.target.value)}
@@ -2575,9 +2595,29 @@ export default function WorkoutDetailPage({
             </div>
 
             <div>
-              <label className="text-xs text-gray-300 block mb-1 font-bold">次數 (下)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-gray-300 font-bold">次數 (下)</label>
+                <div className="flex items-center gap-1">
+                  {[-1, 1, 2].map((delta) => (
+                    <button
+                      key={delta}
+                      type="button"
+                      onClick={() => {
+                        const cur = parseInt(inputReps, 10) || 0;
+                        const next = Math.max(0, cur + delta);
+                        setInputReps(next > 0 ? next.toString() : "");
+                      }}
+                      className="text-[9px] px-1.5 py-0.5 rounded bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-300 font-mono font-bold active:scale-95 cursor-pointer"
+                    >
+                      {delta > 0 ? `+${delta}` : delta}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <input
                 type="number"
+                inputMode="numeric"
+                autoComplete="off"
                 placeholder="8"
                 value={inputReps}
                 onChange={(e) => setInputReps(e.target.value)}
@@ -2954,18 +2994,22 @@ export default function WorkoutDetailPage({
                 <input
                   type="number"
                   step="any"
+                  inputMode="decimal"
+                  autoComplete="off"
                   value={editSetWeight}
                   onChange={(e) => setEditSetWeight(e.target.value)}
-                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-sm font-bold rounded-xl p-2.5 text-center outline-none"
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-sm font-bold rounded-xl p-2.5 text-center outline-none focus:border-emerald-500"
                 />
               </div>
               <div>
                 <label className="text-[10px] text-gray-400 block mb-1">次數 (下)</label>
                 <input
                   type="number"
+                  inputMode="numeric"
+                  autoComplete="off"
                   value={editSetReps}
                   onChange={(e) => setEditSetReps(e.target.value)}
-                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-sm font-bold rounded-xl p-2.5 text-center outline-none"
+                  className="w-full bg-[#181b26] border border-[#262b3d] text-white text-sm font-bold rounded-xl p-2.5 text-center outline-none focus:border-emerald-500"
                 />
               </div>
             </div>

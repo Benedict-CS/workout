@@ -23,6 +23,7 @@ import {
 import { db } from "@/lib/db/schema";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
 import { runFullSync, deleteRemoteBodyWeight } from "@/lib/db/sync";
+import { getStrengthStandard } from "@/lib/calc";
 import type {
   WorkoutSession,
   SetItem,
@@ -610,63 +611,96 @@ export default function AnalyticsPage() {
             </span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
-            <div className="bg-[#181b26] p-2.5 rounded-xl border border-red-500/20">
-              <span className="text-[11px] text-gray-400 block mb-0.5">臥推 PR</span>
-              <div className="flex items-baseline justify-center gap-1">
-                <span className="text-base font-black text-red-300">{bigThree.bench_press_kg} kg</span>
-                <span className="text-[10px] text-red-400/90 font-bold">(x{prReps.bench})</span>
-              </div>
-              <span className="text-[10px] text-red-400 font-bold block mt-0.5">
-                {bigThree.body_weight_kg && bigThree.body_weight_kg > 0
-                  ? (bigThree.bench_press_kg / bigThree.body_weight_kg).toFixed(2)
-                  : "0.94"}x 體重
-              </span>
-            </div>
+          {(() => {
+            const bw = bigThree.body_weight_kg || 63.6;
+            const benchRatio = bw > 0 ? bigThree.bench_press_kg / bw : 0.94;
+            const squatRatio = bw > 0 ? bigThree.squat_kg / bw : 1.42;
+            const deadliftRatio = bw > 0 ? bigThree.deadlift_kg / bw : 1.42;
+            const totalKg = bigThree.bench_press_kg + bigThree.squat_kg + bigThree.deadlift_kg;
+            const totalRatio = bw > 0 ? totalKg / bw : 3.77;
 
-            <div className="bg-[#181b26] p-2.5 rounded-xl border border-emerald-500/20">
-              <span className="text-[11px] text-gray-400 block mb-0.5">深蹲 PR</span>
-              <div className="flex items-baseline justify-center gap-1">
-                <span className="text-base font-black text-emerald-300">{bigThree.squat_kg} kg</span>
-                <span className="text-[10px] text-emerald-400/90 font-bold">(x{prReps.squat})</span>
-              </div>
-              <span className="text-[10px] text-emerald-400 font-bold block mt-0.5">
-                {bigThree.body_weight_kg && bigThree.body_weight_kg > 0
-                  ? (bigThree.squat_kg / bigThree.body_weight_kg).toFixed(2)
-                  : "1.42"}x 體重
-              </span>
-            </div>
+            const benchStd = getStrengthStandard("bench", benchRatio);
+            const squatStd = getStrengthStandard("squat", squatRatio);
+            const deadliftStd = getStrengthStandard("deadlift", deadliftRatio);
+            const totalStd = getStrengthStandard("total", totalRatio);
 
-            <div className="bg-[#181b26] p-2.5 rounded-xl border border-blue-500/20">
-              <span className="text-[11px] text-gray-400 block mb-0.5">硬舉 PR</span>
-              <div className="flex items-baseline justify-center gap-1">
-                <span className="text-base font-black text-blue-300">{bigThree.deadlift_kg} kg</span>
-                <span className="text-[10px] text-blue-400/90 font-bold">(x{prReps.deadlift})</span>
-              </div>
-              <span className="text-[10px] text-blue-400 font-bold block mt-0.5">
-                {bigThree.body_weight_kg && bigThree.body_weight_kg > 0
-                  ? (bigThree.deadlift_kg / bigThree.body_weight_kg).toFixed(2)
-                  : "1.42"}x 體重
-              </span>
-            </div>
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                <div className="bg-[#181b26] p-2.5 rounded-xl border border-red-500/20 flex flex-col justify-between">
+                  <div>
+                    <span className="text-[11px] text-gray-400 block mb-0.5">臥推 PR</span>
+                    <div className="flex items-baseline justify-center gap-1">
+                      <span className="text-base font-black text-red-300">{bigThree.bench_press_kg} kg</span>
+                      <span className="text-[10px] text-red-400/90 font-bold">(x{prReps.bench})</span>
+                    </div>
+                    <span className="text-[10px] text-red-400 font-bold block mt-0.5">
+                      {benchRatio.toFixed(2)}x 體重
+                    </span>
+                  </div>
+                  <div className="mt-1.5">
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border inline-block ${benchStd.badgeClass}`}>
+                      {benchStd.label}水準
+                    </span>
+                  </div>
+                </div>
 
-            <div className="bg-[#181b26] p-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5">
-              <span className="text-[11px] text-amber-400 font-bold block mb-0.5">三項總和</span>
-              <div className="flex items-baseline justify-center gap-1">
-                <span className="text-base font-black text-amber-300">
-                  {bigThree.bench_press_kg + bigThree.squat_kg + bigThree.deadlift_kg} kg
-                </span>
+                <div className="bg-[#181b26] p-2.5 rounded-xl border border-emerald-500/20 flex flex-col justify-between">
+                  <div>
+                    <span className="text-[11px] text-gray-400 block mb-0.5">深蹲 PR</span>
+                    <div className="flex items-baseline justify-center gap-1">
+                      <span className="text-base font-black text-emerald-300">{bigThree.squat_kg} kg</span>
+                      <span className="text-[10px] text-emerald-400/90 font-bold">(x{prReps.squat})</span>
+                    </div>
+                    <span className="text-[10px] text-emerald-400 font-bold block mt-0.5">
+                      {squatRatio.toFixed(2)}x 體重
+                    </span>
+                  </div>
+                  <div className="mt-1.5">
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border inline-block ${squatStd.badgeClass}`}>
+                      {squatStd.label}水準
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-[#181b26] p-2.5 rounded-xl border border-blue-500/20 flex flex-col justify-between">
+                  <div>
+                    <span className="text-[11px] text-gray-400 block mb-0.5">硬舉 PR</span>
+                    <div className="flex items-baseline justify-center gap-1">
+                      <span className="text-base font-black text-blue-300">{bigThree.deadlift_kg} kg</span>
+                      <span className="text-[10px] text-blue-400/90 font-bold">(x{prReps.deadlift})</span>
+                    </div>
+                    <span className="text-[10px] text-blue-400 font-bold block mt-0.5">
+                      {deadliftRatio.toFixed(2)}x 體重
+                    </span>
+                  </div>
+                  <div className="mt-1.5">
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border inline-block ${deadliftStd.badgeClass}`}>
+                      {deadliftStd.label}水準
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-[#181b26] p-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5 flex flex-col justify-between">
+                  <div>
+                    <span className="text-[11px] text-amber-400 font-bold block mb-0.5">三項總和</span>
+                    <div className="flex items-baseline justify-center gap-1">
+                      <span className="text-base font-black text-amber-300">
+                        {totalKg} kg
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-amber-400 font-bold block mt-0.5">
+                      {totalRatio.toFixed(2)}x 體重
+                    </span>
+                  </div>
+                  <div className="mt-1.5">
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border inline-block ${totalStd.badgeClass}`}>
+                      {totalStd.label}水準
+                    </span>
+                  </div>
+                </div>
               </div>
-              <span className="text-[10px] text-amber-400 font-bold block mt-0.5">
-                {bigThree.body_weight_kg && bigThree.body_weight_kg > 0
-                  ? (
-                      (bigThree.bench_press_kg + bigThree.squat_kg + bigThree.deadlift_kg) /
-                      bigThree.body_weight_kg
-                    ).toFixed(2)
-                  : "3.77"}x 體重
-              </span>
-            </div>
-          </div>
+            );
+          })()}
         </section>
       )}
 

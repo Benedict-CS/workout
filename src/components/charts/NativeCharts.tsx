@@ -544,6 +544,9 @@ export interface InBodyTriPoint {
 
 export function TriMetricCorrelationSvgChart({ data }: { data: InBodyTriPoint[] }) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [showWater, setShowWater] = useState(true);
+  const [showSmm, setShowSmm] = useState(true);
+  const [showPbf, setShowPbf] = useState(true);
 
   const validData = Array.isArray(data)
     ? data.filter(
@@ -607,33 +610,65 @@ export function TriMetricCorrelationSvgChart({ data }: { data: InBodyTriPoint[] 
   const smmPoints = validData.map((d, i) => `${getX(i)},${getNormY(d.smm, minSmm, maxSmm)}`).join(" ");
   const pbfPoints = validData.map((d, i) => `${getX(i)},${getNormY(d.pbf, minPbf, maxPbf)}`).join(" ");
 
-  const activeItem =
-    hoverIndex !== null && hoverIndex >= 0 && hoverIndex < validData.length
-      ? validData[hoverIndex]
-      : validData[validData.length - 1];
+  const curIndex = hoverIndex !== null && hoverIndex >= 0 && hoverIndex < validData.length
+    ? hoverIndex
+    : validData.length - 1;
+  const activeItem = validData[curIndex];
+  const prevItem = curIndex > 0 ? validData[curIndex - 1] : null;
+
+  const dWater = prevItem && activeItem ? Math.round((activeItem.water - prevItem.water) * 10) / 10 : null;
+  const dSmm = prevItem && activeItem ? Math.round((activeItem.smm - prevItem.smm) * 10) / 10 : null;
+  const dPbf = prevItem && activeItem ? Math.round((activeItem.pbf - prevItem.pbf) * 10) / 10 : null;
+  const dWeight = prevItem && activeItem ? Math.round((activeItem.weight - prevItem.weight) * 10) / 10 : null;
+
+  const isHydrationShift = dWater !== null && Math.abs(dWater) >= 0.4;
 
   const colWidth = Math.max(10, plotW / validData.length);
 
   return (
     <div className="space-y-2 relative select-none">
-      {/* 圖例說明 */}
+      {/* 互動式圖例過濾按鈕 */}
       <div className="flex items-center justify-between text-[11px] px-1 flex-wrap gap-2">
-        <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1.5 font-bold text-sky-400">
-            <span className="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block"></span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowWater(!showWater)}
+            className={`px-2 py-0.5 rounded-md font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+              showWater
+                ? "bg-sky-500/20 text-sky-300 border-sky-500/50 shadow-sm"
+                : "bg-[#181b26] text-gray-500 border-[#262b3d] opacity-50 line-through"
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-sky-400 inline-block"></span>
             總水重 (L)
-          </span>
-          <span className="flex items-center gap-1.5 font-bold text-emerald-400">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block"></span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowSmm(!showSmm)}
+            className={`px-2 py-0.5 rounded-md font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+              showSmm
+                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm"
+                : "bg-[#181b26] text-gray-500 border-[#262b3d] opacity-50 line-through"
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
             骨骼肌 (kg)
-          </span>
-          <span className="flex items-center gap-1.5 font-bold text-amber-400">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowPbf(!showPbf)}
+            className={`px-2 py-0.5 rounded-md font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+              showPbf
+                ? "bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm"
+                : "bg-[#181b26] text-gray-500 border-[#262b3d] opacity-50 line-through"
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>
             體脂率 (%)
-          </span>
+          </button>
         </div>
-        <span className="text-[10px] text-gray-500 font-mono">
-          水肌正相關: +98.8%
+        <span className="text-[10px] text-gray-400 font-mono">
+          水肌正相關: <strong className="text-purple-300 font-bold">+98.8%</strong>
         </span>
       </div>
 
@@ -710,70 +745,82 @@ export function TriMetricCorrelationSvgChart({ data }: { data: InBodyTriPoint[] 
               y1={padTop}
               x2={getX(hoverIndex)}
               y2={height - padBottom}
-              stroke="#4b5563"
+              stroke="#6b7280"
               strokeWidth="1.5"
               strokeDasharray="2 2"
             />
           )}
 
           {/* 折線 1: 體脂率 (橘色虛線，呈鏡像反比蹺蹺板) */}
-          <polyline
-            fill="none"
-            stroke="#f59e0b"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeDasharray="4 2"
-            points={pbfPoints}
-          />
+          {showPbf && (
+            <polyline
+              fill="none"
+              stroke="#f59e0b"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="4 2"
+              points={pbfPoints}
+            />
+          )}
 
           {/* 折線 2: 總水重 (天藍色) */}
-          <polyline
-            fill="none"
-            stroke="#38bdf8"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            points={waterPoints}
-          />
+          {showWater && (
+            <polyline
+              fill="none"
+              stroke="#38bdf8"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              points={waterPoints}
+            />
+          )}
 
           {/* 折線 3: 骨骼肌重 (翡翠綠，與水重幾乎重疊) */}
-          <polyline
-            fill="none"
-            stroke="#10b981"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            points={smmPoints}
-          />
+          {showSmm && (
+            <polyline
+              fill="none"
+              stroke="#10b981"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              points={smmPoints}
+            />
+          )}
 
           {/* 互動觸控區域與節點圓點 */}
           {validData.map((d, i) => (
             <g key={i}>
-              <circle
-                cx={getX(i)}
-                cy={getNormY(d.water, minWater, maxWater)}
-                r={hoverIndex === i ? 4 : 2}
-                fill="#38bdf8"
-                stroke="#12141c"
-                strokeWidth="1"
-              />
-              <circle
-                cx={getX(i)}
-                cy={getNormY(d.smm, minSmm, maxSmm)}
-                r={hoverIndex === i ? 4 : 2}
-                fill="#10b981"
-                stroke="#12141c"
-                strokeWidth="1"
-              />
-              <circle
-                cx={getX(i)}
-                cy={getNormY(d.pbf, minPbf, maxPbf)}
-                r={hoverIndex === i ? 4 : 2}
-                fill="#f59e0b"
-                stroke="#12141c"
-                strokeWidth="1"
-              />
+              {showWater && (
+                <circle
+                  cx={getX(i)}
+                  cy={getNormY(d.water, minWater, maxWater)}
+                  r={curIndex === i ? 4 : 2}
+                  fill="#38bdf8"
+                  stroke="#12141c"
+                  strokeWidth="1"
+                />
+              )}
+              {showSmm && (
+                <circle
+                  cx={getX(i)}
+                  cy={getNormY(d.smm, minSmm, maxSmm)}
+                  r={curIndex === i ? 4 : 2}
+                  fill="#10b981"
+                  stroke="#12141c"
+                  strokeWidth="1"
+                />
+              )}
+              {showPbf && (
+                <circle
+                  cx={getX(i)}
+                  cy={getNormY(d.pbf, minPbf, maxPbf)}
+                  r={curIndex === i ? 4 : 2}
+                  fill="#f59e0b"
+                  stroke="#12141c"
+                  strokeWidth="1"
+                />
+              )}
               <rect
                 x={getX(i) - colWidth / 2}
                 y={padTop}
@@ -791,33 +838,78 @@ export function TriMetricCorrelationSvgChart({ data }: { data: InBodyTriPoint[] 
 
       {/* 互動數值資訊看板 */}
       {activeItem && (
-        <div className="bg-[#181b26] border border-[#262b3d] rounded-xl p-2.5 text-xs space-y-1.5">
-          <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-1.5">
-            <span className="text-gray-300 font-mono font-bold">
-              📅 {activeItem.fullDate}
-            </span>
-            <span className="text-[11px] text-gray-400 bg-[#12141c] px-2 py-0.5 rounded border border-[#262b3d]">
-              {activeItem.extra || "實測紀錄"}
-            </span>
+        <div className="bg-[#181b26] border border-[#262b3d] rounded-xl p-2.5 text-xs space-y-2">
+          <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-1.5 flex-wrap gap-1">
+            <div className="flex items-center gap-2">
+              <span className="text-gray-300 font-mono font-bold">
+                📅 {activeItem.fullDate}
+              </span>
+              <span className="text-[10px] text-gray-400 bg-[#12141c] px-1.5 py-0.5 rounded border border-[#262b3d]">
+                {activeItem.extra || "實測紀錄"}
+              </span>
+            </div>
+            {prevItem && (
+              <span className="text-[10px] text-gray-500 font-mono">
+                對比上次: {prevItem.date} {prevItem.fullDate.split(" ")[1] || ""}
+              </span>
+            )}
           </div>
+
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-0.5 text-center">
             <div className="bg-[#12141c] p-1.5 rounded-lg border border-sky-500/30">
               <span className="text-[10px] text-sky-400 block font-bold">💧 總水重</span>
               <strong className="text-sky-300 text-sm font-black">{activeItem.water} L</strong>
+              {dWater !== null && (
+                <span className={`text-[10px] block font-mono font-bold ${dWater > 0 ? "text-sky-400" : dWater < 0 ? "text-amber-400" : "text-gray-400"}`}>
+                  {dWater > 0 ? `+${dWater}` : dWater} L
+                </span>
+              )}
             </div>
+
             <div className="bg-[#12141c] p-1.5 rounded-lg border border-emerald-500/30">
               <span className="text-[10px] text-emerald-400 block font-bold">💪 骨骼肌</span>
               <strong className="text-emerald-300 text-sm font-black">{activeItem.smm} kg</strong>
+              {dSmm !== null && (
+                <span className={`text-[10px] block font-mono font-bold ${dSmm > 0 ? "text-emerald-400" : dSmm < 0 ? "text-rose-400" : "text-gray-400"}`}>
+                  {dSmm > 0 ? `+${dSmm}` : dSmm} kg
+                </span>
+              )}
             </div>
+
             <div className="bg-[#12141c] p-1.5 rounded-lg border border-amber-500/30">
               <span className="text-[10px] text-amber-400 block font-bold">🔥 體脂率</span>
               <strong className="text-amber-300 text-sm font-black">{activeItem.pbf}%</strong>
+              {dPbf !== null && (
+                <span className={`text-[10px] block font-mono font-bold ${dPbf > 0 ? "text-rose-400" : dPbf < 0 ? "text-emerald-400" : "text-gray-400"}`}>
+                  {dPbf > 0 ? `+${dPbf}` : dPbf}%
+                </span>
+              )}
             </div>
+
             <div className="bg-[#12141c] p-1.5 rounded-lg border border-gray-600/30">
               <span className="text-[10px] text-gray-400 block font-bold">⚖️ 實測體重</span>
               <strong className="text-white text-sm font-black">{activeItem.weight} kg</strong>
+              {dWeight !== null && (
+                <span className="text-[10px] block font-mono text-gray-400">
+                  {dWeight > 0 ? `+${dWeight}` : dWeight} kg
+                </span>
+              )}
             </div>
           </div>
+
+          {/* 波動即時診斷提示 */}
+          {isHydrationShift && (
+            <div className="bg-purple-950/30 border border-purple-500/40 rounded-lg p-2 text-[11px] text-purple-200 flex items-start gap-1.5">
+              <span className="text-xs">⚡</span>
+              <div>
+                <strong>顯著水分連動事件：</strong>
+                水分相較前次變動 <span className="font-mono font-bold text-sky-300">{dWater !== null && dWater > 0 ? `+${dWater}` : dWater} L</span>，
+                牽引骨骼肌同步變動 <span className="font-mono font-bold text-emerald-300">{dSmm !== null && dSmm > 0 ? `+${dSmm}` : (dSmm ?? 0)} kg</span>，
+                同時體脂率呈相反鏡像變動 <span className="font-mono font-bold text-amber-300">{dPbf !== null && dPbf > 0 ? `+${dPbf}` : (dPbf ?? 0)}%</span>。
+                此為標準的 BIA 生理儲水波動！
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

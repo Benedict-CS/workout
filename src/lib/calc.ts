@@ -167,3 +167,47 @@ export function calculateSetVolume(s: VolumableSet): number {
 export function calculateTotalVolume(sets: VolumableSet[]): number {
   return sets.reduce((sum: number, s: VolumableSet) => sum + calculateSetVolume(s), 0);
 }
+
+export type StrengthLevel = "novice" | "beginner" | "intermediate" | "advanced" | "elite";
+
+export interface StrengthStandardInfo {
+  level: StrengthLevel;
+  label: string;
+  badgeClass: string;
+}
+
+/**
+ * 健力三項體重倍數水準評級 (Strength Standards)
+ */
+export function getStrengthStandard(
+  lift: "bench" | "squat" | "deadlift" | "total",
+  ratio: number
+): StrengthStandardInfo {
+  if (lift === "bench") {
+    if (ratio < 0.75) return { level: "novice", label: "新手", badgeClass: "bg-gray-500/20 text-gray-400 border-gray-500/30" };
+    if (ratio < 1.0) return { level: "beginner", label: "初級", badgeClass: "bg-blue-500/20 text-blue-300 border-blue-500/30" };
+    if (ratio < 1.25) return { level: "intermediate", label: "中級", badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" };
+    if (ratio < 1.5) return { level: "advanced", label: "晉級", badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/30" };
+    return { level: "elite", label: "精英", badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/30" };
+  }
+  if (lift === "squat") {
+    if (ratio < 1.0) return { level: "novice", label: "新手", badgeClass: "bg-gray-500/20 text-gray-400 border-gray-500/30" };
+    if (ratio < 1.3) return { level: "beginner", label: "初級", badgeClass: "bg-blue-500/20 text-blue-300 border-blue-500/30" };
+    if (ratio < 1.6) return { level: "intermediate", label: "中級", badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" };
+    if (ratio < 2.0) return { level: "advanced", label: "晉級", badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/30" };
+    return { level: "elite", label: "精英", badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/30" };
+  }
+  if (lift === "deadlift") {
+    if (ratio < 1.2) return { level: "novice", label: "新手", badgeClass: "bg-gray-500/20 text-gray-400 border-gray-500/30" };
+    if (ratio < 1.5) return { level: "beginner", label: "初級", badgeClass: "bg-blue-500/20 text-blue-300 border-blue-500/30" };
+    if (ratio < 1.9) return { level: "intermediate", label: "中級", badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" };
+    if (ratio < 2.3) return { level: "advanced", label: "晉級", badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/30" };
+    return { level: "elite", label: "精英", badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/30" };
+  }
+  // total
+  if (ratio < 3.0) return { level: "novice", label: "新手", badgeClass: "bg-gray-500/20 text-gray-400 border-gray-500/30" };
+  if (ratio < 3.7) return { level: "beginner", label: "初級", badgeClass: "bg-blue-500/20 text-blue-300 border-blue-500/30" };
+  if (ratio < 4.5) return { level: "intermediate", label: "中級", badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" };
+  if (ratio < 5.3) return { level: "advanced", label: "晉級", badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/30" };
+  return { level: "elite", label: "精英", badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/30" };
+}
