@@ -12,6 +12,7 @@ import {
   Pencil,
   Trash2,
   ChevronLeft,
+  ChevronRight,
   Trophy,
   Layers,
   ArrowDownAZ,
@@ -20,11 +21,13 @@ import {
   Info,
   Sparkles,
   Calculator,
+  History,
+  Calendar,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { runFullSync, deleteRemoteExercise } from "@/lib/db/sync";
 import { calculate1RM, calculateBarbellPlates, generateWarmupPlan } from "@/lib/calc";
-import type { Exercise, MuscleGroup, WeightType, WorkoutSession } from "@/lib/types";
+import type { Exercise, MuscleGroup, WeightType, WorkoutSession, SetItem } from "@/lib/types";
 
 // 舊版重複動作 ID 映射至 Canonical 標準 ID
 const LEGACY_ID_MAP: Record<string, string> = {
@@ -132,43 +135,43 @@ interface WeightTypeConfig {
 const WEIGHT_TYPE_CONFIGS: WeightTypeConfig[] = [
   {
     value: "barbell_total",
-    label: "雙手總重 (槓鈴)",
-    tag: "雙手總重",
+    label: "🏋️ 雙手總重 (槓鈴)",
+    tag: "🏋️ 槓鈴總重",
     desc: "記錄槓鈴空槓加上全部槓片的雙手總合重量",
     example: "例如：槓鈴臥推、深蹲、硬舉",
   },
   {
     value: "dumbbell_single",
-    label: "單手啞鈴 (單邊)",
-    tag: "單手啞鈴",
+    label: "🦾 單手啞鈴 (單邊)",
+    tag: "🦾 啞鈴單手",
     desc: "兩手各拿一隻，以單手持握重量為記錄基準",
     example: "例如：側平舉 12kg、單手啞鈴划船",
   },
   {
     value: "machine_stack",
-    label: "插銷機器 (固定/滑輪)",
-    tag: "插銷機器",
+    label: "⚙️ 插銷機器 (固定/滑輪)",
+    tag: "⚙️ 插銷/滑輪",
     desc: "以機器插銷片數或掛片總重量為準",
     example: "例如：滑輪下拉、蝴蝶機夾胸、腿推機",
   },
   {
     value: "bodyweight",
-    label: "自體體重 (自重動作)",
-    tag: "自體體重",
+    label: "🤸 自體體重 (自重動作)",
+    tag: "🤸 徒手自重",
     desc: "僅以自身體重為阻力，主要記錄完成次數",
     example: "例如：自重引體向上、雙槓臂屈伸、伏地挺身",
   },
   {
     value: "machine_single",
-    label: "單邊機械 (左右獨立)",
-    tag: "單邊機械",
+    label: "⚙️ 單邊機械 (左右獨立)",
+    tag: "⚙️ 單邊機械",
     desc: "左右手獨立活動之掛片式單邊訓練器",
     example: "例如：高拉單臂划船機、單邊上斜胸推機",
   },
   {
     value: "assisted_inverse",
-    label: "反向輔助 (越重越輕)",
-    tag: "反向輔助",
+    label: "⚖️ 反向輔助 (越重越輕)",
+    tag: "⚖️ 反向輔助",
     desc: "輔助配重越重向上推力越大，實際本體負重越輕",
     example: "例如：輔助引體向上機、輔助雙槓臂屈伸機",
   },
@@ -262,6 +265,54 @@ export default function ExercisesPage() {
   const [showCalculator, setShowCalculator] = useState(false);
   const [calcTargetWeight, setCalcTargetWeight] = useState<number>(60);
   const [calcBarWeight, setCalcBarWeight] = useState<number>(20);
+
+  // 動作歷史做組軌跡 Modal
+  const [viewingHistoryEx, setViewingHistoryEx] = useState<Exercise | null>(null);
+  const [exerciseHistoryList, setExerciseHistoryList] = useState<{
+    sessionId: string;
+    date: string;
+    title: string;
+    sets: SetItem[];
+  }[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  async function handleOpenHistory(e: React.MouseEvent, ex: Exercise) {
+    e.stopPropagation();
+    setViewingHistoryEx(ex);
+    setLoadingHistory(true);
+    try {
+      const allExIds = [ex.id];
+      for (const [legacyId, canonicalId] of Object.entries(LEGACY_ID_MAP)) {
+        if (canonicalId === ex.id && !allExIds.includes(legacyId)) allExIds.push(legacyId);
+      }
+      const matchingSets = await db.sets
+        .filter((s) => !s.deleted_at && allExIds.includes(s.exercise_id))
+        .toArray();
+
+      const sessionIds = Array.from(new Set(matchingSets.map((s) => s.session_id)));
+      const sessions = await db.sessions.where("id").anyOf(sessionIds).toArray();
+
+      const historyList = sessions
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .map((sess) => {
+          const sSets = matchingSets
+            .filter((s) => s.session_id === sess.id)
+            .sort((a, b) => a.set_order - b.set_order);
+          return {
+            sessionId: sess.id,
+            date: sess.date,
+            title: sess.display_title,
+            sets: sSets,
+          };
+        });
+
+      setExerciseHistoryList(historyList);
+    } catch (err) {
+      console.error("載入歷史動作失敗:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
 
   async function loadData() {
     setLoading(true);
@@ -947,6 +998,20 @@ export default function ExercisesPage() {
                   )}
                 </div>
 
+                {/* 歷史做組軌跡快捷按鈕 */}
+                {item.totalSets > 0 && !item.isSwimming && (
+                  <div className="pt-0.5 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={(e) => handleOpenHistory(e, item.exercise)}
+                      className="text-[11px] font-bold text-gray-400 hover:text-emerald-400 flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+                    >
+                      <History className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>查看歷史做組軌跡 ({item.totalSets} 組) ➔</span>
+                    </button>
+                  </div>
+                )}
+
                 {/* 預設備註 (如有) */}
                 {item.exercise.default_notes && (
                   <div className="bg-[#0e1017] border border-[#262b3d]/70 rounded-xl px-3 py-2 text-[11px] text-gray-400 flex items-start gap-1.5">
@@ -1560,6 +1625,104 @@ export default function ExercisesPage() {
           </div>
         );
       })()}
+
+      {/* 動作歷史做組軌跡 Modal */}
+      {viewingHistoryEx && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-[#12141c] border border-emerald-500/40 rounded-2xl max-w-lg w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-[#262b3d] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <History className="w-5 h-5 text-emerald-400" />
+                <div>
+                  <h3 className="font-black text-white text-base">
+                    {viewingHistoryEx.name}
+                  </h3>
+                  <span className="text-[10px] text-gray-400">
+                    歷史漸進超負荷做組軌跡（共 {exerciseHistoryList.length} 場訓練）
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingHistoryEx(null)}
+                className="text-gray-400 hover:text-white p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto space-y-3 flex-1">
+              {loadingHistory ? (
+                <div className="py-12 text-center text-gray-400 text-xs flex flex-col items-center gap-2">
+                  <div className="w-6 h-6 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin" />
+                  <span>載入歷史紀錄中...</span>
+                </div>
+              ) : exerciseHistoryList.length === 0 ? (
+                <div className="py-12 text-center text-gray-400 text-xs">
+                  此動作尚無詳細歷史做組紀錄
+                </div>
+              ) : (
+                exerciseHistoryList.map((item) => (
+                  <div
+                    key={item.sessionId}
+                    className="bg-[#181b26] border border-[#262b3d] rounded-xl p-3 space-y-2 hover:border-[#384059] transition-all"
+                  >
+                    <div className="flex items-center justify-between text-xs border-b border-[#262b3d]/60 pb-1.5">
+                      <div className="flex items-center gap-1.5 font-bold text-gray-200">
+                        <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>{item.date}</span>
+                        <span className="text-gray-400 font-normal">({item.title.split(" - ")[1] || "訓練"})</span>
+                      </div>
+                      <Link
+                        href={`/workout/${item.sessionId}`}
+                        className="text-[11px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-0.5"
+                      >
+                        <span>檢視日誌</span>
+                        <ChevronRight className="w-3 h-3" />
+                      </Link>
+                    </div>
+
+                    {/* 當日做組一覽 */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {item.sets.map((s, idx) => {
+                        const isWarmup = (s.raw_text || "").includes("熱身") || s.set_type === "warmup";
+                        return (
+                          <div
+                            key={s.id || idx}
+                            className={`text-xs px-2 py-1 rounded-lg border font-mono ${
+                              isWarmup
+                                ? "bg-blue-500/10 border-blue-500/30 text-blue-300"
+                                : "bg-[#10141e] border-[#262b3d] text-white font-bold"
+                            }`}
+                          >
+                            <span className="text-[10px] text-gray-400 mr-1">#{idx + 1}</span>
+                            <span>{s.weight_kg > 0 ? `${s.weight_kg}kg` : "自重"}</span>
+                            <span className="text-gray-400 mx-1">×</span>
+                            <span className="text-emerald-300 font-black">{s.reps}</span>
+                            {s.notes && (
+                              <span className="text-[10px] text-gray-400 ml-1">({s.notes})</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="p-3 border-t border-[#262b3d] bg-[#10121a]">
+              <button
+                type="button"
+                onClick={() => setViewingHistoryEx(null)}
+                className="w-full bg-[#181b26] hover:bg-[#202533] text-gray-300 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                關閉
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
