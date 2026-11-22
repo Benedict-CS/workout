@@ -37,7 +37,7 @@ import {
   getPreviousSessionTemplate,
   getExerciseHistorySessions,
 } from "@/lib/db/crud";
-import { formatSessionToMarkdown } from "@/lib/markdown-generator";
+import { formatSessionToMarkdown, formatSessionToPlainText } from "@/lib/markdown-generator";
 import { runFullSync, deleteRemoteSession, deleteRemoteSet } from "@/lib/db/sync";
 import { cleanSessionTitle, getPrimaryMuscle } from "@/lib/workout-utils";
 import type { Exercise, SetItem, WorkoutSession, WeightType, SetType, SetSubField, MuscleGroup } from "@/lib/types";
@@ -78,6 +78,14 @@ export default function WorkoutDetailPage({
   // 離開與結算確認對話框
   const [showExitModal, setShowExitModal] = useState(false);
   const [showFinishModal, setShowFinishModal] = useState(false);
+  const [showCelebrationSummaryModal, setShowCelebrationSummaryModal] = useState(false);
+  const [summaryReportData, setSummaryReportData] = useState<{
+    completedSetsCount: number;
+    formalSetsCount: number;
+    exercisesCount: number;
+    prList: { exName: string; weight: number; reps: number }[];
+  } | null>(null);
+  const [summaryCopyToast, setSummaryCopyToast] = useState<string | null>(null);
 
   // 單組編輯狀態 (支援多欄位)
   const [editingSet, setEditingSet] = useState<SetItem | null>(null);
@@ -1381,7 +1389,37 @@ export default function WorkoutDetailPage({
     await db.sessions.put(updated);
     updateActiveSessionStorage();
     runFullSync().catch(() => {});
-    router.push("/");
+
+    const remainingSets = sets.filter((s) => !emptySets.some((e) => e.id === s.id));
+    setSets(remainingSets);
+    setSession(updated);
+    setShowFinishModal(false);
+    setShowExitModal(false);
+
+    const prList: { exName: string; weight: number; reps: number }[] = [];
+    const distinctExIds = Array.from(new Set(remainingSets.map((s) => s.exercise_id)));
+    for (const exId of distinctExIds) {
+      const exObj = exercises.find((e) => e.id === exId);
+      const exSets = remainingSets.filter((s) => s.exercise_id === exId);
+      for (const s of exSets) {
+        if (getSetPRDetails(s).isPR) {
+          prList.push({
+            exName: exObj?.name || "未知動作",
+            weight: s.weight_kg,
+            reps: s.reps,
+          });
+          break;
+        }
+      }
+    }
+
+    setSummaryReportData({
+      completedSetsCount: remainingSets.length,
+      formalSetsCount: remainingSets.filter((s) => !isWarmupOrActivation(s)).length,
+      exercisesCount: distinctExIds.length,
+      prList,
+    });
+    setShowCelebrationSummaryModal(true);
   }
 
   // 點擊返回鍵：檢查當前訓練進度，彈出確認選項，避免預設將未做完場次當作完整保存
@@ -1450,7 +1488,37 @@ export default function WorkoutDetailPage({
     await db.sessions.put(updatedSession);
     updateActiveSessionStorage();
     runFullSync().catch(() => {});
-    router.push("/");
+
+    setSets(reordered);
+    setSession(updatedSession);
+    setShowFinishModal(false);
+    setShowExitModal(false);
+
+    // 收集打破 PR 的動作名單
+    const prList: { exName: string; weight: number; reps: number }[] = [];
+    const distinctExIds = Array.from(new Set(reordered.map((s) => s.exercise_id)));
+    for (const exId of distinctExIds) {
+      const exObj = exercises.find((e) => e.id === exId);
+      const exSets = reordered.filter((s) => s.exercise_id === exId);
+      for (const s of exSets) {
+        if (getSetPRDetails(s).isPR) {
+          prList.push({
+            exName: exObj?.name || "未知動作",
+            weight: s.weight_kg,
+            reps: s.reps,
+          });
+          break;
+        }
+      }
+    }
+
+    setSummaryReportData({
+      completedSetsCount: reordered.length,
+      formalSetsCount: reordered.filter((s) => !isWarmupOrActivation(s)).length,
+      exercisesCount: distinctExIds.length,
+      prList,
+    });
+    setShowCelebrationSummaryModal(true);
   }
 
   // 放棄本次訓練：徹底刪除此場訓練紀錄與所有組數（不留假紀錄，並具備防誤觸二次確認保護）
@@ -1537,7 +1605,37 @@ export default function WorkoutDetailPage({
     await db.sessions.put(updatedSession);
     updateActiveSessionStorage();
     runFullSync().catch(() => {});
-    router.push("/");
+
+    setSets(allCompletedSets);
+    setSession(updatedSession);
+    setShowFinishModal(false);
+    setShowExitModal(false);
+
+    // 收集打破 PR 的動作名單
+    const prList: { exName: string; weight: number; reps: number }[] = [];
+    const distinctExIds = Array.from(new Set(allCompletedSets.map((s) => s.exercise_id)));
+    for (const exId of distinctExIds) {
+      const exObj = exercises.find((e) => e.id === exId);
+      const exSets = allCompletedSets.filter((s) => s.exercise_id === exId);
+      for (const s of exSets) {
+        if (getSetPRDetails(s).isPR) {
+          prList.push({
+            exName: exObj?.name || "未知動作",
+            weight: s.weight_kg,
+            reps: s.reps,
+          });
+          break;
+        }
+      }
+    }
+
+    setSummaryReportData({
+      completedSetsCount: allCompletedSets.length,
+      formalSetsCount: allCompletedSets.filter((s) => !isWarmupOrActivation(s)).length,
+      exercisesCount: distinctExIds.length,
+      prList,
+    });
+    setShowCelebrationSummaryModal(true);
   }
 
   // 結束 / 完成本次訓練（點擊上方或下方完成按鈕）
@@ -2448,7 +2546,7 @@ export default function WorkoutDetailPage({
                 >
                   全部
                 </button>
-                {(["胸", "背", "腿", "肩"] as const).map((mg) => (
+                {(["胸", "背", "腿", "肩", "手臂", "核心"] as const).map((mg) => (
                   <button
                     key={mg}
                     type="button"
@@ -2510,7 +2608,7 @@ export default function WorkoutDetailPage({
                     dockMuscleFilter !== "default" && dockMuscleFilter !== "all"
                       ? dockMuscleFilter
                       : primary;
-                  const validM: MuscleGroup = ["胸", "背", "腿", "肩"].includes(m as any) ? (m as MuscleGroup) : "胸";
+                  const validM: MuscleGroup = (["胸", "背", "腿", "肩", "手臂", "核心"].includes(m as any) ? m : "胸") as MuscleGroup;
                   setNewExMuscle(validM);
                   setShowNewExerciseModal(true);
                 }}
@@ -2559,6 +2657,40 @@ export default function WorkoutDetailPage({
               遞減模式
             </button>
           </div>
+
+          {/* 上次實測一鍵帶入快捷條 */}
+          {(() => {
+            const ghostSets = selectedExId ? ghostMap[selectedExId] : undefined;
+            if (!ghostSets || ghostSets.length === 0) return null;
+            const currentExSets = sets.filter((s) => s.exercise_id === selectedExId);
+            const targetGhost = ghostSets[currentExSets.length] || ghostSets.find((s) => s.set_type === "normal") || ghostSets[0];
+            if (!targetGhost || (!targetGhost.weight_kg && !targetGhost.reps)) return null;
+
+            return (
+              <div className="flex items-center justify-between bg-gradient-to-r from-[#141b2b] to-[#121622] border border-cyan-500/30 px-3 py-1.5 rounded-xl text-xs shadow-sm">
+                <div className="flex items-center gap-1.5 text-gray-300">
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span className="text-[11px] text-gray-400">上次第 {Math.min(currentExSets.length + 1, ghostSets.length)} 組：</span>
+                  <strong className="text-white font-mono font-bold">
+                    {targetGhost.weight_kg > 0 ? `${targetGhost.weight_kg}kg` : "自重"} × {targetGhost.reps}下
+                  </strong>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (targetGhost.weight_kg > 0) setInputWeight(targetGhost.weight_kg.toString());
+                    if (targetGhost.reps > 0) setInputReps(targetGhost.reps.toString());
+                    if (targetGhost.set_type) setInputType(targetGhost.set_type);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 font-bold text-[11px] active:scale-95 transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                  title="帶入上次實測重量次數"
+                >
+                  <Copy className="w-3 h-3 text-cyan-400" />
+                  <span>帶入上次</span>
+                </button>
+              </div>
+            );
+          })()}
 
           {/* 主輸入框：重量 (Kg) 與 次數 (次) - 附帶極速微調步進鈕 */}
           <div className="grid grid-cols-2 gap-2.5">
@@ -3252,7 +3384,7 @@ export default function WorkoutDetailPage({
                 >
                   全部
                 </button>
-                {(["胸", "背", "腿", "肩"] as const).map((mg) => (
+                {(["胸", "背", "腿", "肩", "手臂", "核心"] as const).map((mg) => (
                   <button
                     key={mg}
                     type="button"
@@ -3537,6 +3669,128 @@ export default function WorkoutDetailPage({
         </div>
       )}
 
+      {/* 🎉 訓練圓滿完成戰報 Modal */}
+      {showCelebrationSummaryModal && summaryReportData && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-gradient-to-b from-[#131d17] via-[#10141c] to-[#0c0e14] border-2 border-emerald-500/60 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-[0_20px_60px_rgba(0,0,0,0.9),0_0_40px_rgba(16,185,129,0.25)] relative overflow-hidden">
+            {/* 慶祝綠色光暈 */}
+            <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-64 h-64 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="text-center space-y-1 relative">
+              <span className="text-4xl block animate-bounce">🏆</span>
+              <h3 className="text-xl font-black text-white tracking-wide">今日訓練圓滿完成！</h3>
+              <p className="text-xs text-emerald-400 font-bold">
+                {session?.display_title || "今日力量訓練"}
+              </p>
+            </div>
+
+            {/* 3 核心成就指標卡 */}
+            <div className="grid grid-cols-3 gap-2 text-center relative">
+              <div className="bg-[#181b26]/80 border border-[#262b3d] p-3 rounded-2xl">
+                <span className="text-[10px] text-gray-400 block mb-0.5">完成組數</span>
+                <strong className="text-lg font-black text-white font-mono">
+                  {summaryReportData.completedSetsCount}
+                </strong>
+                <span className="text-[10px] text-emerald-400 block mt-0.5 font-bold">
+                  ({summaryReportData.formalSetsCount} 正式組)
+                </span>
+              </div>
+
+              <div className="bg-[#181b26]/80 border border-[#262b3d] p-3 rounded-2xl">
+                <span className="text-[10px] text-gray-400 block mb-0.5">執行動作</span>
+                <strong className="text-lg font-black text-white font-mono">
+                  {summaryReportData.exercisesCount}
+                </strong>
+                <span className="text-[10px] text-gray-400 block mt-0.5 font-bold">個動作</span>
+              </div>
+
+              <div className="bg-[#181b26]/80 border border-amber-500/40 p-3 rounded-2xl bg-amber-500/5">
+                <span className="text-[10px] text-amber-400 block mb-0.5 font-bold">PR 新紀錄</span>
+                <strong className="text-lg font-black text-amber-300 font-mono">
+                  {summaryReportData.prList.length}
+                </strong>
+                <span className="text-[10px] text-amber-400/80 block mt-0.5 font-bold">項突破</span>
+              </div>
+            </div>
+
+            {/* 若有打破 PR 動作，展示高光列表 */}
+            {summaryReportData.prList.length > 0 && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 space-y-1.5 relative">
+                <div className="flex items-center gap-1.5 text-xs font-black text-amber-300">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>本次打破個人最佳紀錄 (PR)：</span>
+                </div>
+                <div className="space-y-1">
+                  {summaryReportData.prList.map((pr, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between text-xs bg-[#121008] border border-amber-500/20 px-2.5 py-1.5 rounded-xl"
+                    >
+                      <span className="text-gray-200 font-bold">{pr.exName}</span>
+                      <strong className="text-amber-300 font-mono font-black">
+                        {pr.weight > 0 ? `${pr.weight}kg` : "自重"} × {pr.reps}下 🏆
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Toast 提示 */}
+            {summaryCopyToast && (
+              <div className="text-center text-xs font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 py-1.5 rounded-xl animate-in fade-in">
+                {summaryCopyToast}
+              </div>
+            )}
+
+            {/* 快捷操作按鈕 */}
+            <div className="space-y-2 pt-1 relative">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const txt = formatSessionToPlainText(session!, sets, exercises);
+                    navigator.clipboard.writeText(txt);
+                    setSummaryCopyToast("✅ 已複製純文字戰報！可直接貼上至 LINE 或社群");
+                    setTimeout(() => setSummaryCopyToast(null), 2500);
+                  }}
+                  className="py-2.5 px-3 rounded-xl bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-200 text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>複製純文字戰報</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const md = formatSessionToMarkdown(session!, sets, exercises);
+                    navigator.clipboard.writeText(md);
+                    setSummaryCopyToast("✅ 已複製 Markdown 日誌！");
+                    setTimeout(() => setSummaryCopyToast(null), 2500);
+                  }}
+                  className="py-2.5 px-3 rounded-xl bg-[#181b26] hover:bg-[#202533] border border-[#262b3d] text-gray-200 text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>複製 Markdown</span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCelebrationSummaryModal(false);
+                  router.push("/");
+                }}
+                className="w-full py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black text-sm font-black shadow-lg shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <span>太棒了，完成並返回訓練日誌</span>
+                <Check className="w-4 h-4 stroke-[3]" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 🏆 PR 突破個人紀錄即時高光慶祝橫幅 (自動浮現 5.5 秒或手動關閉) */}
       {prCelebration && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-sm animate-in zoom-in-95 duration-200">
@@ -3766,8 +4020,8 @@ export default function WorkoutDetailPage({
 
               <div>
                 <label className="text-gray-300 font-bold block mb-1">訓練部位</label>
-                <div className="grid grid-cols-5 gap-1">
-                  {["胸", "背", "腿", "肩", "游泳"].map((m) => (
+                <div className="grid grid-cols-4 sm:grid-cols-7 gap-1">
+                  {["胸", "背", "腿", "肩", "手臂", "核心", "游泳"].map((m) => (
                     <button
                       key={m}
                       type="button"

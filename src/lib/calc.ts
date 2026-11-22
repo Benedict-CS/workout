@@ -174,6 +174,8 @@ export interface StrengthStandardInfo {
   level: StrengthLevel;
   label: string;
   badgeClass: string;
+  nextLabel?: string;
+  nextRatio?: number;
 }
 
 /**
@@ -184,30 +186,30 @@ export function getStrengthStandard(
   ratio: number
 ): StrengthStandardInfo {
   if (lift === "bench") {
-    if (ratio < 0.75) return { level: "novice", label: "新手", badgeClass: "bg-gray-500/20 text-gray-400 border-gray-500/30" };
-    if (ratio < 1.0) return { level: "beginner", label: "初級", badgeClass: "bg-blue-500/20 text-blue-300 border-blue-500/30" };
-    if (ratio < 1.25) return { level: "intermediate", label: "中級", badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" };
-    if (ratio < 1.5) return { level: "advanced", label: "晉級", badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/30" };
+    if (ratio < 0.75) return { level: "novice", label: "新手", badgeClass: "bg-gray-500/20 text-gray-400 border-gray-500/30", nextLabel: "初級", nextRatio: 0.75 };
+    if (ratio < 1.0) return { level: "beginner", label: "初級", badgeClass: "bg-blue-500/20 text-blue-300 border-blue-500/30", nextLabel: "中級", nextRatio: 1.0 };
+    if (ratio < 1.25) return { level: "intermediate", label: "中級", badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30", nextLabel: "晉級", nextRatio: 1.25 };
+    if (ratio < 1.5) return { level: "advanced", label: "晉級", badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/30", nextLabel: "精英", nextRatio: 1.5 };
     return { level: "elite", label: "精英", badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/30" };
   }
   if (lift === "squat") {
-    if (ratio < 1.0) return { level: "novice", label: "新手", badgeClass: "bg-gray-500/20 text-gray-400 border-gray-500/30" };
-    if (ratio < 1.3) return { level: "beginner", label: "初級", badgeClass: "bg-blue-500/20 text-blue-300 border-blue-500/30" };
-    if (ratio < 1.6) return { level: "intermediate", label: "中級", badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" };
-    if (ratio < 2.0) return { level: "advanced", label: "晉級", badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/30" };
+    if (ratio < 1.0) return { level: "novice", label: "新手", badgeClass: "bg-gray-500/20 text-gray-400 border-gray-500/30", nextLabel: "初級", nextRatio: 1.0 };
+    if (ratio < 1.3) return { level: "beginner", label: "初級", badgeClass: "bg-blue-500/20 text-blue-300 border-blue-500/30", nextLabel: "中級", nextRatio: 1.3 };
+    if (ratio < 1.6) return { level: "intermediate", label: "中級", badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30", nextLabel: "晉級", nextRatio: 1.6 };
+    if (ratio < 2.0) return { level: "advanced", label: "晉級", badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/30", nextLabel: "精英", nextRatio: 2.0 };
     return { level: "elite", label: "精英", badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/30" };
   }
   if (lift === "deadlift") {
-    if (ratio < 1.2) return { level: "novice", label: "新手", badgeClass: "bg-gray-500/20 text-gray-400 border-gray-500/30" };
-    if (ratio < 1.5) return { level: "beginner", label: "初級", badgeClass: "bg-blue-500/20 text-blue-300 border-blue-500/30" };
-    if (ratio < 1.9) return { level: "intermediate", label: "中級", badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" };
-    if (ratio < 2.3) return { level: "advanced", label: "晉級", badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/30" };
+    if (ratio < 1.2) return { level: "novice", label: "新手", badgeClass: "bg-gray-500/20 text-gray-400 border-gray-500/30", nextLabel: "初級", nextRatio: 1.2 };
+    if (ratio < 1.5) return { level: "beginner", label: "初級", badgeClass: "bg-blue-500/20 text-blue-300 border-blue-500/30", nextLabel: "中級", nextRatio: 1.5 };
+    if (ratio < 1.9) return { level: "intermediate", label: "中級", badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30", nextLabel: "晉級", nextRatio: 1.9 };
+    if (ratio < 2.3) return { level: "advanced", label: "晉級", badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/30", nextLabel: "精英", nextRatio: 2.3 };
     return { level: "elite", label: "精英", badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/30" };
   }
   // total
-  if (ratio < 3.0) return { level: "novice", label: "新手", badgeClass: "bg-gray-500/20 text-gray-400 border-gray-500/30" };
-  if (ratio < 3.7) return { level: "beginner", label: "初級", badgeClass: "bg-blue-500/20 text-blue-300 border-blue-500/30" };
-  if (ratio < 4.5) return { level: "intermediate", label: "中級", badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" };
-  if (ratio < 5.3) return { level: "advanced", label: "晉級", badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/30" };
+  if (ratio < 3.0) return { level: "novice", label: "新手", badgeClass: "bg-gray-500/20 text-gray-400 border-gray-500/30", nextLabel: "初級", nextRatio: 3.0 };
+  if (ratio < 3.7) return { level: "beginner", label: "初級", badgeClass: "bg-blue-500/20 text-blue-300 border-blue-500/30", nextLabel: "中級", nextRatio: 3.7 };
+  if (ratio < 4.5) return { level: "intermediate", label: "中級", badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30", nextLabel: "晉級", nextRatio: 4.5 };
+  if (ratio < 5.3) return { level: "advanced", label: "晉級", badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/30", nextLabel: "精英", nextRatio: 5.3 };
   return { level: "elite", label: "精英", badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/30" };
 }

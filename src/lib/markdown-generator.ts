@@ -307,6 +307,8 @@ export function exportAllSessionsToMarkdown(
     let backCount = 0;
     let legCount = 0;
     let shoulderCount = 0;
+    let armCount = 0;
+    let coreCount = 0;
     let swimCount = 0;
 
     for (const s of mSessions) {
@@ -314,6 +316,8 @@ export function exportAllSessionsToMarkdown(
       else if (s.target_muscle.includes("背")) backCount++;
       else if (s.target_muscle.includes("腿")) legCount++;
       else if (s.target_muscle.includes("肩")) shoulderCount++;
+      else if (s.target_muscle.includes("臂") || s.target_muscle.includes("二頭") || s.target_muscle.includes("三頭")) armCount++;
+      else if (s.target_muscle.includes("核") || s.target_muscle.includes("腹")) coreCount++;
       else if (s.target_muscle.includes("游泳") || s.target_muscle.includes("泳")) swimCount++;
     }
 
@@ -322,6 +326,8 @@ export function exportAllSessionsToMarkdown(
     if (backCount > 0) countsDesc.push(`背: ${backCount}`);
     if (legCount > 0) countsDesc.push(`腿: ${legCount}`);
     if (shoulderCount > 0) countsDesc.push(`肩: ${shoulderCount}`);
+    if (armCount > 0) countsDesc.push(`手臂: ${armCount}`);
+    if (coreCount > 0) countsDesc.push(`核心: ${coreCount}`);
     if (swimCount > 0) countsDesc.push(`游泳: ${swimCount}`);
 
     lines.push(`# ${monthNum} 月份 (${countsDesc.join(", ")})`);

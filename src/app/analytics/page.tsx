@@ -631,6 +631,11 @@ export default function AnalyticsPage() {
             const deadliftStd = getStrengthStandard("deadlift", deadliftRatio);
             const totalStd = getStrengthStandard("total", totalRatio);
 
+            const benchGap = benchStd.nextRatio ? Math.max(0, Math.round((benchStd.nextRatio * bw - bigThree.bench_press_kg) * 10) / 10) : null;
+            const squatGap = squatStd.nextRatio ? Math.max(0, Math.round((squatStd.nextRatio * bw - bigThree.squat_kg) * 10) / 10) : null;
+            const deadliftGap = deadliftStd.nextRatio ? Math.max(0, Math.round((deadliftStd.nextRatio * bw - bigThree.deadlift_kg) * 10) / 10) : null;
+            const totalGap = totalStd.nextRatio ? Math.max(0, Math.round((totalStd.nextRatio * bw - totalKg) * 10) / 10) : null;
+
             return (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
                 <div className="bg-[#181b26] p-2.5 rounded-xl border border-red-500/20 flex flex-col justify-between">
@@ -648,6 +653,13 @@ export default function AnalyticsPage() {
                     <span className={`text-[9px] font-bold px-2 py-0.5 rounded border inline-block ${benchStd.badgeClass}`}>
                       {benchStd.label}水準
                     </span>
+                    {benchStd.nextLabel && benchGap !== null && benchGap > 0 ? (
+                      <span className="text-[9px] text-gray-400 block mt-1">
+                        距【{benchStd.nextLabel}】差 <strong className="text-gray-200">{benchGap}kg</strong>
+                      </span>
+                    ) : (
+                      <span className="text-[9px] text-amber-300 font-bold block mt-1">✨ 最高評級</span>
+                    )}
                   </div>
                 </div>
 
@@ -666,6 +678,13 @@ export default function AnalyticsPage() {
                     <span className={`text-[9px] font-bold px-2 py-0.5 rounded border inline-block ${squatStd.badgeClass}`}>
                       {squatStd.label}水準
                     </span>
+                    {squatStd.nextLabel && squatGap !== null && squatGap > 0 ? (
+                      <span className="text-[9px] text-gray-400 block mt-1">
+                        距【{squatStd.nextLabel}】差 <strong className="text-gray-200">{squatGap}kg</strong>
+                      </span>
+                    ) : (
+                      <span className="text-[9px] text-amber-300 font-bold block mt-1">✨ 最高評級</span>
+                    )}
                   </div>
                 </div>
 
@@ -684,6 +703,13 @@ export default function AnalyticsPage() {
                     <span className={`text-[9px] font-bold px-2 py-0.5 rounded border inline-block ${deadliftStd.badgeClass}`}>
                       {deadliftStd.label}水準
                     </span>
+                    {deadliftStd.nextLabel && deadliftGap !== null && deadliftGap > 0 ? (
+                      <span className="text-[9px] text-gray-400 block mt-1">
+                        距【{deadliftStd.nextLabel}】差 <strong className="text-gray-200">{deadliftGap}kg</strong>
+                      </span>
+                    ) : (
+                      <span className="text-[9px] text-amber-300 font-bold block mt-1">✨ 最高評級</span>
+                    )}
                   </div>
                 </div>
 
@@ -703,6 +729,13 @@ export default function AnalyticsPage() {
                     <span className={`text-[9px] font-bold px-2 py-0.5 rounded border inline-block ${totalStd.badgeClass}`}>
                       {totalStd.label}水準
                     </span>
+                    {totalStd.nextLabel && totalGap !== null && totalGap > 0 ? (
+                      <span className="text-[9px] text-gray-400 block mt-1">
+                        距【{totalStd.nextLabel}】差 <strong className="text-gray-200">{totalGap}kg</strong>
+                      </span>
+                    ) : (
+                      <span className="text-[9px] text-amber-300 font-bold block mt-1">✨ 最高評級</span>
+                    )}
                   </div>
                 </div>
               </div>

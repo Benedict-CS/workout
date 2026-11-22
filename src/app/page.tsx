@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   ChevronRight,
@@ -14,6 +14,7 @@ import {
   Play,
   Plus,
   MessageSquare,
+  Flame,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import { ensureDatabaseSeeded } from "@/lib/db/seed";
@@ -50,6 +51,7 @@ export default function HomePage() {
   const [monthGroups, setMonthGroups] = useState<MonthGroupData[]>([]);
   const [sessionSetsMap, setSessionSetsMap] = useState<Record<string, SetItem[]>>({});
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const exercisesMap = useMemo(() => new Map(exercises.map((e) => [e.id, e])), [exercises]);
   const [copyToast, setCopyToast] = useState<string | null>(null);
 
   // 當前正在進行中的訓練 (若有，置頂醒目顯示防止鎖屏跳出後找不到)
@@ -348,6 +350,40 @@ export default function HomePage() {
     ? currentGroup.sessions.every((s) => expandedSessionIds.has(s.id))
     : false;
 
+  // 本週訓練規律度計算 (週一至週日)
+  const currentWeekDays = useMemo(() => {
+    const now = new Date();
+    const dayOfWeek = (now.getDay() + 6) % 7; // 0 = Mon, 6 = Sun
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - dayOfWeek);
+
+    const weekDates: { dateStr: string; dayLabel: string; hasWorkout: boolean; isToday: boolean }[] = [];
+    const labels = ["一", "二", "三", "四", "五", "六", "日"];
+    const allSessionDates = new Set(
+      monthGroups.flatMap((g) => g.sessions.map((s) => s.date))
+    );
+
+    const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, "0")}-${now.getDate().toString().padStart(2, "0")}`;
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const y = d.getFullYear();
+      const m = (d.getMonth() + 1).toString().padStart(2, "0");
+      const day = d.getDate().toString().padStart(2, "0");
+      const dateStr = `${y}-${m}-${day}`;
+      weekDates.push({
+        dateStr,
+        dayLabel: labels[i],
+        hasWorkout: allSessionDates.has(dateStr),
+        isToday: dateStr === todayStr,
+      });
+    }
+    return weekDates;
+  }, [monthGroups]);
+
+  const thisWeekWorkoutCount = currentWeekDays.filter((d) => d.hasWorkout).length;
+
   return (
     <div className="space-y-4 pb-24">
       {/* 複製提示 Toast */}
@@ -360,6 +396,43 @@ export default function HomePage() {
 
       {/* PWA 加入主畫面提示 Banner */}
       <PWAInstallBanner />
+
+      {/* 📅 本週訓練規律度 (Consistency Tracker) */}
+      <section className="bg-gradient-to-r from-[#11141e] via-[#141824] to-[#11141e] border border-[#262b3d] rounded-2xl p-3 sm:p-3.5 shadow-sm space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Flame className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="text-xs font-black text-gray-200">本週訓練節奏</span>
+          </div>
+          <span className="text-xs font-bold text-gray-400">
+            本週已練 <strong className="text-emerald-400 font-black">{thisWeekWorkoutCount}</strong> 天
+            {thisWeekWorkoutCount >= 3 ? " 🔥 狀態極佳" : " • 保持節奏"}
+          </span>
+        </div>
+
+        {/* 7 天循環圓點膠囊 (週一至週日) */}
+        <div className="grid grid-cols-7 gap-1.5 text-center">
+          {currentWeekDays.map((d) => (
+            <div
+              key={d.dateStr}
+              className={`py-1.5 px-0.5 rounded-xl border flex flex-col items-center justify-center transition-all ${
+                d.hasWorkout
+                  ? "bg-emerald-500/20 border-emerald-500/60 text-emerald-300 shadow-sm shadow-emerald-500/20"
+                  : d.isToday
+                  ? "bg-[#181b26] border-gray-500 text-white font-bold"
+                  : "bg-[#141620]/60 border-[#262b3d]/40 text-gray-500"
+              }`}
+            >
+              <span className="text-[10px] font-bold block opacity-75">
+                週{d.dayLabel}
+              </span>
+              <span className="mt-0.5 text-xs font-black font-mono">
+                {d.hasWorkout ? "✓" : parseInt(d.dateStr.slice(8), 10)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
 
       {/* ⚡ 正在進行中的訓練置頂橫幅 (防止手機鎖屏或切換頁面後迷路找不到訓練) */}
       {activeSession && (
@@ -508,25 +581,37 @@ export default function HomePage() {
                 <span className="text-[11px] sm:text-xs text-gray-300 font-bold block">
                   部位頻率
                 </span>
-                <div className="grid grid-cols-5 gap-1 text-center">
+                <div className="flex items-center justify-around gap-1 text-center">
                   <div>
-                    <span className="text-[11px] text-gray-400 block">胸</span>
+                    <span className="text-[11px] text-red-400 block">胸</span>
                     <span className="text-sm font-black text-white">{currentGroup.stats["胸"] || 0}</span>
                   </div>
                   <div>
-                    <span className="text-[11px] text-gray-400 block">背</span>
+                    <span className="text-[11px] text-blue-400 block">背</span>
                     <span className="text-sm font-black text-white">{currentGroup.stats["背"] || 0}</span>
                   </div>
                   <div>
-                    <span className="text-[11px] text-gray-400 block">腿</span>
+                    <span className="text-[11px] text-emerald-400 block">腿</span>
                     <span className="text-sm font-black text-white">{currentGroup.stats["腿"] || 0}</span>
                   </div>
                   <div>
-                    <span className="text-[11px] text-gray-400 block">肩</span>
+                    <span className="text-[11px] text-purple-400 block">肩</span>
                     <span className="text-sm font-black text-white">{currentGroup.stats["肩"] || 0}</span>
                   </div>
+                  {(currentGroup.stats["手臂"] || 0) > 0 && (
+                    <div>
+                      <span className="text-[11px] text-pink-400 block">臂</span>
+                      <span className="text-sm font-black text-white">{currentGroup.stats["手臂"]}</span>
+                    </div>
+                  )}
+                  {(currentGroup.stats["核心"] || 0) > 0 && (
+                    <div>
+                      <span className="text-[11px] text-orange-400 block">核</span>
+                      <span className="text-sm font-black text-white">{currentGroup.stats["核心"]}</span>
+                    </div>
+                  )}
                   <div>
-                    <span className="text-[11px] text-gray-400 block">游</span>
+                    <span className="text-[11px] text-cyan-400 block">游</span>
                     <span className="text-sm font-black text-white">{currentGroup.stats["游泳"] || 0}</span>
                   </div>
                 </div>
@@ -732,6 +817,29 @@ export default function HomePage() {
                               )
                             )}
                           </div>
+
+                          {/* 動作預覽膠囊 (未展開時顯示動作名稱與組數，一眼掌握練了什麼) */}
+                          {!isExpanded && exOrder.length > 0 && sess.target_muscle !== "游泳" && (
+                            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                              {exOrder.slice(0, 4).map((exId) => {
+                                const exName = exercisesMap.get(exId)?.name || "動作";
+                                const count = exMap.get(exId)?.filter((s) => !isWarmup(s)).length || 0;
+                                return (
+                                  <span
+                                    key={exId}
+                                    className="text-[10px] text-gray-400 bg-[#12141c] border border-[#262b3d]/80 px-1.5 py-0.5 rounded"
+                                  >
+                                    {exName} {count > 0 && <span className="text-gray-500 font-mono font-bold">×{count}</span>}
+                                  </span>
+                                );
+                              })}
+                              {exOrder.length > 4 && (
+                                <span className="text-[10px] text-gray-500">
+                                  +{exOrder.length - 4}動作
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-1 shrink-0 mt-0.5">
