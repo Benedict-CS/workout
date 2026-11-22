@@ -254,9 +254,12 @@ export default function WorkoutDetailPage({
     }
   }
 
-  // 播放組間休息結束清脆雙音叮咚提示音 (880Hz -> 1760Hz 漸弱正弦波)
+  // 播放組間休息結束清脆雙音叮咚提示音 (880Hz -> 1760Hz 漸弱正弦波，預設靜音模式不打擾健身房)
   function playRestTimerBeep() {
     try {
+      if (typeof window !== "undefined" && localStorage.getItem("workout_timer_sound") !== "true") {
+        return; // 使用者偏好安靜：預設關閉提示音與震動，純螢幕視覺呈現
+      }
       const ctx = getAudioContext();
       if (!ctx) return;
       if (ctx.state === "suspended") {
@@ -337,13 +340,16 @@ export default function WorkoutDetailPage({
         setTargetEndTime(null);
         localStorage.removeItem("workout_timer_end");
 
-        // 若計時歸零剛發生（非背景停留過久剛打開），播放 Web Audio 叮咚鈴聲與震動提醒
+        // 若計時歸零剛發生（非背景停留過久剛打開），若使用者設定開啟鈴聲才發出聲響與震動
         if (now - endMs < 8000) {
-          playRestTimerBeep();
-          if (typeof window !== "undefined" && "vibrate" in navigator) {
-            try {
-              navigator.vibrate([200, 100, 200]);
-            } catch {}
+          const soundEnabled = typeof window !== "undefined" && localStorage.getItem("workout_timer_sound") === "true";
+          if (soundEnabled) {
+            playRestTimerBeep();
+            if ("vibrate" in navigator) {
+              try {
+                navigator.vibrate([200, 100, 200]);
+              } catch {}
+            }
           }
         }
 
@@ -3830,30 +3836,47 @@ export default function WorkoutDetailPage({
         </div>
       )}
 
-      {/* 做組打勾完成後，螢幕底部大拇指極速快捷休息氣泡 (5秒自動消失) */}
+      {/* 做組打勾完成後，螢幕底部大拇指極速快捷休息氣泡 (5秒自動消失，支援一鍵自選常用秒數) */}
       {restPromptSetId && !timerActive && session?.target_muscle !== "游泳" && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 pointer-events-auto max-w-[92vw]">
-          <button
-            type="button"
-            onClick={() => {
-              startRestTimer(defaultRestDuration || 150);
-              setRestPromptSetId(null);
-            }}
-            className="bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black px-4 py-2 rounded-full font-black text-xs shadow-2xl flex items-center gap-2 ring-4 ring-amber-400/40 active:scale-95 cursor-pointer transition-all whitespace-nowrap shrink-0"
-          >
-            <Timer className="w-4 h-4 stroke-[2.5] shrink-0" />
-            <span className="shrink-0">⏱️ 啟動 {Math.floor((defaultRestDuration || 150) / 60)}:{((defaultRestDuration || 150) % 60).toString().padStart(2, "0")} 休息</span>
-            <span
-              onClick={(e) => {
-                e.stopPropagation();
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 pointer-events-auto max-w-[96vw] animate-in slide-in-from-bottom-2 duration-150">
+          <div className="bg-[#12141c]/95 backdrop-blur-md border border-amber-500/50 rounded-full px-2.5 py-1.5 shadow-2xl flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                startRestTimer(defaultRestDuration || 90);
                 setRestPromptSetId(null);
               }}
-              className="ml-1 p-0.5 rounded-full hover:bg-black/20 text-black/70 hover:text-black cursor-pointer shrink-0"
+              className="bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black px-3.5 py-1.5 rounded-full font-black text-xs shadow-md flex items-center gap-1.5 active:scale-95 cursor-pointer transition-all whitespace-nowrap shrink-0"
+            >
+              <Timer className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
+              <span className="shrink-0">
+                ⏱️ 休息 {Math.floor((defaultRestDuration || 90) / 60)}:{((defaultRestDuration || 90) % 60).toString().padStart(2, "0")}
+              </span>
+            </button>
+            <div className="flex items-center gap-1 text-[11px] font-mono font-bold">
+              {[60, 90, 120, 180].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => {
+                    startRestTimer(s);
+                    setRestPromptSetId(null);
+                  }}
+                  className="px-2 py-1 bg-[#181b26] hover:bg-amber-500 hover:text-black text-amber-300 rounded-full border border-amber-500/30 active:scale-95 cursor-pointer transition-colors whitespace-nowrap"
+                >
+                  {s}s
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setRestPromptSetId(null)}
+              className="p-1 rounded-full text-gray-400 hover:text-white bg-[#181b26] border border-[#262b3d] active:scale-95 transition-all ml-0.5 cursor-pointer shrink-0"
               title="關閉提示"
             >
               <X className="w-3 h-3" />
-            </span>
-          </button>
+            </button>
+          </div>
         </div>
       )}
 
