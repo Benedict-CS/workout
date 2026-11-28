@@ -18,7 +18,7 @@ import {
 import { db } from "@/lib/db/schema";
 import { getPreviousSessionTemplate } from "@/lib/db/crud";
 import { runFullSync } from "@/lib/db/sync";
-import { cleanSessionTitle } from "@/lib/workout-utils";
+import { cleanSessionTitle, getLocalDateString } from "@/lib/workout-utils";
 import type { WorkoutSession, SetItem, Exercise } from "@/lib/types";
 
 // 地點膠囊預設
@@ -70,7 +70,7 @@ const MUSCLE_PRESETS = [
 function NewWorkoutForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getLocalDateString();
 
   const [date, setDate] = useState(todayStr);
   const [targetMuscle, setTargetMuscle] = useState<string>("胸");
@@ -223,14 +223,15 @@ function NewWorkoutForm() {
     setIsSubmitting(true);
 
     try {
-      const parts = date.split("-");
+      const safeDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : getLocalDateString();
+      const parts = safeDate.split("-");
       const monthKey = `${parts[0]}-${parts[1]}`;
       const m = parseInt(parts[1], 10);
       const d = parseInt(parts[2], 10);
 
       const finalLocation = location.trim();
       const finalMuscle = targetMuscle;
-      const sessionId = `session-${date}-${Date.now()}`;
+      const sessionId = `session-${safeDate}-${Date.now()}`;
 
       // 計算當月第幾次
       // 注意：重訓的「第 X 次」是指當月重訓場次（排除游泳）！

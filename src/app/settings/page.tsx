@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Download,
@@ -12,28 +12,34 @@ import {
   Clock,
   RefreshCw,
   Check,
+  User,
+  LogOut,
+  ShieldCheck,
 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/db/schema";
 import { exportAllSessionsToMarkdown } from "@/lib/markdown-generator";
 import { parseWorkoutMarkdown } from "@/lib/parser/markdown-parser";
 import { runFullSync } from "@/lib/db/sync";
 
 export default function SettingsPage() {
+  const { user, logout } = useAuth();
   // 備份還原檔案輸入
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [restoreStatusMsg, setRestoreStatusMsg] = useState<string | null>(null);
 
   // 預設組間休息時長設定 (秒)
-  const [defaultRest, setDefaultRest] = useState<number>(() => {
-    if (typeof window !== "undefined") {
+  const [defaultRest, setDefaultRest] = useState<number>(90);
+
+  useEffect(() => {
+    try {
       const saved = localStorage.getItem("workout_default_rest");
       if (saved) {
         const v = parseInt(saved, 10);
-        if (!isNaN(v) && v > 0) return v;
+        if (!isNaN(v) && v > 0) setDefaultRest(v);
       }
-    }
-    return 90;
-  });
+    } catch {}
+  }, []);
 
 
 
@@ -46,22 +52,23 @@ export default function SettingsPage() {
     inbodyCount: number;
   }>({ sessionsCount: 0, setsCount: 0, exercisesCount: 0, inbodyCount: 0 });
 
-  useEffect(() => {
-    async function fetchCounts() {
-      try {
-        const [sCount, setCount, exCount, ibCount] = await Promise.all([
-          db.sessions.filter((s) => !s.deleted_at).count(),
-          db.sets.filter((s) => !s.deleted_at).count(),
-          db.exercises.filter((e) => !e.deleted_at).count(),
-          db.inbody_records.count(),
-        ]);
-        setDbStats({ sessionsCount: sCount, setsCount: setCount, exercisesCount: exCount, inbodyCount: ibCount });
-      } catch (e) {
-        console.warn("無法取得本機資料庫計數:", e);
-      }
+  const fetchCounts = useCallback(async () => {
+    try {
+      const [sCount, setCount, exCount, ibCount] = await Promise.all([
+        db.sessions.filter((s) => !s.deleted_at).count(),
+        db.sets.filter((s) => !s.deleted_at).count(),
+        db.exercises.filter((e) => !e.deleted_at).count(),
+        db.inbody_records.count(),
+      ]);
+      setDbStats({ sessionsCount: sCount, setsCount: setCount, exercisesCount: exCount, inbodyCount: ibCount });
+    } catch (e) {
+      console.warn("無法取得本機資料庫計數:", e);
     }
-    fetchCounts();
   }, []);
+
+  useEffect(() => {
+    fetchCounts();
+  }, [fetchCounts]);
 
   function handleSaveDefaultRest(sec: number) {
     setDefaultRest(sec);
@@ -167,6 +174,9 @@ export default function SettingsPage() {
         });
 
         runFullSync().catch(() => {});
+        window.dispatchEvent(new CustomEvent("workout:data_changed"));
+        window.dispatchEvent(new CustomEvent("workout_session_update"));
+        fetchCounts().catch(() => {});
         setRestoreStatusMsg(`✅ 成功還原 ${parsed.sessions.length} 次訓練、${parsed.sets.length} 組紀錄${parsed.bodyWeights?.length ? `、${parsed.bodyWeights.length} 筆體重` : ""}${parsed.inbodyRecords?.length ? `、${parsed.inbodyRecords.length} 筆InBody` : ""}！`);
       } else {
         // Markdown 檔案
@@ -182,12 +192,22 @@ export default function SettingsPage() {
 
         await db.transaction("rw", [db.sessions, db.exercises, db.sets, db.big_three], async () => {
           if (parsed.sessions?.length) await db.sessions.bulkPut(parsed.sessions);
-          if (parsed.exercises?.length) await db.exercises.bulkPut(parsed.exercises);
+          if (parsed.exercises?.length) {
+            for (const ex of parsed.exercises) {
+              const existing = await db.exercises.get(ex.id);
+              if (!existing) {
+                await db.exercises.put(ex);
+              }
+            }
+          }
           if (parsed.sets?.length) await db.sets.bulkPut(parsed.sets);
           if (parsed.bigThree) await db.big_three.put(parsed.bigThree);
         });
 
         runFullSync().catch(() => {});
+        window.dispatchEvent(new CustomEvent("workout:data_changed"));
+        window.dispatchEvent(new CustomEvent("workout_session_update"));
+        fetchCounts().catch(() => {});
         setRestoreStatusMsg(`✅ 成功從 Markdown 匯入 ${parsed.sessions.length} 次訓練與 ${parsed.sets.length} 組紀錄！`);
       }
     } catch (err: any) {
@@ -211,6 +231,45 @@ export default function SettingsPage() {
           <span>{toastMsg}</span>
         </div>
       )}
+
+      {/* 帳號安全與登出 */}
+      <section className="bg-[#12141c] border border-[#262b3d] rounded-2xl p-4 space-y-3">
+        <div className="flex items-center justify-between border-b border-[#262b3d]/60 pb-2">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <h2 className="text-sm font-bold text-gray-100">帳號與安全防護</h2>
+          </div>
+          <span className="flex items-center gap-1.5 text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-full font-bold">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            已驗證登入
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between bg-[#181b26] border border-[#262b3d]/80 rounded-xl p-3">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+              <User className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-gray-200">{user || "Benedict"}</div>
+              <div className="text-[10px] text-gray-400">個人專屬安全鎖定中，未授權者無法存取</div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm("確定要登出此裝置嗎？登出後需輸入密碼才能再次存取。")) {
+                logout();
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-400 text-xs font-bold transition-all active:scale-95 cursor-pointer"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>登出</span>
+          </button>
+        </div>
+      </section>
 
       {/* 動作庫管理 (置頂，方便現場與平時管理器材動作) */}
       <section className="bg-[#12141c] border border-cyan-500/40 rounded-2xl p-4 space-y-3 shadow-lg">

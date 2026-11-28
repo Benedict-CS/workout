@@ -136,7 +136,10 @@ function mapExerciseName(rawName: string): string {
   if (clean.includes("啞鈴划船")) return "單手啞鈴划船";
 
   if (clean.includes("肩推")) return "啞鈴肩推";
-  if (clean.includes("側平舉")) return "單臂滑輪側平舉";
+  if (clean.includes("側平舉") || clean.includes("側揚")) {
+    if (clean.includes("啞鈴")) return "啞鈴側平舉";
+    return "單臂滑輪側平舉";
+  }
   if (clean.includes("面拉")) return "繩索面拉";
 
   if (clean.includes("三頭下壓")) {

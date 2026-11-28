@@ -63,6 +63,7 @@ CANONICAL_EXERCISES = {
     "上斜啞鈴彎舉": {"id": "ex-incline-db-curl", "name": "上斜啞鈴彎舉", "muscle_group": "背", "weight_type": "dumbbell_single"},
 
     # 肩
+    "啞鈴側平舉": {"id": "ex-db-lateral-raise", "name": "啞鈴側平舉", "muscle_group": "肩", "weight_type": "dumbbell_single"},
     "啞鈴肩推": {"id": "ex-db-shoulder-press", "name": "啞鈴肩推", "muscle_group": "肩", "weight_type": "dumbbell_single"},
     "單臂滑輪側平舉": {"id": "ex-cable-lateral-raise", "name": "單臂滑輪側平舉", "muscle_group": "肩", "weight_type": "machine_stack"},
     "繩索面拉": {"id": "ex-cable-face-pull", "name": "繩索面拉", "muscle_group": "肩", "weight_type": "machine_stack"},
@@ -161,6 +162,8 @@ def map_exercise_name(raw_name: str) -> str:
         return "啞鈴肩推"
 
     if "側平舉" in clean or "側揚" in clean:
+        if "啞鈴" in clean:
+            return "啞鈴側平舉"
         return "單臂滑輪側平舉"
 
     if "面拉" in clean:

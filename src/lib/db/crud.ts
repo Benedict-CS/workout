@@ -65,15 +65,14 @@ export async function getLastExerciseSets(
 
   // ⭐ 優先尋找同地點 (preferredLocation，例如「交大健身房」或「三健客」) 的最近場次
   let lastSession: WorkoutSession | undefined;
-  if (preferredLocation) {
+  if (preferredLocation && preferredLocation.trim()) {
     const normPref = preferredLocation.trim();
     for (let i = sessions.length - 1; i >= 0; i--) {
       const s = sessions[i];
-      if (
-        (s.location && s.location.includes(normPref)) ||
-        normPref.includes(s.location || "") ||
-        s.display_title.includes(normPref)
-      ) {
+      const match =
+        (s.location && (s.location.includes(normPref) || normPref.includes(s.location))) ||
+        (s.display_title && s.display_title.includes(normPref));
+      if (match) {
         lastSession = s;
         break;
       }
@@ -148,31 +147,60 @@ export async function getPreviousSessionTemplate(
 
   if (sessions.length === 0) return null;
 
-  // ⭐ 優先尋找同地點 (preferredLocation，例如「交大健身房」或「三健客」) 的同部位訓練菜單
+  // ⭐ 優先尋找同地點且有組數紀錄的訓練菜單
   let prevSession: WorkoutSession | undefined;
-  if (preferredLocation) {
-    const normPref = preferredLocation.trim();
-    prevSession = sessions.find(
-      (s) =>
-        (s.location && s.location.includes(normPref)) ||
-        normPref.includes(s.location || "") ||
-        s.display_title.includes(normPref)
-    );
+  let prevSets: SetItem[] = [];
+
+  const candidateSessions = preferredLocation && preferredLocation.trim()
+    ? sessions.filter((s) => {
+        const normPref = preferredLocation.trim();
+        return (
+          (s.location && (s.location.includes(normPref) || normPref.includes(s.location))) ||
+          (s.display_title && s.display_title.includes(normPref))
+        );
+      })
+    : [];
+
+  for (const cand of candidateSessions) {
+    const cSets = await db.sets
+      .where("session_id")
+      .equals(cand.id)
+      .filter((s) => !s.deleted_at)
+      .sortBy("set_order");
+    if (cSets.length > 0) {
+      prevSession = cand;
+      prevSets = cSets;
+      break;
+    }
   }
 
-  // 若該地點尚無此部位紀錄，則回退到該部位最近一次訓練
+  // 若該地點尚無有組數的紀錄，則退回該部位最近一次有組數的訓練
+  if (!prevSession) {
+    for (const cand of sessions) {
+      const cSets = await db.sets
+        .where("session_id")
+        .equals(cand.id)
+        .filter((s) => !s.deleted_at)
+        .sortBy("set_order");
+      if (cSets.length > 0) {
+        prevSession = cand;
+        prevSets = cSets;
+        break;
+      }
+    }
+  }
+
   if (!prevSession) {
     prevSession = sessions[0];
+    prevSets = await db.sets
+      .where("session_id")
+      .equals(prevSession.id)
+      .filter((s) => !s.deleted_at)
+      .sortBy("set_order");
   }
 
-  const sets = await db.sets
-    .where("session_id")
-    .equals(prevSession.id)
-    .filter((s) => !s.deleted_at)
-    .sortBy("set_order");
-
   const exerciseIds: string[] = [];
-  for (const s of sets) {
+  for (const s of prevSets) {
     if (!exerciseIds.includes(s.exercise_id)) {
       exerciseIds.push(s.exercise_id);
     }
@@ -181,7 +209,7 @@ export async function getPreviousSessionTemplate(
   return {
     session: prevSession,
     exerciseIds,
-    sets,
+    sets: prevSets,
   };
 }
 

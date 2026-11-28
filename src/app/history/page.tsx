@@ -39,6 +39,7 @@ import {
   computeMonthlyIndices,
   normalizeSessionSets,
   getExerciseDisplayName,
+  getLocalDateString,
 } from "@/lib/workout-utils";
 import type { WorkoutSession, SetItem, Exercise, BigThreeRecord } from "@/lib/types";
 
@@ -47,15 +48,16 @@ const WEEK_DAYS = ["一", "二", "三", "四", "五", "六", "日"];
 function getDayOfWeekLabel(dateStr: string) {
   try {
     const d = new Date(dateStr + "T00:00:00");
+    if (isNaN(d.getTime())) return "";
     const days = ["週日", "週一", "週二", "週三", "週四", "週五", "週六"];
-    return days[d.getDay()];
+    return days[d.getDay()] || "";
   } catch {
     return "";
   }
 }
 
 export default function HistoryPage() {
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getLocalDateString();
   const [sessions, setSessions] = useState<WorkoutSession[]>([]);
   const [sets, setSets] = useState<SetItem[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);

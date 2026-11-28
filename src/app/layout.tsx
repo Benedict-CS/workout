@@ -6,6 +6,7 @@ import { GlobalRestTimer } from "@/components/GlobalRestTimer";
 import { AutoSyncManager } from "@/components/AutoSyncManager";
 import { BottomNav } from "@/components/BottomNav";
 import { HeaderNavStatus } from "@/components/HeaderNavStatus";
+import { AuthGuard } from "@/components/AuthGuard";
 
 export const metadata: Metadata = {
   title: "Workout - 力量訓練日誌",
@@ -44,29 +45,31 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
       <body className="antialiased bg-[#090a0f] text-gray-100 min-h-screen">
-        {/* 頂部導航列 (支援 iOS PWA 瀏海與動態島安全區) */}
-        <header className="sticky top-0 z-40 bg-[#090a0f]/85 backdrop-blur-md border-b border-[#262b3d]/60 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 flex items-center justify-between">
-          <Link
-            href="/"
-            className="flex items-center gap-2 font-black tracking-wider text-xl text-emerald-400 active:scale-95 transition-transform"
-          >
-            <Dumbbell className="w-6 h-6" />
-            <span>WORKOUT</span>
-          </Link>
-          <HeaderNavStatus />
-        </header>
+        <AuthGuard>
+          {/* 頂部導航列 (支援 iOS PWA 瀏海與動態島安全區) */}
+          <header className="sticky top-0 z-40 bg-[#090a0f]/85 backdrop-blur-md border-b border-[#262b3d]/60 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 flex items-center justify-between">
+            <Link
+              href="/"
+              className="flex items-center gap-2 font-black tracking-wider text-xl text-emerald-400 active:scale-95 transition-transform"
+            >
+              <Dumbbell className="w-6 h-6" />
+              <span>WORKOUT</span>
+            </Link>
+            <HeaderNavStatus />
+          </header>
 
-        {/* 主要內容區 (含底部導航與 Safe Area 防遮擋) */}
-        <main className="max-w-xl mx-auto px-3.5 sm:px-4 py-3.5 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]">{children}</main>
+          {/* 主要內容區 (含底部導航與 Safe Area 防遮擋) */}
+          <main className="max-w-xl mx-auto px-3.5 sm:px-4 py-3.5 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]">{children}</main>
 
-        {/* 全域浮動休息計時器 (跨頁面持續顯示與一鍵跳回) */}
-        <GlobalRestTimer />
+          {/* 全域浮動休息計時器 (跨頁面持續顯示與一鍵跳回) */}
+          <GlobalRestTimer />
 
-        {/* 全域背景自動雲端雙向同步 (開 App、回頁面、網路重連均自動同步) */}
-        <AutoSyncManager />
+          {/* 全域背景自動雲端雙向同步 (開 App、回頁面、網路重連均自動同步) */}
+          <AutoSyncManager />
 
-        {/* 底部導航 Bar (具備動態當前頁面高光與 iOS Safe Area 防遮擋) */}
-        <BottomNav />
+          {/* 底部導航 Bar (具備動態當前頁面高光與 iOS Safe Area 防遮擋) */}
+          <BottomNav />
+        </AuthGuard>
 
         {/* 自動註冊 Service Worker 實現完整 PWA 離線快取 */}
         <script

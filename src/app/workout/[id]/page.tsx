@@ -41,7 +41,7 @@ import {
 } from "@/lib/db/crud";
 import { formatSessionToMarkdown, formatSessionToPlainText } from "@/lib/markdown-generator";
 import { runFullSync, deleteRemoteSession, deleteRemoteSet } from "@/lib/db/sync";
-import { cleanSessionTitle, getPrimaryMuscle } from "@/lib/workout-utils";
+import { cleanSessionTitle, getPrimaryMuscle, getExerciseDisplayName } from "@/lib/workout-utils";
 import type { Exercise, SetItem, WorkoutSession, WeightType, SetType, SetSubField, MuscleGroup } from "@/lib/types";
 
 const LOCATION_OPTIONS = [
@@ -443,6 +443,8 @@ export default function WorkoutDetailPage({
     setTimerActive(false);
     setTimerSeconds(null);
     setTargetEndTime(null);
+    setTimerFinished(false);
+    setTimerExpanded(false);
     try {
       localStorage.removeItem("workout_timer_end");
       localStorage.removeItem("workout_timer_info");
@@ -937,7 +939,7 @@ export default function WorkoutDetailPage({
     if (!newExName.trim()) return;
     const name = newExName.trim();
     const newEx: Exercise = {
-      id: `ex-${Date.now()}`,
+      id: `custom-ex-${Date.now()}`,
       name,
       muscle_group: newExMuscle,
       weight_type: newExType,
@@ -2310,7 +2312,7 @@ export default function WorkoutDetailPage({
                     </span>
                     <Dumbbell className="w-4 h-4 text-emerald-400 shrink-0" />
                     <h3 className="font-black text-gray-100 text-sm break-words flex-1 min-w-0 leading-tight">
-                      {exercise?.name}
+                      {exercise?.name || (exSets[0] ? getExerciseDisplayName(exSets[0].exercise_id) : "動作")}
                     </h3>
                     {exSets.some((s) => isSetNewPR(s)) && (
                       <span className="text-[10px] font-black text-amber-300 bg-amber-500/20 border border-amber-400/50 px-2 py-0.5 rounded-lg flex items-center gap-1 shrink-0 shadow-sm animate-pulse">
@@ -3215,7 +3217,7 @@ export default function WorkoutDetailPage({
       {/* 修改單組 Modal (包含多欄位編輯，層級拉高至 z-[60] 確保絕不被任何懸浮條遮擋) */}
       {editingSet && (
         <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#12141c] border border-amber-500/40 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+          <div className="bg-[#12141c] border border-amber-500/40 rounded-2xl max-w-sm w-full max-h-[90vh] overflow-y-auto p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-[#262b3d] pb-2.5">
               <h3 className="font-bold text-white text-sm">修改第 #{editingSet.set_order} 組紀錄</h3>
               <button onClick={() => setEditingSet(null)} className="text-gray-400 hover:text-white">

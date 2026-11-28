@@ -28,6 +28,7 @@ import {
   computeMonthlyIndices,
   normalizeSessionSets,
   getExerciseDisplayName,
+  getLocalDateString,
 } from "@/lib/workout-utils";
 import type { WorkoutSession, SetItem, Exercise } from "@/lib/types";
 
@@ -210,7 +211,7 @@ export default function HomePage() {
       }
 
       // 確保當前月份必然存在於選單與分頁中
-      const currentMonthKey = new Date().toISOString().slice(0, 7);
+      const currentMonthKey = getLocalDateString().slice(0, 7);
       if (!monthMap.has(currentMonthKey)) {
         monthMap.set(currentMonthKey, []);
       }

@@ -151,8 +151,19 @@ export function getExerciseDisplayName(exerciseId: string, exercisesMap?: Map<st
   if (exerciseId === "ex-seated-row-wide") return "坐姿划船機 (寬握)";
   if (exerciseId === "ex-seated-row-close") return "坐姿划船機 (窄握)";
   if (exerciseId === "ex-seated-row" || exerciseId === "ex-seated-row-machine") return "坐姿划船機 (寬握)";
+  if (exerciseId === "ex-db-lateral-raise") return "啞鈴側平舉";
   const ex = exercisesMap?.get(exerciseId);
   if (ex) return ex.name;
   return "動作";
+}
+
+/**
+ * 取得本機當前日期的 YYYY-MM-DD 字串 (解決 UTC 與本機時區 00:00~07:59 產生的日期偏差)
+ */
+export function getLocalDateString(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 

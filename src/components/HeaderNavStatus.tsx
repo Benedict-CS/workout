@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Play, WifiOff, ChevronRight } from "lucide-react";
+import { Play, WifiOff, ChevronRight, User } from "lucide-react";
 import { db } from "@/lib/db/schema";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function HeaderNavStatus() {
+  const { user } = useAuth();
   const pathname = usePathname();
   const [isOnline, setIsOnline] = useState(true);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -99,6 +101,20 @@ export function HeaderNavStatus() {
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
           <span className="text-gray-300 font-medium hidden sm:inline">雲端同步</span>
         </div>
+      )}
+
+      {/* 登入者身分徽章捷徑 */}
+      {user && (
+        <Link
+          href="/settings"
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#121520] hover:bg-[#181b26] border border-[#262b3d] text-gray-300 hover:text-emerald-400 text-[10px] font-bold transition-all active:scale-95 cursor-pointer"
+          title={`已登入: ${user} (點此前往設定與登出)`}
+        >
+          <span className="w-3.5 h-3.5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[9px] font-black">
+            {user.charAt(0).toUpperCase()}
+          </span>
+          <span className="hidden sm:inline font-mono">{user}</span>
+        </Link>
       )}
     </div>
   );
