@@ -134,7 +134,7 @@ function NewWorkoutForm() {
     });
   }, []);
 
-  // 當部位切換時，自動尋找上次同部位菜單
+  // 當部位或地點切換時，自動尋找該健身房上次同部位菜單 (如交大健身房 vs 三健客)
   useEffect(() => {
     async function checkPrev() {
       if (targetMuscle === "游泳") {
@@ -142,7 +142,7 @@ function NewWorkoutForm() {
         setClonePrevMenu(false);
         return;
       }
-      const match = await getPreviousSessionTemplate(targetMuscle);
+      const match = await getPreviousSessionTemplate(targetMuscle, location);
       setPrevTemplate(match);
       if (match && match.sets.length > 0) {
         setClonePrevMenu(true);
@@ -151,7 +151,7 @@ function NewWorkoutForm() {
       }
     }
     checkPrev();
-  }, [targetMuscle]);
+  }, [targetMuscle, location]);
 
   // 地點膠囊點擊切換邏輯
   function handleLocationSelect(locId: string) {
@@ -674,9 +674,10 @@ function NewWorkoutForm() {
                       推薦
                     </span>
                   </h4>
-                  <p className="text-[11px] text-gray-400 mt-0.5">
-                    上次日期：{prevTemplate.session.date} • 共 {prevTemplate.exerciseIds.length}{" "}
-                    個動作、{prevTemplate.sets.length} 組
+                  <p className="text-[11px] text-gray-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <span className="text-cyan-400 font-bold">📍 {prevTemplate.session.location || location}</span>
+                    <span>• {prevTemplate.session.date}</span>
+                    <span>• 共 {prevTemplate.exerciseIds.length} 個動作、{prevTemplate.sets.length} 組</span>
                   </p>
                 </div>
               </div>

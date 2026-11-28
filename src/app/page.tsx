@@ -21,7 +21,14 @@ import { ensureDatabaseSeeded } from "@/lib/db/seed";
 import { formatSessionToMarkdown, formatSessionToPlainText } from "@/lib/markdown-generator";
 import { deleteRemoteSession, runFullSync } from "@/lib/db/sync";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
-import { getPrimaryMuscle, getMuscleBadgeColor, cleanSessionTitle, computeMonthlyIndices } from "@/lib/workout-utils";
+import {
+  getPrimaryMuscle,
+  getMuscleBadgeColor,
+  cleanSessionTitle,
+  computeMonthlyIndices,
+  normalizeSessionSets,
+  getExerciseDisplayName,
+} from "@/lib/workout-utils";
 import type { WorkoutSession, SetItem, Exercise } from "@/lib/types";
 
 interface MonthGroupData {
@@ -717,13 +724,15 @@ export default function HomePage() {
                   const n = st.notes || "";
                   return r.includes("熱身") || r.includes("激發") || r.includes("試重") || n.includes("熱身");
                 };
-                const formalSets = sessSets.filter((st) => !isWarmup(st));
+
+                // ⭐ 智慧拆分：在所有背部訓練中，坐姿划船機嚴格區分 寬握 (前 3 組) 與 窄握 (後續組數)
+                const normalizedSessSets = normalizeSessionSets(sessSets, sess.target_muscle, sess.display_title);
+                const formalSets = normalizedSessSets.filter((st) => !isWarmup(st));
 
                 // 依動作群組分類組數（嚴格依 set_order 順序，確保與現場訓練先後次序 100% 一致）
-                const sortedSessSets = [...sessSets].sort((a, b) => a.set_order - b.set_order);
                 const exMap = new Map<string, SetItem[]>();
                 const exOrder: string[] = [];
-                for (const st of sortedSessSets) {
+                for (const st of normalizedSessSets) {
                   if (!exMap.has(st.exercise_id)) {
                     exMap.set(st.exercise_id, []);
                     exOrder.push(st.exercise_id);
@@ -807,7 +816,7 @@ export default function HomePage() {
                           {!isExpanded && exOrder.length > 0 && sess.target_muscle !== "游泳" && (
                             <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
                               {exOrder.slice(0, 4).map((exId) => {
-                                const exName = exercisesMap.get(exId)?.name || "動作";
+                                const exName = getExerciseDisplayName(exId, exercisesMap);
                                 const count = exMap.get(exId)?.filter((s) => !isWarmup(s)).length || 0;
                                 return (
                                   <span
@@ -877,9 +886,8 @@ export default function HomePage() {
                         ) : (
                           <div className="space-y-3">
                             {exOrder.map((exId) => {
-                              const ex = exercises.find((e) => e.id === exId);
                               const exSets = exMap.get(exId) || [];
-                              const exName = ex ? ex.name : "訓練項目";
+                              const exName = getExerciseDisplayName(exId, exercisesMap);
 
                               return (
                                 <div key={exId} className="space-y-1">

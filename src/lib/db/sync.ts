@@ -94,7 +94,7 @@ const LEGACY_ID_MAP: Record<string, string> = {
   "ex-incline-barbell-press": "ex-incline-bench", "ex-db-row": "ex-db-single-row",
   "ex-one-arm-dumbbell-row": "ex-db-single-row", "ex-pec-deck": "ex-pec-fly",
   "ex-machine-incline-press": "ex-incline-machine-bench", "ex-chest-press": "ex-chest-press-seated",
-  "ex-seated-row-machine": "ex-seated-row", "ex-tricep-press-chest": "ex-dip-pushdown-machine",
+  "ex-seated-row-machine": "ex-seated-row-wide", "ex-seated-row": "ex-seated-row-wide", "ex-tricep-press-chest": "ex-dip-pushdown-machine",
   "ex-hex-deadlift": "ex-trap-bar-deadlift", "ex-lat-row-machine": "ex-high-row",
   "ex-seated-back-row-machine": "ex-seated-cable-row", "ex-lying-leg-curl": "ex-leg-curl",
   "ex-bulgarian-split-squat": "ex-bulgarian-squat",

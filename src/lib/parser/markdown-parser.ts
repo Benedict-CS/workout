@@ -48,7 +48,8 @@ const CANONICAL_EXERCISES: Record<string, { id: string; muscle: MuscleGroup; typ
   "雙軌滑輪下拉": { id: "ex-lat-pulldown", muscle: "背", type: "machine_stack" },
   "高拉背部划船機": { id: "ex-high-row", muscle: "背", type: "machine_single" },
   "高位反手下拉": { id: "ex-underhand-pulldown", muscle: "背", type: "machine_single" },
-  "坐姿划船機": { id: "ex-seated-row", muscle: "背", type: "machine_single" },
+  "坐姿划船機 (寬握)": { id: "ex-seated-row-wide", muscle: "背", type: "machine_single" },
+  "坐姿划船機 (窄握)": { id: "ex-seated-row-close", muscle: "背", type: "machine_single" },
   "坐式背部划船機": { id: "ex-seated-cable-row", muscle: "背", type: "machine_stack" },
   "槓鈴划船": { id: "ex-barbell-row", muscle: "背", type: "barbell_total" },
   "單手啞鈴划船": { id: "ex-db-single-row", muscle: "背", type: "dumbbell_single" },
@@ -67,6 +68,9 @@ const CANONICAL_EXERCISES: Record<string, { id: string; muscle: MuscleGroup; typ
 };
 
 function mapExerciseName(rawName: string): string {
+  const isWide = rawName.includes("寬握") || rawName.includes("寬距") || (rawName.includes("坐姿划船") && rawName.includes("寬"));
+  const isClose = rawName.includes("窄握") || rawName.includes("窄距") || (rawName.includes("坐姿划船") && rawName.includes("窄"));
+
   let clean = rawName.replace(/^-\s*/, "").split(/[：:]/)[0].trim();
   clean = clean.replace(/\(.*?\)/g, "").replace(/（.*?）/g, "").trim();
 
@@ -123,7 +127,11 @@ function mapExerciseName(rawName: string): string {
   if (clean.includes("高拉背部")) return "高拉背部划船機";
   if (clean.includes("雙軌滑輪") || clean.includes("滑輪下拉")) return "雙軌滑輪下拉";
   if (clean.includes("坐式背部划船")) return "坐式背部划船機";
-  if (clean.includes("坐姿划船")) return "坐姿划船機";
+  if (clean.includes("坐姿划船")) {
+    if (isClose) return "坐姿划船機 (窄握)";
+    if (isWide) return "坐姿划船機 (寬握)";
+    return "坐姿划船機 (寬握)";
+  }
   if (clean.includes("槓鈴划船")) return "槓鈴划船";
   if (clean.includes("啞鈴划船")) return "單手啞鈴划船";
 

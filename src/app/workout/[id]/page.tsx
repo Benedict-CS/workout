@@ -30,6 +30,8 @@ import {
   Trophy,
   Sparkles,
   Calculator,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { db } from "@/lib/db/schema";
 import {
@@ -61,6 +63,7 @@ export default function WorkoutDetailPage({
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [sets, setSets] = useState<SetItem[]>([]);
   const [ghostMap, setGhostMap] = useState<Record<string, SetItem[]>>({});
+  const [ghostSessionMap, setGhostSessionMap] = useState<Record<string, WorkoutSession>>({});
 
   // 場次編輯
   const [showEditSessionModal, setShowEditSessionModal] = useState(false);
@@ -162,8 +165,8 @@ export default function WorkoutDetailPage({
   const [sessionNotes, setSessionNotes] = useState<string>("");
   const [showSessionNotesCard, setShowSessionNotesCard] = useState<boolean>(false);
 
-  // 計時器展開/縮小顯示 (預設展開超大字體)
-  const [timerExpanded, setTimerExpanded] = useState<boolean>(true);
+  // 計時器展開/縮小顯示 (預設緊湊頂部靈動膠囊，不遮擋編輯動作與做組，可點擊放大遠距看)
+  const [timerExpanded, setTimerExpanded] = useState<boolean>(false);
 
   // 槓片速算小工具狀態
   const [showPlateCalc, setShowPlateCalc] = useState(false);
@@ -545,14 +548,19 @@ export default function WorkoutDetailPage({
           if (!isNaN(val) && val > 0) setDefaultRestDuration(val);
         }
 
-        // 讀取上次對照 ghost 與歷史 PR (排除本次 session)
+        // 讀取上次對照 ghost 與歷史 PR (排除本次 session，且優先匹配同健身房，如交大健身房 vs 三健客)
+        const sessLoc = sess.location;
         const distinctExIds = Array.from(new Set(currentSets.map((s) => s.exercise_id)));
         const ghostRecord: Record<string, SetItem[]> = {};
+        const ghostSessionRecord: Record<string, WorkoutSession> = {};
         const prRecord: Record<string, { maxWeight: number; maxReps: number }> = {};
 
         for (const exId of distinctExIds) {
-          const res = await getLastExerciseSets(exId, id);
-          if (res) ghostRecord[exId] = res.sets;
+          const res = await getLastExerciseSets(exId, id, sessLoc);
+          if (res) {
+            ghostRecord[exId] = res.sets;
+            ghostSessionRecord[exId] = res.session;
+          }
 
           const historySets = await db.sets
             .where("exercise_id")
@@ -567,9 +575,25 @@ export default function WorkoutDetailPage({
             )
             .toArray();
 
+          const exObj = allEx.find((e) => e.id === exId);
+          const isMachine = exObj?.weight_type?.includes("machine") || exObj?.weight_type === "assisted_inverse";
+
+          let targetHistorySets = historySets;
+          if (sessLoc && isMachine && historySets.length > 0) {
+            // 找出同一健身房的 session IDs，機器類 PR 優先以同健身房歷史比較，避免插銷槓桿不同造成假 PR
+            const sameLocSessions = await db.sessions
+              .filter((s) => !s.deleted_at && ((s.location && s.location.includes(sessLoc)) || s.display_title.includes(sessLoc)))
+              .toArray();
+            const sameLocSessionIds = new Set(sameLocSessions.map((s) => s.id));
+            const filtered = historySets.filter((s) => sameLocSessionIds.has(s.session_id));
+            if (filtered.length > 0) {
+              targetHistorySets = filtered;
+            }
+          }
+
           let maxW = 0;
           let maxR = 0;
-          for (const s of historySets) {
+          for (const s of targetHistorySets) {
             if (s.weight_kg > maxW || (s.weight_kg === maxW && s.reps > maxR)) {
               maxW = s.weight_kg;
               maxR = s.reps;
@@ -580,6 +604,7 @@ export default function WorkoutDetailPage({
           }
         }
         setGhostMap(ghostRecord);
+        setGhostSessionMap(ghostSessionRecord);
         setPrMap(prRecord);
 
         // 智慧保留目前選取的動作（避免鎖屏喚醒或背景同步時洗掉使用者正在記錄的動作與數值，杜絕跳頁與假性閃退感）
@@ -598,12 +623,13 @@ export default function WorkoutDetailPage({
             const initial = matchingEx[0] || allEx[0];
             if (initial) {
               initialSelectedId = initial.id;
-              const res = await getLastExerciseSets(initial.id, id);
+              const res = await getLastExerciseSets(initial.id, id, sessLoc);
               if (res && res.sets.length > 0) {
                 const normalSet = res.sets.find((s) => s.set_type === "normal") || res.sets[0];
                 setInputWeight((prevW) => prevW || (normalSet.weight_kg > 0 ? normalSet.weight_kg.toString() : ""));
                 setInputReps((prevR) => prevR || (normalSet.reps > 0 ? normalSet.reps.toString() : ""));
                 setGhostMap((g) => ({ ...g, [initial.id]: res.sets }));
+                setGhostSessionMap((g) => ({ ...g, [initial.id]: res.session }));
               }
             }
           }
@@ -694,6 +720,26 @@ export default function WorkoutDetailPage({
     setSession(updated);
     await db.sessions.put(updated);
     setShowEditSessionModal(false);
+
+    // ⭐ 若場地變更，立即以新場地刷新所有動作的「上次對照 (Ghost)」數據
+    if (finalLoc !== session.location) {
+      try {
+        const distinctExIds = Array.from(new Set(sets.map((s) => s.exercise_id)));
+        const newGhostRecord: Record<string, SetItem[]> = {};
+        const newGhostSessionRecord: Record<string, WorkoutSession> = {};
+        for (const exId of distinctExIds) {
+          const res = await getLastExerciseSets(exId, id, finalLoc);
+          if (res) {
+            newGhostRecord[exId] = res.sets;
+            newGhostSessionRecord[exId] = res.session;
+          }
+        }
+        setGhostMap(newGhostRecord);
+        setGhostSessionMap(newGhostSessionRecord);
+      } catch (e) {
+        console.error("Failed to refresh ghosts on modal save:", e);
+      }
+    }
   }
 
   // 切換動作時智慧預填 (若為全新動作或跨部位動作，自動即時從歷史紀錄抓取上次重量與次數預填)
@@ -715,11 +761,12 @@ export default function WorkoutDetailPage({
       return;
     }
 
-    // ⭐ 若 ghostMap 尚未快取 (如在練腿時跨部位點選啞鈴側平舉)，即時向歷史訓練 DB 查詢該動作上次實測！
+    // ⭐ 若 ghostMap 尚未快取 (如在練腿時跨部位點選啞鈴側平舉)，即時向歷史訓練 DB 查詢該動作在該健身房的上次實測！
     try {
-      const res = await getLastExerciseSets(exId, session?.id);
+      const res = await getLastExerciseSets(exId, session?.id, session?.location);
       if (res && res.sets.length > 0) {
         setGhostMap((prev) => ({ ...prev, [exId]: res.sets }));
+        setGhostSessionMap((prev) => ({ ...prev, [exId]: res.session }));
         const firstNormal = res.sets.find((s) => s.set_type === "normal") || res.sets[0];
         setInputWeight(firstNormal.weight_kg > 0 ? firstNormal.weight_kg.toString() : "");
         setInputReps(firstNormal.reps > 0 ? firstNormal.reps.toString() : "");
@@ -803,13 +850,14 @@ export default function WorkoutDetailPage({
       return;
     }
 
-    // 取得新動作的歷史做組水準 (避免沿用舊動作的過重重量)
+    // 取得新動作在該健身房的歷史做組水準 (避免沿用舊動作或不同健身房器材的過重重量)
     let newExGhostSets: SetItem[] = [];
     try {
-      const res = await getLastExerciseSets(newEx.id, id);
+      const res = await getLastExerciseSets(newEx.id, id, session?.location);
       if (res && res.sets.length > 0) {
         newExGhostSets = res.sets;
         setGhostMap((prev) => ({ ...prev, [newEx.id]: res.sets }));
+        setGhostSessionMap((prev) => ({ ...prev, [newEx.id]: res.session }));
       }
     } catch {}
 
@@ -1788,8 +1836,63 @@ export default function WorkoutDetailPage({
       sync_status: "pending",
     };
 
-    await db.sets.put(updated);
-    setSets((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    const isFormal = !isWarmupOrActivation(updated);
+    const toUpdate: SetItem[] = [updated];
+
+    // ⭐ 若修改之組數為正式組且重量 > 0：
+    // 使用者若狀態不佳在訓練中調降重量，後續尚未完成的正式組重量上限自動不能超過前一組（自動連動降重）
+    if (isFormal && w > 0) {
+      // 找出同動作在該組之後、且尚未完成的正式組
+      const subsequentSets = sets
+        .filter(
+          (s) =>
+            s.exercise_id === updated.exercise_id &&
+            s.set_order > updated.set_order &&
+            !isWarmupOrActivation(s) &&
+            !isSetCompleted(s, session?.date) &&
+            s.id !== updated.id
+        )
+        .sort((a, b) => a.set_order - b.set_order);
+
+      for (const nextSet of subsequentSets) {
+        if (nextSet.weight_kg > w) {
+          const exSetsAll = sets.filter((item) => item.exercise_id === nextSet.exercise_id);
+          const fIdx = exSetsAll.filter(
+            (item) => !isWarmupOrActivation(item) && item.set_order <= nextSet.set_order
+          ).length;
+
+          // 若有次組（休/補/遞減），若 sub_field 中的重量高於 w，也連帶限制
+          const updatedSubFields = nextSet.sub_fields?.map((sub) => {
+            if (sub.weight_kg !== undefined && sub.weight_kg > w) {
+              return { ...sub, weight_kg: w };
+            }
+            return sub;
+          });
+
+          const newRaw = formatSetRawText(
+            fIdx,
+            nextSet.set_type,
+            w,
+            nextSet.reps,
+            updatedSubFields,
+            nextSet.notes || ""
+          );
+
+          toUpdate.push({
+            ...nextSet,
+            weight_kg: w,
+            raw_text: newRaw,
+            sub_fields: updatedSubFields,
+            updated_at: new Date().toISOString(),
+            sync_status: "pending",
+          });
+        }
+      }
+    }
+
+    await db.sets.bulkPut(toUpdate);
+    const updateMap = new Map(toUpdate.map((s) => [s.id, s]));
+    setSets((prev) => prev.map((s) => updateMap.get(s.id) || s));
     setEditingSet(null);
 
     // 若修改後打破個人紀錄 (PR) 且為已完成狀態，觸發高光慶祝與卡片發光
@@ -1833,6 +1936,24 @@ export default function WorkoutDetailPage({
     await db.sessions.put(updated);
     setSession(updated);
     setShowLocationQuickPicker(false);
+
+    // ⭐ 切換場地後，立即以新場地刷新所有動作的「上次對照 (Ghost)」數據
+    try {
+      const distinctExIds = Array.from(new Set(sets.map((s) => s.exercise_id)));
+      const newGhostRecord: Record<string, SetItem[]> = {};
+      const newGhostSessionRecord: Record<string, WorkoutSession> = {};
+      for (const exId of distinctExIds) {
+        const res = await getLastExerciseSets(exId, id, newLoc);
+        if (res) {
+          newGhostRecord[exId] = res.sets;
+          newGhostSessionRecord[exId] = res.session;
+        }
+      }
+      setGhostMap(newGhostRecord);
+      setGhostSessionMap(newGhostSessionRecord);
+    } catch (e) {
+      console.error("Failed to refresh ghosts on location update:", e);
+    }
   }
 
   // 一鍵複製 Markdown
@@ -2413,7 +2534,7 @@ export default function WorkoutDetailPage({
                                 }`}
                                 title={`上次此組實測：${cleanSetDisplay(matchingGhost)}`}
                               >
-                                上次: {cleanSetDisplay(matchingGhost, exercise)}
+                                上次{ghostSessionMap[s.exercise_id]?.location ? ` (${ghostSessionMap[s.exercise_id].location})` : ""}: {cleanSetDisplay(matchingGhost, exercise)}
                               </span>
                             )}
                             {(() => {
@@ -2676,7 +2797,9 @@ export default function WorkoutDetailPage({
               <div className="flex items-center justify-between bg-gradient-to-r from-[#141b2b] to-[#121622] border border-cyan-500/30 px-3 py-1.5 rounded-xl text-xs shadow-sm">
                 <div className="flex items-center gap-1.5 text-gray-300">
                   <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                  <span className="text-[11px] text-gray-400">上次第 {Math.min(currentExSets.length + 1, ghostSets.length)} 組：</span>
+                  <span className="text-[11px] text-gray-400">
+                    上次{ghostSessionMap[selectedExId]?.location ? ` (${ghostSessionMap[selectedExId].location})` : ""}第 {Math.min(currentExSets.length + 1, ghostSets.length)} 組：
+                  </span>
                   <strong className="text-white font-mono font-bold">
                     {targetGhost.weight_kg > 0 ? `${targetGhost.weight_kg}kg` : "自重"} × {targetGhost.reps}下
                   </strong>
@@ -2684,7 +2807,17 @@ export default function WorkoutDetailPage({
                 <button
                   type="button"
                   onClick={() => {
-                    if (targetGhost.weight_kg > 0) setInputWeight(targetGhost.weight_kg.toString());
+                    let fillWeight = targetGhost.weight_kg;
+                    // 若今天同動作前面的正式組已降低重量，帶入上次時自動不超過該前組重量
+                    const currentExSets = sets.filter((s) => s.exercise_id === selectedExId);
+                    const completedFormalSets = currentExSets.filter((s) => !isWarmupOrActivation(s) && isSetCompleted(s, session?.date));
+                    if (completedFormalSets.length > 0 && targetGhost.set_type !== "warmup") {
+                      const lastFormalW = completedFormalSets[completedFormalSets.length - 1].weight_kg;
+                      if (lastFormalW > 0 && fillWeight > lastFormalW) {
+                        fillWeight = lastFormalW;
+                      }
+                    }
+                    if (fillWeight > 0) setInputWeight(fillWeight.toString());
                     if (targetGhost.reps > 0) setInputReps(targetGhost.reps.toString());
                     if (targetGhost.set_type) setInputType(targetGhost.set_type);
                   }}
@@ -3079,9 +3212,9 @@ export default function WorkoutDetailPage({
         </p>
       </div>
 
-      {/* 修改單組 Modal (包含多欄位編輯) */}
+      {/* 修改單組 Modal (包含多欄位編輯，層級拉高至 z-[60] 確保絕不被任何懸浮條遮擋) */}
       {editingSet && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#12141c] border border-amber-500/40 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-[#262b3d] pb-2.5">
               <h3 className="font-bold text-white text-sm">修改第 #{editingSet.set_order} 組紀錄</h3>
@@ -3836,17 +3969,17 @@ export default function WorkoutDetailPage({
         </div>
       )}
 
-      {/* 做組打勾完成後，螢幕底部大拇指極速快捷休息氣泡 (5秒自動消失，支援一鍵自選常用秒數) */}
-      {restPromptSetId && !timerActive && session?.target_muscle !== "游泳" && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 pointer-events-auto max-w-[96vw] animate-in slide-in-from-bottom-2 duration-150">
-          <div className="bg-[#12141c]/95 backdrop-blur-md border border-amber-500/50 rounded-full px-2.5 py-1.5 shadow-2xl flex items-center gap-1.5">
+      {/* 做組打勾完成後，頂部靈動快捷休息氣泡 (5秒自動消失，不遮擋下方做組、動作編輯與輸入框) */}
+      {restPromptSetId && !timerActive && !editingSet && session?.target_muscle !== "游泳" && (
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-auto max-w-[94vw] animate-in slide-in-from-top-3 duration-200">
+          <div className="bg-[#12141c]/95 backdrop-blur-md border border-amber-500/50 rounded-full px-3 py-1.5 shadow-2xl flex items-center gap-1.5 ring-1 ring-amber-500/30">
             <button
               type="button"
               onClick={() => {
                 startRestTimer(defaultRestDuration || 90);
                 setRestPromptSetId(null);
               }}
-              className="bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black px-3.5 py-1.5 rounded-full font-black text-xs shadow-md flex items-center gap-1.5 active:scale-95 cursor-pointer transition-all whitespace-nowrap shrink-0"
+              className="bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black px-3.5 py-1 rounded-full font-black text-xs shadow-md flex items-center gap-1.5 active:scale-95 cursor-pointer transition-all whitespace-nowrap shrink-0"
             >
               <Timer className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
               <span className="shrink-0">
@@ -3862,7 +3995,7 @@ export default function WorkoutDetailPage({
                     startRestTimer(s);
                     setRestPromptSetId(null);
                   }}
-                  className="px-2 py-1 bg-[#181b26] hover:bg-amber-500 hover:text-black text-amber-300 rounded-full border border-amber-500/30 active:scale-95 cursor-pointer transition-colors whitespace-nowrap"
+                  className="px-2 py-0.5 bg-[#181b26] hover:bg-amber-500 hover:text-black text-amber-300 rounded-full border border-amber-500/30 active:scale-95 cursor-pointer transition-colors whitespace-nowrap"
                 >
                   {s}s
                 </button>
@@ -3880,113 +4013,143 @@ export default function WorkoutDetailPage({
         </div>
       )}
 
-      {/* 🚀 浮動吸底休息倒數 (超大清晰數字顯示，手機放遠也能一目了然，結束時綠色反饋) */}
-      {(((timerActive && timerSeconds !== null && timerSeconds > 0) || timerFinished)) && session?.target_muscle !== "游泳" && (
-        <div className="fixed bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 z-50 pointer-events-auto w-[94vw] max-w-sm sm:max-w-md animate-in slide-in-from-bottom-4 duration-200">
-          <div className={`backdrop-blur-xl px-4 py-3 sm:px-5 sm:py-4 rounded-3xl shadow-[0_12px_48px_rgba(0,0,0,0.8),0_0_30px_rgba(245,158,11,0.2)] flex flex-col items-center text-white select-none border-2 transition-all ${
-            timerFinished
-              ? "bg-[#0b1f14]/98 border-emerald-400 shadow-emerald-500/30 text-emerald-300 animate-pulse"
-              : "bg-[#0f1118]/98 border-amber-400/90 shadow-amber-500/20"
-          }`}>
-            {timerFinished ? (
-              <div className="py-2 flex flex-col items-center gap-2 text-center w-full">
-                <div className="flex items-center gap-2 text-emerald-400 font-black text-xl sm:text-2xl">
-                  <Check className="w-7 h-7 sm:w-8 sm:h-8 stroke-[3] shrink-0" />
-                  <span>休息結束！</span>
-                </div>
-                <div className="text-sm font-bold text-emerald-300">
-                  準備做下一組，保持節奏 💪
+      {/* 🚀 休息計時器：頂部靈動懸浮膠囊 (預設置頂緊湊膠囊，不遮擋底部組數與輸入；可點擊放大遠距看) */}
+      {(((timerActive && timerSeconds !== null && timerSeconds > 0) || timerFinished)) && !editingSet && session?.target_muscle !== "游泳" && (
+        <>
+          {/* 1. 休息結束通知 (頂部翡翠綠高亮提示) */}
+          {timerFinished ? (
+            <div className="fixed top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-auto w-[92vw] max-w-sm animate-in slide-in-from-top-3 duration-200">
+              <div className="bg-[#0b1f14]/98 border-2 border-emerald-400 backdrop-blur-md rounded-2xl px-4 py-2.5 shadow-2xl shadow-emerald-500/20 flex items-center justify-between text-white animate-pulse">
+                <div className="flex items-center gap-2">
+                  <Check className="w-5 h-5 text-emerald-400 stroke-[3] shrink-0" />
+                  <div>
+                    <div className="text-xs font-black text-emerald-300">休息結束！</div>
+                    <div className="text-[11px] text-gray-300">準備做下一組，保持節奏 💪</div>
+                  </div>
                 </div>
                 <button
                   type="button"
                   onClick={stopRestTimer}
-                  className="mt-1 bg-emerald-500 hover:bg-emerald-400 text-black px-6 py-2 rounded-full font-black text-xs cursor-pointer active:scale-95 shadow-lg"
+                  className="bg-emerald-500 hover:bg-emerald-400 text-black px-3.5 py-1.5 rounded-full font-black text-xs cursor-pointer active:scale-95 shadow transition-all shrink-0"
                 >
                   開始下一組
                 </button>
               </div>
-            ) : (
-              <>
-                {/* 頂部標籤與最小化/結束按鈕 */}
-                <div className="w-full flex items-center justify-between text-xs text-gray-400 pb-1.5 border-b border-white/10">
-                  <div className="flex items-center gap-1.5 font-bold text-amber-400">
-                    <Timer className="w-4 h-4 animate-spin text-amber-400 shrink-0" style={{ animationDuration: "3s" }} />
-                    <span className="text-xs font-black tracking-wide">組間休息倒數</span>
+            </div>
+          ) : timerExpanded ? (
+            /* 2. 放大模式 (點擊放遠看專用，全螢幕半透明遮罩，超大數字) */
+            <div
+              className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150"
+              onClick={() => setTimerExpanded(false)}
+            >
+              <div
+                className="bg-[#0f1118] border-2 border-amber-400/90 rounded-3xl p-6 shadow-2xl w-full max-w-sm text-center space-y-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between pb-2 border-b border-white/10 text-xs text-amber-400 font-bold">
+                  <div className="flex items-center gap-1.5 font-black">
+                    <Timer className="w-4 h-4 animate-spin text-amber-400" style={{ animationDuration: "3s" }} />
+                    <span>組間休息倒數</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setTimerExpanded((v) => !v)}
-                      className="text-[11px] text-gray-300 hover:text-amber-300 px-2.5 py-0.5 rounded-lg bg-white/5 hover:bg-white/10 transition-all font-bold cursor-pointer"
-                    >
-                      {timerExpanded ? "收合" : "放大"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={stopRestTimer}
-                      className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-white/10 active:scale-95 transition-all cursor-pointer"
-                      title="結束計時"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTimerExpanded(false)}
+                    className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-white px-2 py-0.5 rounded-lg bg-white/5 cursor-pointer"
+                  >
+                    <Minimize2 className="w-3.5 h-3.5" />
+                    <span>收合</span>
+                  </button>
                 </div>
 
-                {timerExpanded ? (
-                  <>
-                    {/* ⭐ 超巨大倒數數字顯示：gym-distance readable，離 2-3 米也清晰無比 */}
-                    <div className="py-2.5 flex items-center justify-center">
-                      <span className="tabular-nums text-6xl sm:text-7xl font-black font-mono tracking-widest text-amber-300 drop-shadow-[0_4px_24px_rgba(251,191,36,0.5)]">
-                        {Math.floor((timerSeconds || 0) / 60)}:{((timerSeconds || 0) % 60).toString().padStart(2, "0")}
-                      </span>
-                    </div>
+                <div className="py-4">
+                  <span className="tabular-nums text-7xl sm:text-8xl font-black font-mono tracking-widest text-amber-300 drop-shadow-[0_4px_24px_rgba(251,191,36,0.5)]">
+                    {Math.floor((timerSeconds || 0) / 60)}:{((timerSeconds || 0) % 60).toString().padStart(2, "0")}
+                  </span>
+                </div>
 
-                    {/* 快捷調整按鈕群 (大按鈕，手汗/力竭時極好點按) */}
-                    <div className="w-full flex items-center justify-center gap-2.5 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => adjustRestSeconds(-30)}
-                        className="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 active:scale-95 transition-all cursor-pointer text-center"
-                        title="減少 30 秒"
-                      >
-                        -30s
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => adjustRestSeconds(30)}
-                        className="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-black bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 border border-amber-400/40 active:scale-95 transition-all cursor-pointer text-center"
-                        title="增加 30 秒"
-                      >
-                        +30s
-                      </button>
-                      <button
-                        type="button"
-                        onClick={stopRestTimer}
-                        className="py-2.5 px-6 rounded-xl text-xs sm:text-sm font-black bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-600 active:scale-95 transition-all cursor-pointer"
-                        title="立即結束休息"
-                      >
-                        結束
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  /* 緊湊收合狀態 */
-                  <div
-                    onClick={() => setTimerExpanded(true)}
-                    className="flex items-center gap-3 pt-1.5 cursor-pointer"
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => adjustRestSeconds(-30)}
+                    className="flex-1 py-3 rounded-xl text-sm font-black bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 active:scale-95 transition-all cursor-pointer"
                   >
-                    <span className="tabular-nums text-3xl font-black font-mono text-amber-300 tracking-wider">
-                      {Math.floor((timerSeconds || 0) / 60)}:{((timerSeconds || 0) % 60).toString().padStart(2, "0")}
-                    </span>
-                    <span className="text-xs text-amber-400 font-bold bg-amber-400/10 px-2.5 py-1 rounded-full border border-amber-400/20">
-                      點擊放大 ↗
-                    </span>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
+                    -30s
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => adjustRestSeconds(30)}
+                    className="flex-1 py-3 rounded-xl text-sm font-black bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 border border-amber-400/40 active:scale-95 transition-all cursor-pointer"
+                  >
+                    +30s
+                  </button>
+                  <button
+                    type="button"
+                    onClick={stopRestTimer}
+                    className="py-3 px-5 rounded-xl text-sm font-black bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-600 active:scale-95 transition-all cursor-pointer"
+                  >
+                    結束
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* 3. 預設緊湊頂部靈動膠囊 (置頂懸浮，高度僅 ~36px，完全不遮擋下方輸入與組數列表！) */
+            <div className="fixed top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-auto max-w-[94vw] animate-in slide-in-from-top-2 duration-150">
+              <div className="flex items-center gap-2 bg-[#0f1118]/95 backdrop-blur-md border border-amber-500/60 rounded-full px-3 py-1.5 shadow-xl text-white select-none ring-1 ring-amber-500/20">
+                <div
+                  className="flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                  onClick={() => setTimerExpanded(true)}
+                  title="點擊放大顯示"
+                >
+                  <Timer className="w-3.5 h-3.5 text-amber-400 animate-spin shrink-0" style={{ animationDuration: "3s" }} />
+                  <span className="tabular-nums text-sm font-black font-mono text-amber-300">
+                    {Math.floor((timerSeconds || 0) / 60)}:{((timerSeconds || 0) % 60).toString().padStart(2, "0")}
+                  </span>
+                </div>
+
+                <div className="h-3.5 w-[1px] bg-white/20" />
+
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => adjustRestSeconds(-30)}
+                    className="text-[10px] font-bold text-red-300 hover:text-white px-1.5 py-0.5 rounded bg-white/5 hover:bg-red-500/20 border border-red-500/20 active:scale-95 transition-all cursor-pointer"
+                    title="減少 30 秒"
+                  >
+                    -30s
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => adjustRestSeconds(30)}
+                    className="text-[10px] font-bold text-amber-300 hover:text-white px-1.5 py-0.5 rounded bg-white/5 hover:bg-amber-500/20 border border-amber-500/20 active:scale-95 transition-all cursor-pointer"
+                    title="增加 30 秒"
+                  >
+                    +30s
+                  </button>
+                </div>
+
+                <div className="h-3.5 w-[1px] bg-white/20" />
+
+                <button
+                  type="button"
+                  onClick={() => setTimerExpanded(true)}
+                  className="text-gray-400 hover:text-amber-300 p-1 rounded-full hover:bg-white/10 active:scale-95 transition-all cursor-pointer"
+                  title="放大顯示（放遠看）"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={stopRestTimer}
+                  className="text-gray-400 hover:text-red-400 p-1 rounded-full hover:bg-white/10 active:scale-95 transition-all cursor-pointer"
+                  title="結束休息"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* ✏️ 修改訓練標題與場次資訊 Modal */}

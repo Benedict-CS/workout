@@ -38,10 +38,12 @@ export async function getLatestBigThree(): Promise<BigThreeRecord | undefined> {
 
 /**
  * 取得某個動作「上一次訓練」的所有組數，用於現場對照突破目標
+ * 支援傳入 preferredLocation (優先匹配同健身房，如交大健身房 vs 三健客，杜絕機器槓桿比與插銷重量落差)
  */
 export async function getLastExerciseSets(
   exerciseId: string,
-  excludeSessionId?: string
+  excludeSessionId?: string,
+  preferredLocation?: string
 ): Promise<{ session: WorkoutSession; sets: SetItem[] } | null> {
   const sets = await db.sets
     .where("exercise_id")
@@ -51,7 +53,7 @@ export async function getLastExerciseSets(
 
   if (sets.length === 0) return null;
 
-  // 找出最近的 session
+  // 找出所有相關 session
   const sessionIds = Array.from(new Set(sets.map((s) => s.session_id)));
   const sessions = await db.sessions
     .where("id")
@@ -59,11 +61,32 @@ export async function getLastExerciseSets(
     .filter((s) => !s.deleted_at)
     .sortBy("date");
 
-  const lastSession = sessions[sessions.length - 1];
-  if (!lastSession) return null;
+  if (sessions.length === 0) return null;
+
+  // ⭐ 優先尋找同地點 (preferredLocation，例如「交大健身房」或「三健客」) 的最近場次
+  let lastSession: WorkoutSession | undefined;
+  if (preferredLocation) {
+    const normPref = preferredLocation.trim();
+    for (let i = sessions.length - 1; i >= 0; i--) {
+      const s = sessions[i];
+      if (
+        (s.location && s.location.includes(normPref)) ||
+        normPref.includes(s.location || "") ||
+        s.display_title.includes(normPref)
+      ) {
+        lastSession = s;
+        break;
+      }
+    }
+  }
+
+  // 若該地點尚無歷史紀錄，則退回該動作全歷史最近一次的訓練
+  if (!lastSession) {
+    lastSession = sessions[sessions.length - 1];
+  }
 
   const lastSets = sets
-    .filter((s) => s.session_id === lastSession.id)
+    .filter((s) => s.session_id === lastSession!.id)
     .sort((a, b) => a.set_order - b.set_order);
 
   return {
@@ -111,9 +134,11 @@ export async function getExerciseHistorySessions(
 
 /**
  * 取得指定部位「最近一次」訓練菜單結構 (動作清單與組數)，以供快速複製或套用
+ * 支援傳入 preferredLocation，優先匹配同健身房/地點的菜單 (如交大健身房 vs 三健客)
  */
 export async function getPreviousSessionTemplate(
-  targetMuscle: string
+  targetMuscle: string,
+  preferredLocation?: string
 ): Promise<{ session: WorkoutSession; exerciseIds: string[]; sets: SetItem[] } | null> {
   const sessions = (
     await db.sessions
@@ -123,7 +148,23 @@ export async function getPreviousSessionTemplate(
 
   if (sessions.length === 0) return null;
 
-  const prevSession = sessions[0];
+  // ⭐ 優先尋找同地點 (preferredLocation，例如「交大健身房」或「三健客」) 的同部位訓練菜單
+  let prevSession: WorkoutSession | undefined;
+  if (preferredLocation) {
+    const normPref = preferredLocation.trim();
+    prevSession = sessions.find(
+      (s) =>
+        (s.location && s.location.includes(normPref)) ||
+        normPref.includes(s.location || "") ||
+        s.display_title.includes(normPref)
+    );
+  }
+
+  // 若該地點尚無此部位紀錄，則回退到該部位最近一次訓練
+  if (!prevSession) {
+    prevSession = sessions[0];
+  }
+
   const sets = await db.sets
     .where("session_id")
     .equals(prevSession.id)

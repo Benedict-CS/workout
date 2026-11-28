@@ -56,7 +56,7 @@ export async function ensureDatabaseSeeded(): Promise<void> {
     "ex-incline-barbell-press": "ex-incline-bench", "ex-db-row": "ex-db-single-row",
     "ex-one-arm-dumbbell-row": "ex-db-single-row", "ex-pec-deck": "ex-pec-fly",
     "ex-machine-incline-press": "ex-incline-machine-bench", "ex-chest-press": "ex-chest-press-seated",
-    "ex-seated-row-machine": "ex-seated-row", "ex-tricep-press-chest": "ex-dip-pushdown-machine",
+    "ex-seated-row-machine": "ex-seated-row-wide", "ex-seated-row": "ex-seated-row-wide", "ex-tricep-press-chest": "ex-dip-pushdown-machine",
     "ex-hex-deadlift": "ex-trap-bar-deadlift", "ex-lat-row-machine": "ex-high-row",
     "ex-seated-back-row-machine": "ex-seated-cable-row", "ex-lying-leg-curl": "ex-leg-curl",
     "ex-bulgarian-split-squat": "ex-bulgarian-squat",
@@ -77,9 +77,122 @@ export async function ensureDatabaseSeeded(): Promise<void> {
     if (canonical) await db.sets.update(set.id, { exercise_id: canonical });
   }
 
-  for (const id of ["ex-bench", "ex-db-bench", "ex-db-incline-bench", "ex-squat", "ex-deadlift", "ex-pullup", "ex-leg-press"]) {
+  for (const id of ["ex-bench", "ex-db-bench", "ex-db-incline-bench", "ex-squat", "ex-deadlift", "ex-pullup", "ex-leg-press", "ex-seated-row-wide", "ex-seated-row-close"]) {
     const ex = await db.exercises.get(id);
     if (ex && !ex.is_favorite) await db.exercises.update(id, { is_favorite: true });
+  }
+
+  // ⭐ 動作分離：確保存在 坐姿划船機 (寬握) 與 坐姿划船機 (窄握)，並徹底廢除通用 ex-seated-row
+  await db.exercises.put({
+    id: "ex-seated-row-wide",
+    name: "坐姿划船機 (寬握)",
+    muscle_group: "背",
+    weight_type: "machine_single",
+    is_favorite: true,
+    created_at: "2026-06-01T00:00:00.000Z",
+    updated_at: new Date().toISOString(),
+    sync_status: "synced",
+  });
+  await db.exercises.put({
+    id: "ex-seated-row-close",
+    name: "坐姿划船機 (窄握)",
+    muscle_group: "背",
+    weight_type: "machine_single",
+    is_favorite: true,
+    created_at: "2026-06-01T00:00:00.000Z",
+    updated_at: new Date().toISOString(),
+    sync_status: "synced",
+  });
+  await db.exercises.delete("ex-seated-row");
+
+  // ⭐ 全庫自動遷移：所有背部訓練中的坐姿划船機，前 3 組必須為寬握 (ex-seated-row-wide)，後續組數必須為窄握 (ex-seated-row-close)
+  try {
+    const allSets = await db.sets.toArray();
+    const sessions = await db.sessions.toArray();
+    const sessMap = new Map(sessions.map((s) => [s.id, s]));
+
+    const setsToUpdate: SetItem[] = [];
+    const setsBySession = new Map<string, SetItem[]>();
+    for (const s of allSets) {
+      if (!setsBySession.has(s.session_id)) setsBySession.set(s.session_id, []);
+      setsBySession.get(s.session_id)!.push(s);
+    }
+
+    for (const [sid, sessSets] of setsBySession.entries()) {
+      const sess = sessMap.get(sid);
+      const isBack =
+        (sess?.target_muscle && sess.target_muscle.includes("背")) ||
+        (sess?.display_title && sess.display_title.includes("背"));
+
+      const isSeatedRow = (id: string) =>
+        id === "ex-seated-row" ||
+        id === "ex-seated-row-machine" ||
+        id === "ex-seated-row-wide" ||
+        id === "ex-seated-row-close";
+
+      const seatedRowSets = sessSets.filter((st) => isSeatedRow(st.exercise_id));
+      if (seatedRowSets.length === 0) continue;
+
+      if (isBack) {
+        seatedRowSets.sort((a, b) => a.set_order - b.set_order);
+        let formalCount = 0;
+        let closeCount = 0;
+
+        for (const st of seatedRowSets) {
+          const isW =
+            st.set_type === "warmup" ||
+            st.raw_text?.includes("熱身") ||
+            st.raw_text?.includes("激發") ||
+            st.raw_text?.includes("試重") ||
+            st.notes?.includes("熱身");
+
+          let targetId = "ex-seated-row-wide";
+          if (!isW) {
+            formalCount++;
+            if (formalCount > 3) {
+              targetId = "ex-seated-row-close";
+              closeCount++;
+            }
+          } else {
+            targetId = formalCount < 3 ? "ex-seated-row-wide" : "ex-seated-row-close";
+          }
+
+          let newRawText = st.raw_text;
+          if (targetId === "ex-seated-row-close" && !isW) {
+            if (st.raw_text && /^set\s*\d+:/i.test(st.raw_text)) {
+              newRawText = st.raw_text.replace(/^set\s*\d+:/i, `set ${closeCount}:`);
+            }
+          }
+
+          if (st.exercise_id !== targetId || newRawText !== st.raw_text) {
+            setsToUpdate.push({
+              ...st,
+              exercise_id: targetId,
+              raw_text: newRawText,
+              updated_at: new Date().toISOString(),
+              sync_status: "pending",
+            });
+          }
+        }
+      } else {
+        for (const st of seatedRowSets) {
+          if (st.exercise_id === "ex-seated-row" || st.exercise_id === "ex-seated-row-machine") {
+            setsToUpdate.push({
+              ...st,
+              exercise_id: "ex-seated-row-wide",
+              updated_at: new Date().toISOString(),
+              sync_status: "pending",
+            });
+          }
+        }
+      }
+    }
+
+    if (setsToUpdate.length > 0) {
+      await db.sets.bulkPut(setsToUpdate);
+    }
+  } catch (migErr) {
+    console.warn("Seated row migration skipped or failed:", migErr);
   }
 
   const sessionCount = await db.sessions.count();

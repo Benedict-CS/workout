@@ -32,7 +32,14 @@ import {
 } from "@/lib/markdown-generator";
 import { parseWorkoutMarkdown } from "@/lib/parser/markdown-parser";
 import { runFullSync, deleteRemoteSession } from "@/lib/db/sync";
-import { getPrimaryMuscle, getMuscleBadgeColor, cleanSessionTitle, computeMonthlyIndices } from "@/lib/workout-utils";
+import {
+  getPrimaryMuscle,
+  getMuscleBadgeColor,
+  cleanSessionTitle,
+  computeMonthlyIndices,
+  normalizeSessionSets,
+  getExerciseDisplayName,
+} from "@/lib/workout-utils";
 import type { WorkoutSession, SetItem, Exercise, BigThreeRecord } from "@/lib/types";
 
 const WEEK_DAYS = ["一", "二", "三", "四", "五", "六", "日"];
@@ -733,13 +740,13 @@ export default function HistoryPage() {
                     const n = st.notes || "";
                     return r.includes("熱身") || r.includes("激發") || r.includes("試重") || n.includes("熱身");
                   };
-                  const formalSets = sessSets.filter((st) => !isWarmup(st));
+                  const normalizedSessSets = normalizeSessionSets(sessSets, s.target_muscle, s.display_title);
+                  const formalSets = normalizedSessSets.filter((st) => !isWarmup(st));
 
                   // 提取這場訓練所做的所有動作與最高重量 (僅統計正式組)
                   const seenEx = new Map<string, { maxWeight: number; setCount: number }>();
-                  for (const st of sessSets) {
-                    const ex = exMap.get(st.exercise_id);
-                    const name = ex ? ex.name : "動作";
+                  for (const st of normalizedSessSets) {
+                    const name = getExerciseDisplayName(st.exercise_id, exMap);
                     const cur = seenEx.get(name) || { maxWeight: 0, setCount: 0 };
                     if (!isWarmup(st)) {
                       cur.setCount++;

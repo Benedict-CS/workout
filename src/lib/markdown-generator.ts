@@ -1,5 +1,5 @@
 import type { WorkoutSession, SetItem, Exercise, BigThreeRecord } from "./types";
-import { cleanSessionTitle } from "./workout-utils";
+import { cleanSessionTitle, normalizeSessionSets, getExerciseDisplayName } from "./workout-utils";
 
 /**
  * 將單次訓練 Session 格式化為使用者的標準 Markdown 結構
@@ -58,8 +58,8 @@ export function formatSessionToMarkdown(
     return lines.join("\n");
   }
 
-  // 依動作群組化（先依 set_order 嚴格正序排列，確保動作先後順序與實際訓練 100% 一致）
-  const sortedInputSets = [...sets].sort((a, b) => a.set_order - b.set_order);
+  // 依動作群組化（先依 set_order 嚴格正序排列，並標準化背部坐姿划船機為寬握與窄握）
+  const sortedInputSets = normalizeSessionSets(sets, session.target_muscle, session.display_title);
   const groupedSets: { exercise: Exercise | undefined; sets: SetItem[] }[] = [];
   const exerciseIdOrder: string[] = [];
 
@@ -84,7 +84,15 @@ export function formatSessionToMarkdown(
   }
 
   for (const exId of exerciseIdOrder) {
-    const ex = exMap.get(exId);
+    const ex = exMap.get(exId) || {
+      id: exId,
+      name: getExerciseDisplayName(exId, exMap),
+      muscle_group: "背",
+      weight_type: "machine_single",
+      created_at: "",
+      updated_at: "",
+      sync_status: "synced",
+    };
     const exSets = sortedInputSets.filter((s) => s.exercise_id === exId);
     // 嚴格排序：熱身/激發組永遠在最前面，正式組依序排在後方！
     const sortedSets = [...exSets].sort((a, b) => {
@@ -235,7 +243,7 @@ export function formatSessionToPlainText(
     return lines.join("\n");
   }
 
-  const sortedSets = [...sets].sort((a, b) => a.set_order - b.set_order);
+  const sortedSets = normalizeSessionSets(sets, session.target_muscle, session.display_title);
   const exerciseIdOrder: string[] = [];
   for (const s of sortedSets) {
     if (!exerciseIdOrder.includes(s.exercise_id)) {
@@ -244,9 +252,8 @@ export function formatSessionToPlainText(
   }
 
   for (const exId of exerciseIdOrder) {
-    const ex = exMap.get(exId);
+    const exName = getExerciseDisplayName(exId, exMap);
     const exSets = sortedSets.filter((s) => s.exercise_id === exId);
-    const exName = ex?.name || "動作";
 
     const setSummaries: string[] = [];
     for (const s of exSets) {

@@ -54,7 +54,8 @@ CANONICAL_EXERCISES = {
     "雙軌滑輪下拉": {"id": "ex-lat-pulldown", "name": "雙軌滑輪下拉", "muscle_group": "背", "weight_type": "machine_stack"},
     "高拉背部划船機": {"id": "ex-high-row", "name": "高拉背部划船機", "muscle_group": "背", "weight_type": "machine_single"},
     "高位反手下拉": {"id": "ex-underhand-pulldown", "name": "高位反手下拉", "muscle_group": "背", "weight_type": "machine_single"},
-    "坐姿划船機": {"id": "ex-seated-row", "name": "坐姿划船機", "muscle_group": "背", "weight_type": "machine_single"},
+    "坐姿划船機 (寬握)": {"id": "ex-seated-row-wide", "name": "坐姿划船機 (寬握)", "muscle_group": "背", "weight_type": "machine_single"},
+    "坐姿划船機 (窄握)": {"id": "ex-seated-row-close", "name": "坐姿划船機 (窄握)", "muscle_group": "背", "weight_type": "machine_single"},
     "坐式背部划船機": {"id": "ex-seated-cable-row", "name": "坐式背部划船機", "muscle_group": "背", "weight_type": "machine_stack"},
     "槓鈴划船": {"id": "ex-barbell-row", "name": "槓鈴划船", "muscle_group": "背", "weight_type": "barbell_total"},
     "單手啞鈴划船": {"id": "ex-db-single-row", "name": "單手啞鈴划船", "muscle_group": "背", "weight_type": "dumbbell_single"},
@@ -72,6 +73,9 @@ CANONICAL_EXERCISES = {
 }
 
 def map_exercise_name(raw_name: str) -> str:
+    is_wide = "寬握" in raw_name or "寬距" in raw_name or ("坐姿划船" in raw_name and "寬" in raw_name)
+    is_close = "窄握" in raw_name or "窄距" in raw_name or ("坐姿划船" in raw_name and "窄" in raw_name)
+
     clean = raw_name.replace('- ', '').split('：')[0].split(':')[0].strip()
     clean = re.sub(r'\(.*?\)', '', clean).strip()
     clean = re.sub(r'（.*?）', '', clean).strip()
@@ -147,7 +151,11 @@ def map_exercise_name(raw_name: str) -> str:
             return "單手啞鈴划船"
         if "背部划船機" in clean or "坐式" in clean:
             return "坐式背部划船機"
-        return "坐姿划船機"
+        if is_close:
+            return "坐姿划船機 (窄握)"
+        if is_wide:
+            return "坐姿划船機 (寬握)"
+        return "坐姿划船機 (寬握)"
 
     if "肩推" in clean:
         return "啞鈴肩推"
@@ -330,6 +338,8 @@ for b in blocks:
 
     current_ex_name = None
     set_order = 0
+    seated_row_formal_count = 0
+    seated_row_close_count = 0
 
     for line in lines:
         if line.startswith('<'):
@@ -406,6 +416,23 @@ for b in blocks:
             target_ex = current_ex_name
             if "平板啞鈴臥推" in line or "啞鈴臥推" in line:
                 target_ex = "啞鈴平臥推"
+
+            if target_muscle == "背" and ("坐姿划船" in target_ex or target_ex in ["坐姿划船機 (寬握)", "坐姿划船機 (窄握)", "坐姿划船機"]):
+                is_w = set_info["set_type"] == "warmup" or "熱身" in line or "激發" in line or "試重" in line
+                if not is_w:
+                    seated_row_formal_count += 1
+                    if seated_row_formal_count <= 3:
+                        target_ex = "坐姿划船機 (寬握)"
+                    else:
+                        target_ex = "坐姿划船機 (窄握)"
+                        seated_row_close_count += 1
+                        if set_info["raw_text"] and re.search(r'^set\s*\d+:', set_info["raw_text"]):
+                            set_info["raw_text"] = re.sub(r'^set\s*\d+:', f'set {seated_row_close_count}:', set_info["raw_text"])
+                else:
+                    if seated_row_formal_count < 3:
+                        target_ex = "坐姿划船機 (寬握)"
+                    else:
+                        target_ex = "坐姿划船機 (窄握)"
 
             ex_def = CANONICAL_EXERCISES.get(target_ex)
             ex_id = ex_def["id"] if ex_def else f"ex-{target_ex}"
